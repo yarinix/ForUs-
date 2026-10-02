@@ -2,40 +2,30 @@ import os
 import asyncio
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message
-from openai import OpenAI
+from gigachat import GigaChat
 
-# Получаем токены из переменных окружения на Render
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-AI_API_KEY = os.getenv("AI_API_KEY")
+# Сбер выдает credentials (авторизационные данные / Client Secret)
+GIGA_CREDENTIALS = os.getenv("AI_API_KEY") 
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
-# Инициализация клиента OpenRouter
-client = OpenAI(
-    api_key=AI_API_KEY,
-    base_url="https://openrouter.ai/api/v1" 
-)
-
 @dp.message(F.text == "/start")
 async def cmd_start(message: Message):
-    await message.answer("Привет! Бот успешно запущен и готов к работе. Напишите что-нибудь!")
+    await message.answer("Привет! Бот с GigaChat успешно запущен и готов к работе. Напишите что-нибудь!")
 
 @dp.message(F.text)
 async def chat_with_ai(message: Message):
     try:
-        # Отправляем запрос к нейросети
-        response = client.chat.completions.create(
-            model="openai/gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "Ты дружелюбный и полезный помощник."},
-                {"role": "user", "content": message.text}
-            ]
-        )
-        answer = response.choices[0].message.content
-        await message.answer(answer)
+        # Авторизуемся и отправляем запрос в GigaChat
+        # verify_ssl=False полезно для облачных хостингов вроде Render, чтобы не было ошибок с сертификатами
+        with GigaChat(credentials=GIGA_CREDENTIALS, verify_ssl=False) as giga:
+            response = giga.chat(message.text)
+            answer = response.choices[0].message.content
+            await message.answer(answer)
     except Exception as e:
-        await message.answer(f"Ошибка при обращении к нейросети: {e}")
+        await message.answer(f"Ошибка при обращении к GigaChat: {e}")
 
 async def main():
     await dp.start_polling(bot)
