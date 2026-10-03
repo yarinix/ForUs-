@@ -18,16 +18,16 @@ bot = Bot(token=TELEGRAM_BOT_TOKEN)
 dp = Dispatcher()
 client = genai.Client(api_key=GEMINI_API_KEY)
 
-# Каскад моделей для обхода лимитов (429 / ResourceExhausted)
+# Каскад моделей с учетом новых версий flash-lite
 MODELS_CASCADE = [
-    "gemini-2.5-flash",
-    "gemini-2.5-flash-lite"
+    "gemini-3.5-flash-lite",
+    "gemini-3.1-flash-lite"
 ]
 
-# ==================== РАБОТА С POSTGRESQL (SUPABASE) ====================
+# ==================== РАБОТА С POSTGRESQL (NEON) ====================
 
 def get_db_connection():
-    """Создаем подключение к внешней базе данных PostgreSQL"""
+    """Создаем подключение к внешней базе данных PostgreSQL на Neon"""
     return psycopg2.connect(DATABASE_URL, sslmode='require')
 
 def init_db():
@@ -140,7 +140,7 @@ async def extract_and_save_facts(user_id, user_text, bot_response):
     )
     try:
         response = client.models.generate_content(
-            model="gemini-2.5-flash-lite",
+            model="gemini-3.5-flash-lite",
             contents=prompt
         )
         fact = response.text.strip()
@@ -154,7 +154,7 @@ async def extract_and_save_facts(user_id, user_text, bot_response):
 
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
-    await message.answer("Привет! Я на связи. Вся история и факты теперь надежно сохраняются в облачной базе данных.")
+    await message.answer("Привет! Я на связи. База данных Neon подключена, модели обновлены.")
 
 @dp.message()
 async def handle_message(message: types.Message):
@@ -194,7 +194,7 @@ async def handle_message(message: types.Message):
 async def main():
     # Инициализируем базу данных при старте
     init_db()
-    logging.info("База данных инициализирована. Запуск бота...")
+    logging.info("База данных Neon инициализирована. Запуск бота...")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
