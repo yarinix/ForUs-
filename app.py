@@ -36,7 +36,7 @@ def init_db():
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    # Таблица истории сообщений (теперь сохраняет и chat_id, чтобы разделять группы и личку)
+    # Таблица истории сообщений (сохраняет chat_id, чтобы разделять группы и личку)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS messages (
             id SERIAL PRIMARY KEY,
@@ -165,21 +165,22 @@ async def handle_message(message: types.Message):
         return
 
     is_group = message.chat.type in ["group", "supergroup"]
-    bot_info = await bot.get_me()
-    bot_username = bot_info.username
-
-    # Если это группа, отвечаем только если бота упомянули (@botname) или ответили на его сообщение
+    
+    # Если это группа, проверяем обращение к боту
     if is_group:
+        bot_info = await bot.get_me()
+        bot_username = bot_info.username
+        
         is_mentioned = f"@{bot_username}" in user_text
         is_reply_to_bot = message.reply_to_message and message.reply_to_message.from_user.id == bot_info.id
         
         if not (is_mentioned or is_reply_to_bot):
-            return  # Пропускаем обычные сообщения в группе, чтобы не спамить
+            return  # В группе игнорируем сообщения без упоминания
         
-        # Убираем упоминание бота из текста, чтобы модель не путалась
+        # Убираем упоминание бота из текста
         user_text = user_text.replace(f"@{bot_username}", "").strip()
 
-    # Собираем личную память конкретного пользователя и историю конкретного чата
+    # Сюда бот доходит для личных чатов ИЛИ когда в группе к нему обратились
     user_memory = get_user_memory(user_id)
     recent_history = get_chat_history(chat_id, limit=10)
 
@@ -193,11 +194,9 @@ async def handle_message(message: types.Message):
     try:
         bot_response_text = await process_with_cascade(recent_history, user_text, system_prompt)
 
-        # Сохраняем историю привязанную к чату
         save_message(chat_id, user_id, "user", user_text)
         save_message(chat_id, user_id, "model", bot_response_text)
 
-        # Запоминаем факты о человеке, который написал
         await extract_and_save_facts(user_id, user_text, bot_response_text)
 
         await message.answer(bot_response_text)
