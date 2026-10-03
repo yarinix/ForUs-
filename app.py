@@ -36,7 +36,6 @@ def init_db():
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    # Создаем таблицы заново или проверяем их структуру
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS messages (
             id SERIAL PRIMARY KEY,
@@ -157,7 +156,7 @@ async def extract_and_save_facts(user_id, user_text, bot_response):
 
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
-    await message.answer("Привет! Я готов работать как в личных сообщениях, так и в группах.")
+    await message.answer("Привет! Я твой личный помощник с памятью.")
 
 @dp.message()
 async def handle_message(message: types.Message):
@@ -168,45 +167,27 @@ async def handle_message(message: types.Message):
     if not user_text:
         return
 
-    is_group = message.chat.type in ["group", "supergroup"]
-    
-    if is_group:
-        bot_info = await bot.get_me()
-        bot_username = bot_info.username
-        
-        is_mentioned = f"@{bot_username}" in user_text
-        is_reply_to_bot = message.reply_to_message and message.reply_to_message.from_user.id == bot_info.id
-        
-        if not (is_mentioned or is_reply_to_bot):
-            return
-        
-        user_text = user_text.replace(f"@{bot_username}", "").strip()
-
-    # 1. Сохраняем входящее сообщение пользователя в БД заранее
+    # Сохраняем сообщение пользователя заранее
     try:
         save_message(chat_id, user_id, "user", user_text)
     except Exception as e:
-        logging.error(f"Ошибка сохранения сообщения юзера в БД: {e}")
+        logging.error(f"Ошибка сохранения сообщения в БД: {e}")
 
-    # 2. Собираем историю и память
     user_memory = get_user_memory(user_id)
     recent_history = get_chat_history(chat_id, limit=10)
 
     system_prompt = (
         f"Ты — умный и понимающий помощник.\n"
-        f"Информация о пользователе, который пишет прямо сейчас:\n"
+        f"Информация о пользователе:\n"
         f"{user_memory}\n\n"
         f"Учитывай её в общении."
     )
 
     try:
-        # Исключаем текущее сообщение из истории для передаваемого объекта чата Gemini
         history_for_gemini = recent_history[:-1] if recent_history else []
         bot_response_text = await process_with_cascade(history_for_gemini, user_text, system_prompt)
 
-        # 3. Сохраняем ответ модели в БД
         save_message(chat_id, user_id, "model", bot_response_text)
-
         await extract_and_save_facts(user_id, user_text, bot_response_text)
 
         await message.answer(bot_response_text)
@@ -258,8 +239,7 @@ async def handle_inline_query(inline_query: types.InlineQuery):
 
 async def main():
     init_db()
-    logging.info("Бот запущен с поддержкой групп и личных чатов!")
-    # Сбрасываем старые зависшие запросы на сервере Telegram
+    logging.info("Бот запущен в режиме личных сообщений!")
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
