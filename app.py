@@ -3,7 +3,7 @@ import logging
 import hashlib
 import re
 import psycopg2
-from aiogram import Bot, Dispatcher, types
+from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.types import InlineQueryResultArticle, InputTextMessageContent
 from google import genai
@@ -38,14 +38,20 @@ def init_db():
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    # Таблица для короткой истории сообщений
+    # Таблица для короткой истории сообщений (включая chat_id)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS messages (
             id SERIAL PRIMARY KEY,
+            chat_id BIGINT,
             user_id BIGINT,
             role TEXT,
             content TEXT
         )
+    ''')
+    
+    # Автоматическая миграция, если таблица уже существовала без chat_id
+    cursor.execute('''
+        ALTER TABLE messages ADD COLUMN IF NOT EXISTS chat_id BIGINT;
     ''')
     
     # Таблица для долгосрочной памяти (фактов о пользователе)
@@ -61,27 +67,28 @@ def init_db():
     cursor.close()
     conn.close()
 
-def save_message(user_id: int, role: str, content: str):
+def save_message(chat_id: int, user_id: int, role: str, content: str):
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute(
-        'INSERT INTO messages (user_id, role, content) VALUES (%s, %s, %s)',
-        (user_id, role, content)
+        'INSERT INTO messages (chat_id, user_id, role, content) VALUES (%s, %s, %s, %s)',
+        (chat_id, user_id, role, content)
     )
     conn.commit()
     cursor.close()
     conn.close()
 
-def get_user_history(user_id: int, limit: int = 10):
+def get_user_history(chat_id: int, user_id: int, limit: int = 10):
     conn = get_db_connection()
     cursor = conn.cursor()
+    # Привязываем историю к конкретному чату и пользователю
     cursor.execute('''
         SELECT role, content FROM (
             SELECT role, content, id FROM messages 
-            WHERE user_id = %s 
+            WHERE chat_id = %s AND user_id = %s 
             ORDER BY id DESC LIMIT %s
         ) sub ORDER BY id ASC
-    ''', (user_id, limit))
+    ''', (chat_id, user_id, limit))
     rows = cursor.fetchall()
     cursor.close()
     conn.close()
@@ -157,35 +164,47 @@ async def extract_and_save_facts(user_id, user_text, bot_response):
 
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
-    await message.answer("Привет! Я на связи. База данных Neon подключена, модели обновлены, инлайн-режим активен.")
+    await message.answer("Привет! Я на связи. Бот отвечает строго на сообщения, начинающиеся со слова «Чат».")
 
-@dp.message()
+@dp.message(F.text)
 async def handle_message(message: types.Message):
-    user_id = message.from_user.id
-    user_text = message.text
+    user_text = message.text.strip()
+    text_lower = user_text.lower()
 
-    long_term_memory = get_user_memory(user_id)
-    recent_history = get_user_history(user_id, limit=10)
+    # Строго проверяем, начинается ли сообщение со слова "чат"
+    if text_lower.startswith("чат"):
+        # Защита от ложных срабатываний на слова вроде "чатер" или "печатать"
+        if len(text_lower) == 3 or text_lower[3] in " ,:;!?.-":
+            chat_id = message.chat.id
+            user_id = message.from_user.id
+            
+            # Очищаем запрос от слова "чат" и разделителей (если нужен чистый текст для ИИ)
+            clean_query = user_text[3:].lstrip(" ,:;!?.-")
+            if not clean_query:
+                clean_query = "Привет!" # Если написали просто "Чат,"
 
-    system_prompt = (
-        f"Ты — умный и понимающий помощник. Вот что тебе важно знать о пользователе:\n"
-        f"{long_term_memory}\n\n"
-        f"Учитывай эту информацию при ответах, если это уместно."
-    )
+            long_term_memory = get_user_memory(user_id)
+            recent_history = get_user_history(chat_id, user_id, limit=10)
 
-    try:
-        bot_response_text = await process_with_cascade(recent_history, user_text, system_prompt)
+            system_prompt = (
+                f"Ты — умный и понимающий помощник. Вот что тебе важно знать о пользователе:\n"
+                f"{long_term_memory}\n\n"
+                f"Учитывай эту информацию при ответах, если это уместно."
+            )
 
-        save_message(user_id, "user", user_text)
-        save_message(user_id, "model", bot_response_text)
+            try:
+                bot_response_text = await process_with_cascade(recent_history, clean_query, system_prompt)
 
-        await extract_and_save_facts(user_id, user_text, bot_response_text)
+                save_message(chat_id, user_id, "user", clean_query)
+                save_message(chat_id, user_id, "model", bot_response_text)
 
-        await message.answer(bot_response_text)
+                await extract_and_save_facts(user_id, clean_query, bot_response_text)
 
-    except Exception as e:
-        logging.error(f"Ошибка обработки сообщения: {e}")
-        await message.answer("Извините, произошла ошибка при обращении к модели. Попробуйте написать еще раз.")
+                await message.answer(bot_response_text)
+
+            except Exception as e:
+                logging.error(f"Ошибка обработки сообщения: {e}")
+                await message.answer("Извините, произошла ошибка при обращении к модели. Попробуйте написать еще раз.")
 
 # ==================== ОБРАБОТЧИК INLINE-ЗАПРОСОВ ====================
 
@@ -216,7 +235,7 @@ async def handle_inline_query(inline_query: types.InlineQuery):
     result_id = hashlib.md5(query_text.encode()).hexdigest()
     articles = [
         InlineQueryResultArticle(
-            id=result_id,
+        id=result_id,
             title="Ответ от Gemini",
             description=clean_response[:100] + "...",
             input_message_content=InputTextMessageContent(
