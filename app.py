@@ -36,7 +36,6 @@ def init_db():
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    # Таблица для сообщений (привязана к chat_id и user_id)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS messages (
             id SERIAL PRIMARY KEY,
@@ -49,7 +48,6 @@ def init_db():
     """)
     cursor.execute("ALTER TABLE messages ADD COLUMN IF NOT EXISTS chat_id BIGINT;")
     
-    # Таблица для глобальной долгосрочной памяти (ключ — только user_id, общая для всех чатов)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS user_memory (
             user_id BIGINT PRIMARY KEY,
@@ -74,13 +72,13 @@ def save_message(chat_id: int, user_id: int, role: str, content: str):
     cursor.close()
     conn.close()
 
-def get_user_history(chat_id: int, user_id: int, limit: int = 10):
-    """История сообщений локальна для конкретного чата и пользователя"""
+def get_user_history(user_id: int, limit: int = 10):
+    """ИЗМЕНЕНО: История сообщений теперь общая для всех чатов пользователя по user_id"""
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute(
-        "SELECT role, content FROM messages WHERE chat_id = %s AND user_id = %s ORDER BY id DESC LIMIT %s",
-        (chat_id, user_id, limit)
+        "SELECT role, content FROM messages WHERE user_id = %s ORDER BY id DESC LIMIT %s",
+        (user_id, limit)
     )
     rows = cursor.fetchall()
     cursor.close()
@@ -93,7 +91,6 @@ def get_user_history(chat_id: int, user_id: int, limit: int = 10):
     return history
 
 def get_user_memory(user_id: int) -> str:
-    """Глобальная память пользователя (единая для всех чатов)"""
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT memory_text FROM user_memory WHERE user_id = %s", (user_id,))
@@ -103,12 +100,10 @@ def get_user_memory(user_id: int) -> str:
     return row[0] if row and row[0] else "Пока нет сохраненной информации о пользователе."
 
 def update_user_memory(user_id: int, new_fact: str):
-    """Обновление глобальной памяти пользователя"""
     current_memory = get_user_memory(user_id)
     if current_memory == "Пока нет сохраненной информации о пользователе.":
         updated = new_fact
     else:
-        # Избегаем дублирования абсолютно идентичных фактов
         if new_fact.lower() in current_memory.lower():
             return
         updated = f"{current_memory}\n- {new_fact}"
@@ -127,7 +122,6 @@ def update_user_memory(user_id: int, new_fact: str):
 # --- КАСКАДНАЯ ОТПРАВКА ЗАПРОСОВ В GEMINI ---
 
 async def process_with_cascade(history_contents, contents, system_prompt):
-    """Универсальная отправка запроса через каскад моделей"""
     for model_name in MODELS_CASCADE:
         try:
             chat = client.chats.create(
@@ -146,7 +140,6 @@ async def process_with_cascade(history_contents, contents, system_prompt):
 
 
 async def extract_and_save_facts(user_id: int, user_message: str):
-    """Фоновый анализ реплики для пополнения глобальной памяти через каскад"""
     prompt = (
         f"Проанализируй реплику пользователя и выдели из нее важные долгосрочные факты о нем "
         f"(его интересы, предпочтения, проекты, цели, стиль жизни, имена близких), если они там есть. "
@@ -178,7 +171,7 @@ async def cmd_start(message: types.Message):
         "Привет! Я твой личный ИИ-помощник.\n"
         "• Текстовые сообщения я обрабатываю **строго** по префиксу **«чат»** (например: *«чат привет»*).\n"
         "• Голосовые сообщения, кружочки и фотографии я принимаю и понимаю нативно!\n"
-        "• Моя память едина для всех чатов. Команда **/memory** покажет, что я запомнил о тебе.\n"
+        "• Моя память и история диалогов теперь полностью едины для всех чатов. Команда **/memory** покажет факты обо мне.\n"
         "• Также поддерживается работа через инлайн-режим в любых чатах."
     )
 
@@ -187,7 +180,7 @@ async def cmd_start(message: types.Message):
 async def cmd_memory(message: types.Message):
     user_id = message.from_user.id
     memory = get_user_memory(user_id)
-    await message.answer(f"🧠 **Что я помню о тебе (глобально):**\n\n{memory}")
+    await message.answer(f"🧠 **Что я помню о тебе (во всех чатах):**\n\n{memory}")
 
 
 @dp.message(F.text | F.voice | F.video_note | F.photo)
@@ -199,21 +192,19 @@ async def handle_media_or_text(message: types.Message):
     file_bytes = None
     mime_type = None
 
-    # 1. Проверяем тип входящего контента
     if message.text:
         user_text = message.text.strip()
         text_lower = user_text.lower()
         
-        # Строгая проверка на префикс "чат" для текста
         if text_lower.startswith("чат"):
             if len(text_lower) == 3 or text_lower[3] in " ,:;!?.-":
                 user_text = user_text[3:].lstrip(" ,:;!?.-")
                 if not user_text:
                     user_text = "Привет!"
             else:
-                return  # Игнорируем слова вроде "чатер"
+                return
         else:
-            return  # Игнорируем обычный текст без префикса "чат"
+            return
 
     elif message.voice:
         file_id = message.voice.file_id
@@ -236,13 +227,13 @@ async def handle_media_or_text(message: types.Message):
         mime_type = "image/jpeg"
         user_text = message.caption or "Что изображено на этой фотографии? Опиши и проанализируй."
 
-    # 2. Подтягиваем глобальную память (общую на все чаты) и локальную историю текущего чата
+    # Подтягиваем глобальную память и общую историю со ВСЕХ чатов пользователя
     long_term_memory = get_user_memory(user_id)
-    recent_history = get_user_history(chat_id, user_id, limit=10)
+    recent_history = get_user_history(user_id, limit=10)
 
     system_prompt = (
         f"Ты — умный и эмпатичный ИИ-помощник. Вот что тебе важно знать о пользователе "
-        f"(эта информация собрана из всех чатов и актуальна везде):\n"
+        f"(эта информация и последние диалоги синхронизированы из всех его чатов):\n"
         f"{long_term_memory}\n\n"
         f"Учитывай эту информацию при ответах, общайся естественно."
     )
@@ -261,11 +252,9 @@ async def handle_media_or_text(message: types.Message):
 
         bot_response_text = await process_with_cascade(recent_history, contents, system_prompt)
 
-        # Сохраняем в историю конкретного чата
         save_message(chat_id, user_id, "user", saved_content)
         save_message(chat_id, user_id, "model", bot_response_text)
 
-        # Фоновый запуск извлечения фактов в глобальную память
         asyncio.create_task(extract_and_save_facts(user_id, saved_content))
 
         await message.answer(bot_response_text)
