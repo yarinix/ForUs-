@@ -54,11 +54,46 @@ def init_db():
             memory_text TEXT
         );
     """)
-    cursor.execute("ALTER TABLE user_memory ADD COLUMN IF NOT EXISTS memory_text TEXT;")
+    
+    # Гарантируем наличие первичного ключа на случай, если таблица уже была создана ранее без него
+    cursor.execute("""
+        DO $$ 
+        BEGIN 
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_constraint WHERE conname = 'user_memory_pkey'
+            ) THEN
+                ALTER TABLE user_memory ADD CONSTRAINT user_memory_pkey PRIMARY KEY (user_id);
+            END IF;
+        END $$;
+    """)
     
     conn.commit()
     cursor.close()
     conn.close()
+
+
+def update_user_memory(user_id: int, new_fact: str):
+    current_memory = get_user_memory(user_id)
+    if current_memory == "Пока нет сохраненной информации о пользователе.":
+        updated = new_fact
+    else:
+        if new_fact.lower() in current_memory.lower():
+            return
+        updated = f"{current_memory}\n- {new_fact}"
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    # Надежный UPSERT, который корректно работает при наличии PRIMARY KEY
+    cursor.execute("""
+        INSERT INTO user_memory (user_id, memory_text) 
+        VALUES (%s, %s)
+        ON CONFLICT (user_id) 
+        DO UPDATE SET memory_text = EXCLUDED.memory_text
+    """, (user_id, updated))
+    conn.commit()
+    cursor.close()
+    conn.close()
+
 
 
 def save_message(chat_id: int, user_id: int, role: str, content: str):
