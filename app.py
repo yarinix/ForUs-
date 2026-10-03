@@ -12,12 +12,12 @@ from google.genai import types as genai_types
 logging.basicConfig(level=logging.INFO)
 
 # Получение переменных окружения
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 # Инициализация бота и клиента Gemini
-bot = Bot(token=TELEGRAM_TOKEN)
+bot = Bot(token=TELEGRAM_BOT_TOKEN)
 dp = Dispatcher()
 client = genai.Client(api_key=GEMINI_API_KEY)
 
