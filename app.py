@@ -182,6 +182,13 @@ async def handle_message(message: types.Message):
         
         user_text = user_text.replace(f"@{bot_username}", "").strip()
 
+    # 1. Сохраняем входящее сообщение пользователя в БД заранее
+    try:
+        save_message(chat_id, user_id, "user", user_text)
+    except Exception as e:
+        logging.error(f"Ошибка сохранения сообщения юзера в БД: {e}")
+
+    # 2. Собираем историю и память
     user_memory = get_user_memory(user_id)
     recent_history = get_chat_history(chat_id, limit=10)
 
@@ -193,9 +200,11 @@ async def handle_message(message: types.Message):
     )
 
     try:
-        bot_response_text = await process_with_cascade(recent_history, user_text, system_prompt)
+        # Исключаем текущее сообщение из истории для передаваемого объекта чата Gemini
+        history_for_gemini = recent_history[:-1] if recent_history else []
+        bot_response_text = await process_with_cascade(history_for_gemini, user_text, system_prompt)
 
-        save_message(chat_id, user_id, "user", user_text)
+        # 3. Сохраняем ответ модели в БД
         save_message(chat_id, user_id, "model", bot_response_text)
 
         await extract_and_save_facts(user_id, user_text, bot_response_text)
@@ -250,6 +259,8 @@ async def handle_inline_query(inline_query: types.InlineQuery):
 async def main():
     init_db()
     logging.info("Бот запущен с поддержкой групп и личных чатов!")
+    # Сбрасываем старые зависшие запросы на сервере Telegram
+    await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
