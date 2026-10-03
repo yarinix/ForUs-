@@ -159,19 +159,27 @@ async def extract_and_save_facts(user_id: int, user_message: str, bot_response: 
         logging.error(f"Ошибка при извлечении фактов: {e}")
 
 
-# --- ОБРАБОТЧИКИ СООБЩЕНИЙ ---
+# --- ОБРАБОТЧИКИ КОМАНД И СООБЩЕНИЙ ---
 
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
     await message.answer(
         "Привет! Я твой личный ИИ-помощник.\n"
         "• Текстовые сообщения я обрабатываю **строго** по префиксу **«чат»** (например: *«чат привет»*).\n"
-        "• Голосовые сообщения и кружочки я принимаю и понимаю нативно!\n"
-        "• Также я поддерживаю работу через инлайн-режим в любых чатах."
+        "• Голосовые сообщения, кружочки и фотографии я принимаю и понимаю нативно!\n"
+        "• Команда **/memory** позволяет посмотреть, что я запомнил о тебе.\n"
+        "• Также поддерживается работа через инлайн-режим в любых чатах."
     )
 
 
-@dp.message(F.text | F.voice | F.video_note)
+@dp.message(Command("memory"))
+async def cmd_memory(message: types.Message):
+    user_id = message.from_user.id
+    memory = get_user_memory(user_id)
+    await message.answer(f"🧠 **Что я помню о тебе:**\n\n{memory}")
+
+
+@dp.message(F.text | F.voice | F.video_note | F.photo)
 async def handle_media_or_text(message: types.Message):
     chat_id = message.chat.id
     user_id = message.from_user.id
@@ -210,6 +218,14 @@ async def handle_media_or_text(message: types.Message):
         mime_type = "video/mp4"
         user_text = message.caption or "Посмотри это видеосообщение и ответь на него."
 
+    elif message.photo:
+        # Берем фотографию максимального разрешения из списка
+        photo = message.photo[-1]
+        file = await bot.get_file(photo.file_id)
+        file_bytes = await bot.download_file(file.file_path)
+        mime_type = "image/jpeg"
+        user_text = message.caption or "Что изображено на этой фотографии? Опиши и проанализируй."
+
     # 2. Подтягиваем память и историю диалога
     long_term_memory = get_user_memory(user_id)
     recent_history = get_user_history(chat_id, user_id, limit=10)
@@ -246,7 +262,7 @@ async def handle_media_or_text(message: types.Message):
         await message.answer("Произошла ошибка при обработке вашего сообщения. Попробуйте еще раз.")
 
 
-# --- ИНЛАЙН-РЕЖИМ (ВОЗВРАЩЕН НА МЕСТО) ---
+# --- ИНЛАЙН-РЕЖИМ ---
 
 @dp.inline_query()
 async def inline_query_handler(query: types.InlineQuery):
