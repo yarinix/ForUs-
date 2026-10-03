@@ -21,7 +21,7 @@ bot = Bot(token=TELEGRAM_TOKEN)
 dp = Dispatcher()
 client = genai.Client(api_key=GEMINI_API_KEY)
 
-# Каскад моделей Gemini (от легких к более мощным)
+# Возвращаем ваш оригинальный каскад моделей
 MODELS_CASCADE = [
     "gemini-3.5-flash-lite",
     "gemini-3.1-flash-lite",
@@ -140,23 +140,26 @@ async def process_with_cascade(history_contents, contents, system_prompt):
 
 
 async def extract_and_save_facts(user_id: int, user_message: str, bot_response: str):
-    """Фоновый анализ диалога для пополнения долгосрочной памяти"""
-    try:
-        prompt = (
-            f"Проанализируй реплику пользователя и выдели из нее важные долгосрочные факты о нем "
-            f"(его интересы, предпочтения, проекты, цели, стиль жизни), если они там есть. "
-            f"Если фактов нет, ответь строго: 'НЕЧЕГО ВЫДЕЛЯТЬ'.\n\n"
-            f"Реплика: {user_message}"
-        )
-        response = client.models.generate_content(
-            model=MODELS_CASCADE[0],
-            contents=prompt
-        )
-        fact = response.text.strip()
-        if fact and "НЕЧЕГО ВЫДЕЛЯТЬ" not in fact:
-            update_user_memory(user_id, fact)
-    except Exception as e:
-        logging.error(f"Ошибка при извлечении фактов: {e}")
+    """Фоновый анализ диалога для пополнения долгосрочной памяти через каскад"""
+    prompt = (
+        f"Проанализируй реплику пользователя и выдели из нее важные долгосрочные факты о нем "
+        f"(его интересы, предпочтения, проекты, цели, стиль жизни), если они там есть. "
+        f"Если фактов нет, ответь строго: 'НЕЧЕГО ВЫДЕЛЯТЬ'.\n\n"
+        f"Реплика: {user_message}"
+    )
+    for model_name in MODELS_CASCADE:
+        try:
+            response = client.models.generate_content(
+                model=model_name,
+                contents=prompt
+            )
+            fact = response.text.strip()
+            if fact and "НЕЧЕГО ВЫДЕЛЯТЬ" not in fact:
+                update_user_memory(user_id, fact)
+            return
+        except Exception as e:
+            logging.warning(f"Модель {model_name} не смогла выделить факты: {e}. Пробуем следующую...")
+            continue
 
 
 # --- ОБРАБОТЧИКИ КОМАНД И СООБЩЕНИЙ ---
