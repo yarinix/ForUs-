@@ -7,6 +7,8 @@ from aiogram.types import InlineQueryResultArticle, InputTextMessageContent
 import psycopg2
 from google import genai
 from google.genai import types as genai_types
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 
 
 
