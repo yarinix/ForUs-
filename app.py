@@ -1,68 +1,61 @@
 import os
 import logging
-import hashlib
-import re
-import psycopg2
+import asyncio
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.types import InlineQueryResultArticle, InputTextMessageContent
+import psycopg2
 from google import genai
+from google.genai import types as genai_types
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
 
-# Получаем ключи из окружения Render
-TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-DATABASE_URL = os.environ.get("DATABASE_URL")
+# Получение переменных окружения
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 # Инициализация бота и клиента Gemini
-bot = Bot(token=TELEGRAM_BOT_TOKEN)
+bot = Bot(token=TELEGRAM_TOKEN)
 dp = Dispatcher()
 client = genai.Client(api_key=GEMINI_API_KEY)
 
-# Каскад моделей с учетом версий flash-lite
+# Каскад моделей Gemini (от легких к более мощным)
 MODELS_CASCADE = [
-    "gemini-3.5-flash-lite",
-    "gemini-3.1-flash-lite"
+    "gemini-2.5-flash-lite",
+    "gemini-2.5-flash",
 ]
 
-# ==================== РАБОТА С POSTGRESQL (NEON) ====================
+# --- РАБОТА С БАЗОЙ ДАННЫХ (NEON POSTGRESQL) ---
 
 def get_db_connection():
-    """Создаем подключение к внешней базе данных PostgreSQL на Neon"""
-    return psycopg2.connect(DATABASE_URL, sslmode='require')
+    return psycopg2.connect(DATABASE_URL)
 
 def init_db():
-    """Инициализация таблиц в базе данных"""
     conn = get_db_connection()
     cursor = conn.cursor()
-    
-    # Таблица для короткой истории сообщений (включая chat_id)
-    cursor.execute('''
+    # Таблица для сообщений (история и контекст чата)
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS messages (
             id SERIAL PRIMARY KEY,
             chat_id BIGINT,
             user_id BIGINT,
             role TEXT,
-            content TEXT
-        )
-    ''')
+            content TEXT,
+            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    """)
+    # Автоматическая проверка колонок для старых баз
+    cursor.execute("ALTER TABLE messages ADD COLUMN IF NOT EXISTS chat_id BIGINT;")
     
-    # Автоматическая миграция, если таблица уже существовала без chat_id
-    cursor.execute('''
-        ALTER TABLE messages ADD COLUMN IF NOT EXISTS chat_id BIGINT;
-    ''')
-    
-    # Таблица для долгосрочной памяти (фактов о пользователе)
-    cursor.execute('''
+    # Таблица для долгосрочной памяти (факты о пользователе)
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS user_memory (
-            id SERIAL PRIMARY KEY,
-            user_id BIGINT,
-            fact TEXT
-        )
-    ''')
-    
+            user_id BIGINT PRIMARY KEY,
+            memory_text TEXT
+        );
+    """)
     conn.commit()
     cursor.close()
     conn.close()
@@ -71,7 +64,7 @@ def save_message(chat_id: int, user_id: int, role: str, content: str):
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute(
-        'INSERT INTO messages (chat_id, user_id, role, content) VALUES (%s, %s, %s, %s)',
+        "INSERT INTO messages (chat_id, user_id, role, content) VALUES (%s, %s, %s, %s)",
         (chat_id, user_id, role, content)
     )
     conn.commit()
@@ -81,178 +74,213 @@ def save_message(chat_id: int, user_id: int, role: str, content: str):
 def get_user_history(chat_id: int, user_id: int, limit: int = 10):
     conn = get_db_connection()
     cursor = conn.cursor()
-    # Привязываем историю к конкретному чату и пользователю
-    cursor.execute('''
-        SELECT role, content FROM (
-            SELECT role, content, id FROM messages 
-            WHERE chat_id = %s AND user_id = %s 
-            ORDER BY id DESC LIMIT %s
-        ) sub ORDER BY id ASC
-    ''', (chat_id, user_id, limit))
+    cursor.execute(
+        "SELECT role, content FROM messages WHERE chat_id = %s AND user_id = %s ORDER BY id DESC LIMIT %s",
+        (chat_id, user_id, limit)
+    )
     rows = cursor.fetchall()
     cursor.close()
     conn.close()
     
-    # Форматируем под требования Gemini SDK
     history = []
-    for role, content in rows:
-        history.append({"role": role, "parts": [{"text": content}]})
+    for role, content in reversed(rows):
+        gemini_role = "user" if role == "user" else "model"
+        history.append({"role": gemini_role, "parts": [{"text": content}]})
     return history
 
 def get_user_memory(user_id: int) -> str:
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute('SELECT fact FROM user_memory WHERE user_id = %s', (user_id,))
-    rows = cursor.fetchall()
+    cursor.execute("SELECT memory_text FROM user_memory WHERE user_id = %s", (user_id,))
+    row = cursor.fetchone()
     cursor.close()
     conn.close()
-    
-    if not rows:
-        return "Нет специфических сохраненных фактов."
-    
-    return "\n".join([f"- {row[0]}" for row in rows])
+    return row[0] if row else "Пока нет сохраненной информации о пользователе."
 
-def add_fact_to_memory(user_id: int, fact: str):
+def update_user_memory(user_id: int, new_fact: str):
+    current_memory = get_user_memory(user_id)
+    if current_memory == "Пока нет сохраненной информации о пользователе.":
+        updated = new_fact
+    else:
+        updated = f"{current_memory}\n- {new_fact}"
+    
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute('INSERT INTO user_memory (user_id, fact) VALUES (%s, %s)', (user_id, fact))
+    cursor.execute("""
+        INSERT INTO user_memory (user_id, memory_text) VALUES (%s, %s)
+        ON CONFLICT (user_id) DO UPDATE SET memory_text = EXCLUDED.memory_text
+    """, (user_id, updated))
     conn.commit()
     cursor.close()
     conn.close()
 
-# ==================== ЛОГИКА ИИ И ИСКЛЮЧЕНИЕ ФАКТОВ ====================
 
-async def process_with_cascade(history_contents, user_text, system_prompt):
-    """Отправка запроса с каскадом моделей"""
+# --- КАСКАДНАЯ ОТПРАВКА ЗАПРОСОВ В GEMINI ---
+
+async def process_with_cascade(history_contents, contents, system_prompt):
+    """Универсальная отправка запроса через каскад моделей"""
     for model_name in MODELS_CASCADE:
         try:
             chat = client.chats.create(
                 model=model_name,
                 history=history_contents,
-                config={"system_instruction": system_prompt}
+                config=genai_types.GenerateContentConfig(
+                    system_instruction=system_prompt
+                )
             )
-            response = chat.send_message(user_text)
+            response = chat.send_message(contents)
             return response.text
         except Exception as e:
-            logging.warning(f"Модель {model_name} недоступна: {e}. Переключаем далее...")
+            logging.warning(f"Модель {model_name} недоступна: {e}. Пробуем следующую...")
             continue
     raise Exception("Все модели из каскада временно недоступны.")
 
-async def extract_and_save_facts(user_id, user_text, bot_response):
-    """Фоновый анализ диалога на предмет появления важных фактов о пользователе"""
-    prompt = (
-        f"Проанализируй реплику пользователя и ответ бота.\n"
-        f"Пользователь: {user_text}\n"
-        f"Бот: {bot_response}\n\n"
-        f"Если пользователь упомянул какой-то важный факт о себе, своих проектах, интересах, "
-        f"отношениях или целях, сформулируй его коротко в виде утверждения. "
-        f"Если никакой новой важной информации нет, напиши ровно одно слово: НЕТ."
-    )
+
+async def extract_and_save_facts(user_id: int, user_message: str, bot_response: str):
+    """Фоновый анализ диалога для пополнения долгосрочной памяти"""
     try:
+        prompt = (
+            f"Проанализируй реплику пользователя и выдели из нее важные долгосрочные факты о нем "
+            f"(его интересы, предпочтения, проекты, цели, стиль жизни), если они там есть. "
+            f"Если фактов нет, ответь строго: 'НЕЧЕГО ВЫДЕЛЯТЬ'.\n\n"
+            f"Реплика: {user_message}"
+        )
         response = client.models.generate_content(
-            model="gemini-3.5-flash-lite",
+            model=MODELS_CASCADE[0],
             contents=prompt
         )
         fact = response.text.strip()
-        if fact and "НЕТ" not in fact.upper() and len(fact) < 150:
-            add_fact_to_memory(user_id, fact)
-            logging.info(f"Сохранен новый факт для юзера {user_id}: {fact}")
+        if fact and "НЕЧЕГО ВЫДЕЛЯТЬ" not in fact:
+            update_user_memory(user_id, fact)
     except Exception as e:
         logging.error(f"Ошибка при извлечении фактов: {e}")
 
-# ==================== ОБРАБОТЧИКИ СООБЩЕНИЙ ====================
+
+# --- ОБРАБОТЧИКИ СООБЩЕНИЙ ---
 
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
-    await message.answer("Привет! Я на связи. Бот отвечает строго на сообщения, начинающиеся со слова «Чат».")
+    await message.answer(
+        "Привет! Я твой личный ИИ-помощник.\n"
+        "• Текстовые сообщения я обрабатываю **строго** по префиксу **«чат»** (например: *«чат привет»*).\n"
+        "• Голосовые сообщения и кружочки я принимаю и понимаю нативно!\n"
+        "• Также я поддерживаю работу через инлайн-режим в любых чатах."
+    )
 
-@dp.message(F.text)
-async def handle_message(message: types.Message):
-    user_text = message.text.strip()
-    text_lower = user_text.lower()
 
-    # Строго проверяем, начинается ли сообщение со слова "чат"
-    if text_lower.startswith("чат"):
-        # Защита от ложных срабатываний на слова вроде "чатер" или "печатать"
-        if len(text_lower) == 3 or text_lower[3] in " ,:;!?.-":
-            chat_id = message.chat.id
-            user_id = message.from_user.id
-            
-            # Очищаем запрос от слова "чат" и разделителей (если нужен чистый текст для ИИ)
-            clean_query = user_text[3:].lstrip(" ,:;!?.-")
-            if not clean_query:
-                clean_query = "Привет!" # Если написали просто "Чат,"
+@dp.message(F.text | F.voice | F.video_note)
+async def handle_media_or_text(message: types.Message):
+    chat_id = message.chat.id
+    user_id = message.from_user.id
+    
+    user_text = ""
+    file_bytes = None
+    mime_type = None
 
-            long_term_memory = get_user_memory(user_id)
-            recent_history = get_user_history(chat_id, user_id, limit=10)
+    # 1. Проверяем тип входящего контента
+    if message.text:
+        user_text = message.text.strip()
+        text_lower = user_text.lower()
+        
+        # Строгая проверка на префикс "чат" для текста
+        if text_lower.startswith("чат"):
+            if len(text_lower) == 3 or text_lower[3] in " ,:;!?.-":
+                user_text = user_text[3:].lstrip(" ,:;!?.-")
+                if not user_text:
+                    user_text = "Привет!"
+            else:
+                return  # Игнорируем слова вроде "чатер"
+        else:
+            return  # Игнорируем обычный текст без префикса "чат"
 
-            system_prompt = (
-                f"Ты — умный и понимающий помощник. Вот что тебе важно знать о пользователе:\n"
-                f"{long_term_memory}\n\n"
-                f"Учитывай эту информацию при ответах, если это уместно."
+    elif message.voice:
+        file_id = message.voice.file_id
+        file = await bot.get_file(file_id)
+        file_bytes = await bot.download_file(file.file_path)
+        mime_type = "audio/ogg"
+        user_text = message.caption or "Послушай это голосовое сообщение и ответь на него."
+
+    elif message.video_note:
+        file_id = message.video_note.file_id
+        file = await bot.get_file(file_id)
+        file_bytes = await bot.download_file(file.file_path)
+        mime_type = "video/mp4"
+        user_text = message.caption or "Посмотри это видеосообщение и ответь на него."
+
+    # 2. Подтягиваем память и историю диалога
+    long_term_memory = get_user_memory(user_id)
+    recent_history = get_user_history(chat_id, user_id, limit=10)
+
+    system_prompt = (
+        f"Ты — умный и эмпатичный ИИ-помощник. Вот что тебе важно знать о пользователе:\n"
+        f"{long_term_memory}\n\n"
+        f"Учитывай эту информацию при ответах, общайся естественно."
+    )
+
+    try:
+        if file_bytes:
+            uploaded_file = client.files.upload(
+                file=file_bytes,
+                config={'mime_type': mime_type}
             )
+            contents = [uploaded_file, user_text]
+            saved_content = f"[Медиафайл] {user_text}"
+        else:
+            contents = user_text
+            saved_content = user_text
 
-            try:
-                bot_response_text = await process_with_cascade(recent_history, clean_query, system_prompt)
+        bot_response_text = await process_with_cascade(recent_history, contents, system_prompt)
 
-                save_message(chat_id, user_id, "user", clean_query)
-                save_message(chat_id, user_id, "model", bot_response_text)
+        save_message(chat_id, user_id, "user", saved_content)
+        save_message(chat_id, user_id, "model", bot_response_text)
 
-                await extract_and_save_facts(user_id, clean_query, bot_response_text)
+        asyncio.create_task(extract_and_save_facts(user_id, saved_content, bot_response_text))
 
-                await message.answer(bot_response_text)
+        await message.answer(bot_response_text)
 
-            except Exception as e:
-                logging.error(f"Ошибка обработки сообщения: {e}")
-                await message.answer("Извините, произошла ошибка при обращении к модели. Попробуйте написать еще раз.")
+    except Exception as e:
+        logging.error(f"Ошибка при обработке запроса: {e}")
+        await message.answer("Произошла ошибка при обработке вашего сообщения. Попробуйте еще раз.")
 
-# ==================== ОБРАБОТЧИК INLINE-ЗАПРОСОВ ====================
+
+# --- ИНЛАЙН-РЕЖИМ (ВОЗВРАЩЕН НА МЕСТО) ---
 
 @dp.inline_query()
-async def handle_inline_query(inline_query: types.InlineQuery):
-    user_id = inline_query.from_user.id
-    query_text = inline_query.query.strip()
-
+async def inline_query_handler(query: types.InlineQuery):
+    user_id = query.from_user.id
+    query_text = query.query.strip()
+    
     if not query_text:
         return
 
     long_term_memory = get_user_memory(user_id)
-    
     system_prompt = (
-        f"Ты — умный помощник, отвечающий в inline-режиме.\n"
-        f"Вот что тебе важно знать о пользователе:\n"
+        f"Ты — встроенный ИИ-ассистент в Telegram. Учитывай контекст о пользователе:\n"
         f"{long_term_memory}"
     )
 
     try:
         response_text = await process_with_cascade([], query_text, system_prompt)
-    except Exception as e:
-        response_text = f"Ошибка генерации: {e}"
-
-    # Очищаем текст от лишних символов разметки (*, _, #, `)
-    clean_response = re.sub(r'[*_#`]', '', response_text)
-
-    result_id = hashlib.md5(query_text.encode()).hexdigest()
-    articles = [
-        InlineQueryResultArticle(
-        id=result_id,
-            title="Ответ от Gemini",
-            description=clean_response[:100] + "...",
-            input_message_content=InputTextMessageContent(
-                message_text=clean_response
+        
+        articles = [
+            InlineQueryResultArticle(
+                id="ai_response",
+                title="Ответ от Gemini",
+                input_message_content=InputTextMessageContent(message_text=response_text),
+                description=response_text[:100] + "..."
             )
-        )
-    ]
+        ]
+        await query.answer(articles, cache_time=1)
+    except Exception as e:
+        logging.error(f"Ошибка в инлайн-режиме: {e}")
 
-    await inline_query.answer(articles, cache_time=1, is_personal=True)
 
-# ==================== ЗАПУСК ПРИЛОЖЕНИЯ ====================
+# --- ЗАПУСК БОТА ---
 
 async def main():
     init_db()
-    logging.info("База данных Neon инициализирована. Запуск бота...")
+    logging.info("Бот запущен и готов к работе...")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
-    import asyncio
     asyncio.run(main())
