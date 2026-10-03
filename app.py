@@ -36,7 +36,7 @@ def init_db():
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    # Таблица истории сообщений (сохраняет chat_id, чтобы разделять группы и личку)
+    # Создаем таблицы заново или проверяем их структуру
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS messages (
             id SERIAL PRIMARY KEY,
@@ -47,7 +47,6 @@ def init_db():
         )
     ''')
     
-    # Таблица долгосрочной памяти для каждого пользователя персонально
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS user_memory (
             id SERIAL PRIMARY KEY,
@@ -74,16 +73,21 @@ def save_message(chat_id: int, user_id: int, role: str, content: str):
 def get_chat_history(chat_id: int, limit: int = 10):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute('''
-        SELECT role, content FROM (
-            SELECT role, content, id FROM messages 
-            WHERE chat_id = %s 
-            ORDER BY id DESC LIMIT %s
-        ) sub ORDER BY id ASC
-    ''', (chat_id, limit))
-    rows = cursor.fetchall()
-    cursor.close()
-    conn.close()
+    try:
+        cursor.execute('''
+            SELECT role, content FROM (
+                SELECT role, content, id FROM messages 
+                WHERE chat_id = %s 
+                ORDER BY id DESC LIMIT %s
+            ) sub ORDER BY id ASC
+        ''', (chat_id, limit))
+        rows = cursor.fetchall()
+    except Exception as e:
+        logging.error(f"Ошибка получения истории из БД: {e}")
+        rows = []
+    finally:
+        cursor.close()
+        conn.close()
     
     history = []
     for role, content in rows:
@@ -166,7 +170,6 @@ async def handle_message(message: types.Message):
 
     is_group = message.chat.type in ["group", "supergroup"]
     
-    # Если это группа, проверяем обращение к боту
     if is_group:
         bot_info = await bot.get_me()
         bot_username = bot_info.username
@@ -175,12 +178,10 @@ async def handle_message(message: types.Message):
         is_reply_to_bot = message.reply_to_message and message.reply_to_message.from_user.id == bot_info.id
         
         if not (is_mentioned or is_reply_to_bot):
-            return  # В группе игнорируем сообщения без упоминания
+            return
         
-        # Убираем упоминание бота из текста
         user_text = user_text.replace(f"@{bot_username}", "").strip()
 
-    # Сюда бот доходит для личных чатов ИЛИ когда в группе к нему обратились
     user_memory = get_user_memory(user_id)
     recent_history = get_chat_history(chat_id, limit=10)
 
