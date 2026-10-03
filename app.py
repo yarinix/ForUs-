@@ -1,115 +1,113 @@
 import os
-import sys
-import logging
 import asyncio
-from aiohttp import web
+import logging
+from aiogram import Bot, Dispatcher, types
+from aiogram.filters import Command
 from google import genai
-from aiogram import Bot, Dispatcher, html
-from aiogram.client.default import DefaultBotProperties
-from aiogram.enums import ParseMode
-from aiogram.filters import CommandStart
-from aiogram.types import Message, InlineQuery, InlineQueryResultArticle, InputTextMessageContent
+from google.genai.errors import APIError
 
-# Настройка логирования
-logging.basicConfig(level=logging.INFO, stream=sys.stdout)
+# Настройка логирования для отладки
+logging.basicConfig(level=logging.INFO)
 
-# Забираем ключи и порт от Render
+# Получаем токены из переменных окружения на Render
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-PORT = int(os.getenv("PORT", 10000))
 
+# Проверка наличия обязательных ключей
 if not TELEGRAM_BOT_TOKEN or not GEMINI_API_KEY:
-    logging.error("Не заданы токен бота или API-ключ Gemini!")
-    sys.exit(1)
+    raise ValueError("Отсутствуют TELEGRAM_BOT_TOKEN или GEMINI_API_KEY в переменных окружения.")
 
-# Инициализируем Gemini и aiogram
-client = genai.Client(api_key=GEMINI_API_KEY)
-bot = Bot(token=TELEGRAM_BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+# Инициализация бота, диспетчера и клиента Gemini
+bot = Bot(token=TELEGRAM_BOT_TOKEN)
 dp = Dispatcher()
+client = genai.Client(api_key=GEMINI_API_KEY)
 
-async def generate_with_retry(prompt: str) -> str:
-    model_name = 'gemini-3.8-flash'
-    
+# Полный список моделей для каскадной ротации при ошибках лимита (429)
+MODELS_TO_TRY = [
+    "gemini-3.8-flash",
+    "gemini-3.7-flash",
+    "gemini-3.6-flash",
+    "gemini-3.5-flash",
+    "gemini-3.5-flash-lite",
+    "gemini-3-flash",
+    "gemini-2.5-flash",
+    "gemini-2.5-flash-lite",
+]
+
+async def generate_with_model_fallback(prompt: str) -> str:
+    """
+    Пытается сгенерировать ответ, по очереди перебирая модели из списка.
+    Если модель возвращает ошибку 429 (лимит исчерпан), происходит автоматический переход к следующей.
+    Также включает повторные попытки (retry) для временных ошибок сервера (503).
+    """
     last_error = None
-    for attempt in range(3):
-        try:
-            response = await asyncio.to_thread(
-                client.models.generate_content,
-                model=model_name,
-                contents=prompt,
-            )
-            if response and response.text:
-                return response.text
-            else:
-                raise Exception("Пустой ответ от модели")
-        except Exception as e:
-            last_error = e
-            error_str = str(e)
-            logging.warning(f"Попытка {attempt + 1}/3 неудачна: {error_str}")
-            if "503" in error_str or "UNAVAILABLE" in error_str or "high demand" in error_str:
-                await asyncio.sleep(2 ** attempt)
-                continue
-            else:
-                break
-                
-    raise last_error
 
-@dp.message(CommandStart())
-async def command_start_handler(message: Message) -> None:
-    await message.answer(f"Привет, {html.quote(message.from_user.first_name)}! Я на связи.")
+    for model_name in MODELS_TO_TRY:
+        max_retries = 2
+        for attempt in range(max_retries):
+            try:
+                # Запрос к текущей модели
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=prompt,
+                )
+                
+                if response and response.text:
+                    return response.text
+                    
+            except APIError as e:
+                last_error = e
+                # Если словили ошибку 429 (лимит исчерпан), прерываем попытки для этой модели и идем к следующей
+                if e.code == 429 or "RESOURCE_EXHAUSTED" in str(e):
+                    logging.warning(f"Модель {model_name} исчерпала лимит (429). Переключаемся на следующую...")
+                    break 
+                
+                # Если ошибка 503 (сервер недоступен), делаем паузу и пробуем еще раз на этой же модели
+                elif e.code == 503:
+                    logging.warning(f"Ошибка 503 у модели {model_name}, повторная попытка {attempt + 1}...")
+                    await asyncio.sleep(2)
+                    continue
+                else:
+                    # При других ошибках API сразу переходим к следующей модели
+                    break
+            except Exception as e:
+                last_error = e
+                break
+
+    # Если исчерпаны все модели и попытки, пробрасываем последнюю ошибку дальше
+    if last_error:
+        raise last_error
+    else:
+        raise Exception("Все доступные модели исчерпали лимит.")
+
+@dp.message(Command("start"))
+async def cmd_start(message: types.Message):
+    await message.answer("Привет! Чем я могу помочь?")
 
 @dp.message()
-async def chat_with_gemini(message: Message) -> None:
-    try:
-        answer_text = await generate_with_retry(message.text)
-        await message.answer(answer_text)
-    except Exception as e:
-        error_msg = str(e)
-        logging.error(f"Полная ошибка: {error_msg}")
-        # Выводим фразу и краткую ошибку в скобках на новой строке
-        await message.answer(f"Сейчас не могу ответить 😭\n<code>[Тех. ошибка: {error_msg[:100]}]</code>", parse_mode=ParseMode.HTML)
-
-@dp.inline_query()
-async def inline_gemini_handler(inline_query: InlineQuery) -> None:
-    query = inline_query.query.strip()
+async def handle_message(message: types.Message):
+    user_prompt = message.text
     
-    if not query:
-        result = InlineQueryResultArticle(
-            id="empty_query",
-            title="Введите запрос для Gemini",
-            input_message_content=InputTextMessageContent(message_text="Введите запрос.")
-        )
-        await inline_query.answer([result], cache_time=1)
-        return
-
     try:
-        answer_text = await generate_with_retry(query)
+        # Получаем ответ через систему автоматической ротации моделей
+        answer = await generate_with_model_fallback(user_prompt)
+        await message.answer(answer)
+        
+    except APIError as e:
+        # Удобное сообщение об ошибке для пользователя с урезанными тех. деталями для отладки
+        error_details = str(e)[:250]
+        fallback_msg = f"Сейчас не могу ответить 😭\n[Тех. ошибка: {e.code if hasattr(e, 'code') else 'API_ERROR'} {error_details}]"
+        await message.answer(fallback_msg)
+        logging.error(f"Критическая ошибка API: {e}")
+        
     except Exception as e:
-        error_msg = str(e)
-        answer_text = f"Сейчас не могу ответить 😭\n[Тех. ошибка: {error_msg[:100]}]"
+        error_details = str(e)[:250]
+        fallback_msg = f"Сейчас не могу ответить 😭\n[Тех. ошибка: {error_details}]"
+        await message.answer(fallback_msg)
+        logging.error(f"Общая ошибка: {e}")
 
-    result_id = str(hash(query))
-    result = InlineQueryResultArticle(
-        id=result_id,
-        title=f"Ответ: {query[:30]}",
-        input_message_content=InputTextMessageContent(message_text=answer_text, parse_mode=ParseMode.HTML)
-    )
-    await inline_query.answer([result], cache_time=0, is_personal=True)
-
-async def handle_ping(request):
-    return web.Response(text="Bot is running!")
-
-async def web_server():
-    app = web.Application()
-    app.router.add_get("/", handle_ping)
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, "0.0.0.0", PORT)
-    await site.start()
-    logging.info(f"Web server started on port {PORT}")
-
-async def main() -> None:
-    await web_server()
+async def main():
+    logging.info("Запуск Telegram-бота...")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
