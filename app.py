@@ -48,7 +48,7 @@ def init_db():
     """)
     cursor.execute("ALTER TABLE messages ADD COLUMN IF NOT EXISTS chat_id BIGINT;")
     
-    # Создаем таблицу без жестких ограничений PK, чтобы база не выдавала ошибки
+    # Таблица долгосрочной памяти
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS user_memory (
             user_id BIGINT,
@@ -59,63 +59,6 @@ def init_db():
     conn.commit()
     cursor.close()
     conn.close()
-
-
-def update_user_memory(user_id: int, new_fact: str):
-    current_memory = get_user_memory(user_id)
-    if current_memory == "Пока нет сохраненной информации о пользователе.":
-        updated = new_fact
-    else:
-        if new_fact.lower() in current_memory.lower():
-            return
-        updated = f"{current_memory}\n- {new_fact}"
-    
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    # Безопасный апдейт/инсерт без зависимостей от UNIQUE / PRIMARY KEY
-    cursor.execute("SELECT user_id FROM user_memory WHERE user_id = %s", (user_id,))
-    exists = cursor.fetchone()
-    
-    if exists:
-        cursor.execute(
-            "UPDATE user_memory SET memory_text = %s WHERE user_id = %s",
-            (updated, user_id)
-        )
-    else:
-        cursor.execute(
-            "INSERT INTO user_memory (user_id, memory_text) VALUES (%s, %s)",
-            (user_id, updated)
-        )
-        
-    conn.commit()
-    cursor.close()
-    conn.close()
-
-
-
-def update_user_memory(user_id: int, new_fact: str):
-    current_memory = get_user_memory(user_id)
-    if current_memory == "Пока нет сохраненной информации о пользователе.":
-        updated = new_fact
-    else:
-        if new_fact.lower() in current_memory.lower():
-            return
-        updated = f"{current_memory}\n- {new_fact}"
-    
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    # Надежный UPSERT, который корректно работает при наличии PRIMARY KEY
-    cursor.execute("""
-        INSERT INTO user_memory (user_id, memory_text) 
-        VALUES (%s, %s)
-        ON CONFLICT (user_id) 
-        DO UPDATE SET memory_text = EXCLUDED.memory_text
-    """, (user_id, updated))
-    conn.commit()
-    cursor.close()
-    conn.close()
-
 
 
 def save_message(chat_id: int, user_id: int, role: str, content: str):
@@ -130,7 +73,7 @@ def save_message(chat_id: int, user_id: int, role: str, content: str):
     conn.close()
 
 def get_user_history(user_id: int, limit: int = 10):
-    """ИЗМЕНЕНО: История сообщений теперь общая для всех чатов пользователя по user_id"""
+    """История сообщений едина для всех чатов пользователя по user_id"""
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute(
@@ -167,10 +110,22 @@ def update_user_memory(user_id: int, new_fact: str):
     
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("""
-        INSERT INTO user_memory (user_id, memory_text) VALUES (%s, %s)
-        ON CONFLICT (user_id) DO UPDATE SET memory_text = EXCLUDED.memory_text
-    """, (user_id, updated))
+    
+    # Надежное обновление без использования конфликтов
+    cursor.execute("SELECT user_id FROM user_memory WHERE user_id = %s", (user_id,))
+    exists = cursor.fetchone()
+    
+    if exists:
+        cursor.execute(
+            "UPDATE user_memory SET memory_text = %s WHERE user_id = %s",
+            (updated, user_id)
+        )
+    else:
+        cursor.execute(
+            "INSERT INTO user_memory (user_id, memory_text) VALUES (%s, %s)",
+            (user_id, updated)
+        )
+        
     conn.commit()
     cursor.close()
     conn.close()
@@ -228,7 +183,7 @@ async def cmd_start(message: types.Message):
         "Привет! Я твой личный ИИ-помощник.\n"
         "• Текстовые сообщения я обрабатываю **строго** по префиксу **«чат»** (например: *«чат привет»*).\n"
         "• Голосовые сообщения, кружочки и фотографии я принимаю и понимаю нативно!\n"
-        "• Моя память и история диалогов теперь полностью едины для всех чатов. Команда **/memory** покажет факты обо мне.\n"
+        "• Моя память и история диалогов едины для всех чатов. Команда **/memory** покажет, что я помню о тебе.\n"
         "• Также поддерживается работа через инлайн-режим в любых чатах."
     )
 
@@ -327,7 +282,6 @@ async def handle_media_or_text(message: types.Message):
 async def inline_query_handler(query: types.InlineQuery):
     user_id = query.from_user.id
     query_text = query.query.strip()
-    
     if not query_text:
         return
 
