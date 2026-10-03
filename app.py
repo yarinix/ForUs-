@@ -27,35 +27,31 @@ client = genai.Client(api_key=GEMINI_API_KEY)
 bot = Bot(token=TELEGRAM_BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher()
 
-# Функция для запроса к Gemini с автоповтором и сменой модели при 503 ошибке
+# Функция для запроса к Gemini с автоповтором (только gemini-3.8-flash)
 async def generate_with_retry(prompt: str) -> str:
-    models_to_try = ['gemini-3.8-flash', 'gemini-2.5-flash']
+    model_name = 'gemini-3.8-flash'
     
-    for model_name in models_to_try:
-        # Делаем до 3 попыток для каждой модели
-        for attempt in range(3):
-            try:
-                # generate_content синхронный метод, запускаем через to_thread чтобы не вешать бота
-                response = await asyncio.to_thread(
-                    client.models.generate_content,
-                    model=model_name,
-                    contents=prompt,
-                )
-                if response and response.text:
-                    return response.text
-            except Exception as e:
-                error_str = str(e)
-                # Если ошибка 503 или перегрузка, ждем и пробуем снова
-                if "503" in error_str or "UNAVAILABLE" in error_str or "high demand" in error_str:
-                    logging.warning(f"Модель {model_name} перегружена (попытка {attempt + 1}/3). Ждем...")
-                    await asyncio.sleep(2 ** attempt)  # 1с, 2с, 4с
-                    continue
-                else:
-                    # Другие ошибки (например, контент заблокирован) пробрасываем дальше
-                    raise e
-        logging.warning(f"Модель {model_name} исчерпала попытки, пробуем запасную...")
-    
-    raise Exception("Все доступные модели временно перегружены. Попробуйте отправить запрос еще раз через минуту.")
+    # Делаем до 3 попыток для модели
+    for attempt in range(3):
+        try:
+            response = await asyncio.to_thread(
+                client.models.generate_content,
+                model=model_name,
+                contents=prompt,
+            )
+            if response and response.text:
+                return response.text
+        except Exception as e:
+            error_str = str(e)
+            # Если ошибка 503 или перегрузка, ждем и пробуем снова
+            if "503" in error_str or "UNAVAILABLE" in error_str or "high demand" in error_str:
+                logging.warning(f"Модель {model_name} перегружена (попытка {attempt + 1}/3). Ждем...")
+                await asyncio.sleep(2 ** attempt)  # 1с, 2с, 4с
+                continue
+            else:
+                raise e
+                
+    raise Exception("Модель временно перегружена.")
 
 @dp.message(CommandStart())
 async def command_start_handler(message: Message) -> None:
@@ -68,7 +64,8 @@ async def chat_with_gemini(message: Message) -> None:
         answer_text = await generate_with_retry(message.text)
         await message.answer(answer_text)
     except Exception as e:
-        await message.answer(f"Что-то пошло не так: {e}")
+        logging.error(f"Ошибка при запросе к Gemini: {e}")
+        await message.answer("Сейчас не могу ответить 😭")
 
 # Обработка инлайн-запросов
 @dp.inline_query()
@@ -90,7 +87,8 @@ async def inline_gemini_handler(inline_query: InlineQuery) -> None:
     try:
         answer_text = await generate_with_retry(query)
     except Exception as e:
-        answer_text = f"Ошибка: {e}"
+        logging.error(f"Ошибка при инлайн-запросе к Gemini: {e}")
+        answer_text = "Сейчас не могу ответить 😭"
 
     result_id = str(hash(query))
     result = InlineQueryResultArticle(
