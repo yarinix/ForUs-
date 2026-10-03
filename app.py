@@ -35,7 +35,8 @@ def get_db_connection():
 def init_db():
     conn = get_db_connection()
     cursor = conn.cursor()
-    # Таблица для сообщений (история и контекст чата)
+    
+    # Таблица для сообщений
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS messages (
             id SERIAL PRIMARY KEY,
@@ -46,19 +47,21 @@ def init_db():
             timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
     """)
-    # Автоматическая проверка колонок для старых баз
     cursor.execute("ALTER TABLE messages ADD COLUMN IF NOT EXISTS chat_id BIGINT;")
     
-    # Таблица для долгосрочной памяти (факты о пользователе)
+    # Таблица для долгосрочной памяти с автодобавлением колонки
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS user_memory (
             user_id BIGINT PRIMARY KEY,
             memory_text TEXT
         );
     """)
+    cursor.execute("ALTER TABLE user_memory ADD COLUMN IF NOT EXISTS memory_text TEXT;")
+    
     conn.commit()
     cursor.close()
     conn.close()
+
 
 def save_message(chat_id: int, user_id: int, role: str, content: str):
     conn = get_db_connection()
