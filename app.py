@@ -31,9 +31,11 @@ async def command_start_handler(message: Message) -> None:
 @dp.message()
 async def chat_with_gemini(message: Message) -> None:
     try:
-        response = client.models.generate_content(
-            model='gemini-2.5-flash',
+                response = client.models.generate_content(
+            model='gemini-3.8-flash',
             contents=message.text,
+        
+
         )
         await message.answer(response.text)
     except Exception as e:
