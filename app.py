@@ -1,114 +1,202 @@
 import os
-import asyncio
 import logging
+import psycopg2
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from google import genai
-from google.genai.errors import APIError
 
-# Настройка логирования для отладки
+# Настройка логирования
 logging.basicConfig(level=logging.INFO)
 
-# Получаем токены из переменных окружения на Render
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+# Получаем ключи из окружения Render
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+DATABASE_URL = os.environ.get("DATABASE_URL")
 
-# Проверка наличия обязательных ключей
-if not TELEGRAM_BOT_TOKEN or not GEMINI_API_KEY:
-    raise ValueError("Отсутствуют TELEGRAM_BOT_TOKEN или GEMINI_API_KEY в переменных окружения.")
-
-# Инициализация бота, диспетчера и клиента Gemini
+# Инициализация бота и клиента Gemini
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
 dp = Dispatcher()
 client = genai.Client(api_key=GEMINI_API_KEY)
 
-# Полный список моделей для каскадной ротации при ошибках лимита (429)
-MODELS_TO_TRY = [
-    "gemini-3.8-flash",
-    "gemini-3.7-flash",
-    "gemini-3.6-flash",
-    "gemini-3.5-flash",
-    "gemini-3.5-flash-lite",
-    "gemini-3-flash",
+# Каскад моделей для обхода лимитов (429 / ResourceExhausted)
+MODELS_CASCADE = [
     "gemini-2.5-flash",
-    "gemini-2.5-flash-lite",
+    "gemini-2.5-flash-lite"
 ]
 
-async def generate_with_model_fallback(prompt: str) -> str:
-    """
-    Пытается сгенерировать ответ, по очереди перебирая модели из списка.
-    Если модель возвращает ошибку 429 (лимит исчерпан), происходит автоматический переход к следующей.
-    Также включает повторные попытки (retry) для временных ошибок сервера (503).
-    """
-    last_error = None
+# ==================== РАБОТА С POSTGRESQL (SUPABASE) ====================
 
-    for model_name in MODELS_TO_TRY:
-        max_retries = 2
-        for attempt in range(max_retries):
-            try:
-                # Запрос к текущей модели
-                response = client.models.generate_content(
-                    model=model_name,
-                    contents=prompt,
-                )
-                
-                if response and response.text:
-                    return response.text
-                    
-            except APIError as e:
-                last_error = e
-                # Если словили ошибку 429 (лимит исчерпан), прерываем попытки для этой модели и идем к следующей
-                if e.code == 429 or "RESOURCE_EXHAUSTED" in str(e):
-                    logging.warning(f"Модель {model_name} исчерпала лимит (429). Переключаемся на следующую...")
-                    break 
-                
-                # Если ошибка 503 (сервер недоступен), делаем паузу и пробуем еще раз на этой же модели
-                elif e.code == 503:
-                    logging.warning(f"Ошибка 503 у модели {model_name}, повторная попытка {attempt + 1}...")
-                    await asyncio.sleep(2)
-                    continue
-                else:
-                    # При других ошибках API сразу переходим к следующей модели
-                    break
-            except Exception as e:
-                last_error = e
-                break
+def get_db_connection():
+    """Создаем подключение к внешней базе данных PostgreSQL"""
+    return psycopg2.connect(DATABASE_URL, sslmode='require')
 
-    # Если исчерпаны все модели и попытки, пробрасываем последнюю ошибку дальше
-    if last_error:
-        raise last_error
-    else:
-        raise Exception("Все доступные модели исчерпали лимит.")
+def init_db():
+    """Инициализация таблиц в базе данных"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    # Таблица для короткой истории сообщений
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS messages (
+            id SERIAL PRIMARY KEY,
+            user_id BIGINT,
+            role TEXT,
+            content TEXT
+        )
+    ''')
+    
+    # Таблица для долгосрочной памяти (фактов о пользователе)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS user_memory (
+            id SERIAL PRIMARY KEY,
+            user_id BIGINT,
+            fact TEXT
+        )
+    ''')
+    
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+def save_message(user_id: int, role: str, content: str):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        'INSERT INTO messages (user_id, role, content) VALUES (%s, %s, %s)',
+        (user_id, role, content)
+    )
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+def get_user_history(user_id: int, limit: int = 10):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT role, content FROM (
+            SELECT role, content, id FROM messages 
+            WHERE user_id = %s 
+            ORDER BY id DESC LIMIT %s
+        ) sub ORDER BY id ASC
+    ''', (user_id, limit))
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    
+    # Форматируем под требования Gemini SDK
+    history = []
+    for role, content in rows:
+        history.append({"role": role, "parts": [{"text": content}]})
+    return history
+
+def get_user_memory(user_id: int) -> str:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT fact FROM user_memory WHERE user_id = %s', (user_id,))
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    
+    if not rows:
+        return "Нет специфических сохраненных фактов."
+    
+    return "\n".join([f"- {row[0]}" for row in rows])
+
+def add_fact_to_memory(user_id: int, fact: str):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('INSERT INTO user_memory (user_id, fact) VALUES (%s, %s)', (user_id, fact))
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+# ==================== ЛОГИКА ИИ И ИСКЛЮЧЕНИЕ ФАКТОВ ====================
+
+async def process_with_cascade(history_contents, user_text, system_prompt):
+    """Отправка запроса с каскадом моделей"""
+    for model_name in MODELS_CASCADE:
+        try:
+            chat = client.chats.create(
+                model=model_name,
+                history=history_contents,
+                config={"system_instruction": system_prompt}
+            )
+            response = chat.send_message(user_text)
+            return response.text
+        except Exception as e:
+            logging.warning(f"Модель {model_name} недоступна: {e}. Переключаем далее...")
+            continue
+    raise Exception("Все модели из каскада временно недоступны.")
+
+async def extract_and_save_facts(user_id, user_text, bot_response):
+    """Фоновый анализ диалога на предмет появления важных фактов о пользователе"""
+    prompt = (
+        f"Проанализируй реплику пользователя и ответ бота.\n"
+        f"Пользователь: {user_text}\n"
+        f"Бот: {bot_response}\n\n"
+        f"Если пользователь упомянул какой-то важный факт о себе, своих проектах, интересах, "
+        f"отношениях или целях, сформулируй его коротко в виде утверждения (например: 'Пользователь увлекается монтажом в CapCut'). "
+        f"Если никакой новой важной информации нет, напиши ровно одно слово: НЕТ."
+    )
+    try:
+        response = client.models.generate_content(
+            model="gemini-2.5-flash-lite",
+            contents=prompt
+        )
+        fact = response.text.strip()
+        if fact and "НЕТ" not in fact.upper() and len(fact) < 150:
+            add_fact_to_memory(user_id, fact)
+            logging.info(f"Сохранен новый факт для юзера {user_id}: {fact}")
+    except Exception as e:
+        logging.error(f"Ошибка при извлечении фактов: {e}")
+
+# ==================== ОБРАБОТЧИКИ СООБЩЕНИЙ ====================
 
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
-    await message.answer("Привет! Я создан для ваших отношений❤️")
+    await message.answer("Привет! Я на связи. Вся история и факты теперь надежно сохраняются в облачной базе данных.")
 
 @dp.message()
 async def handle_message(message: types.Message):
-    user_prompt = message.text
-    
+    user_id = message.from_user.id
+    user_text = message.text
+
+    # 1. Собираем долгосрочную память и недавний контекст
+    long_term_memory = get_user_memory(user_id)
+    recent_history = get_user_history(user_id, limit=10)
+
+    # 2. Формируем системный промпт с фактами о пользователе
+    system_prompt = (
+        f"Ты — умный и понимающий помощник. Вот что тебе важно знать о пользователе:\n"
+        f"{long_term_memory}\n\n"
+        f"Учитывай эту информацию при ответах, если это уместно."
+    )
+
     try:
-        # Получаем ответ через систему автоматической ротации моделей
-        answer = await generate_with_model_fallback(user_prompt)
-        await message.answer(answer)
-        
-    except APIError as e:
-        # Удобное сообщение об ошибке для пользователя с урезанными тех. деталями для отладки
-        error_details = str(e)[:250]
-        fallback_msg = f"Сейчас не могу ответить 😭\n[Тех. ошибка: {e.code if hasattr(e, 'code') else 'API_ERROR'} {error_details}]"
-        await message.answer(fallback_msg)
-        logging.error(f"Критическая ошибка API: {e}")
-        
+        # 3. Отправляем запрос через каскад моделей
+        bot_response_text = await process_with_cascade(recent_history, user_text, system_prompt)
+
+        # 4. Сохраняем диалог в таблицу сообщений
+        save_message(user_id, "user", user_text)
+        save_message(user_id, "model", bot_response_text)
+
+        # 5. Проверяем и записываем новые факты в долгосрочную память
+        await extract_and_save_facts(user_id, user_text, bot_response_text)
+
+        await message.answer(bot_response_text)
+
     except Exception as e:
-        error_details = str(e)[:250]
-        fallback_msg = f"Сейчас не могу ответить 😭\n[Тех. ошибка: {error_details}]"
-        await message.answer(fallback_msg)
-        logging.error(f"Общая ошибка: {e}")
+        logging.error(f"Ошибка обработки сообщения: {e}")
+        await message.answer("Извините, произошла ошибка при обращении к модели. Попробуйте написать еще раз.")
+
+# ==================== ЗАПУСК ПРИЛОЖЕНИЯ ====================
 
 async def main():
-    logging.info("Запуск Telegram-бота...")
+    # Инициализируем базу данных при старте
+    init_db()
+    logging.info("База данных инициализирована. Запуск бота...")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
+    import asyncio
     asyncio.run(main())
