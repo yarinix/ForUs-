@@ -1,8 +1,10 @@
 import os
 import logging
+import hashlib
 import psycopg2
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
+from aiogram.types import InlineQueryResultArticle, InputTextMessageContent
 from google import genai
 
 # Настройка логирования
@@ -154,7 +156,7 @@ async def extract_and_save_facts(user_id, user_text, bot_response):
 
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
-    await message.answer("Привет! Я на связи. База данных Neon подключена, модели обновлены.")
+    await message.answer("Привет! Я на связи. База данных Neon подключена, модели обновлены, инлайн-режим активен.")
 
 @dp.message()
 async def handle_message(message: types.Message):
@@ -188,6 +190,46 @@ async def handle_message(message: types.Message):
     except Exception as e:
         logging.error(f"Ошибка обработки сообщения: {e}")
         await message.answer("Извините, произошла ошибка при обращении к модели. Попробуйте написать еще раз.")
+
+# ==================== ОБРАБОТЧИК INLINE-ЗАПРОСОВ ====================
+
+@dp.inline_query()
+async def handle_inline_query(inline_query: types.InlineQuery):
+    user_id = inline_query.from_user.id
+    query_text = inline_query.query.strip()
+
+    if not query_text:
+        return
+
+    # Получаем долгосрочную память пользователя, чтобы бот «знал» вас и в инлайн-режиме
+    long_term_memory = get_user_memory(user_id)
+    
+    system_prompt = (
+        f"Ты — умный помощник, отвечающий в inline-режиме.\n"
+        f"Вот что тебе важно знать о пользователе:\n"
+        f"{long_term_memory}"
+    )
+
+    try:
+        # В инлайн-режиме передаем пустую историю сообщений, но используем память и промпт
+        response_text = await process_with_cascade([], query_text, system_prompt)
+    except Exception as e:
+        response_text = f"Ошибка генерации: {e}"
+
+    # Формируем результат для выдачи во всплывающем меню
+    result_id = hashlib.md5(query_text.encode()).hexdigest()
+    articles = [
+        InlineQueryResultArticle(
+            id=result_id,
+            title="Ответ от Gemini",
+            description=response_text[:100] + "...",
+            input_message_content=InputTextMessageContent(
+                message_text=response_text
+            )
+        )
+    ]
+
+    await inline_query.answer(articles, cache_time=1, is_personal=True)
 
 # ==================== ЗАПУСК ПРИЛОЖЕНИЯ ====================
 
