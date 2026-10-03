@@ -82,7 +82,7 @@ async def generate_with_model_fallback(prompt: str) -> str:
 
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
-    await message.answer("Привет! Чем я могу помочь?")
+    await message.answer("Привет! Я создан для ваших отношений❤️")
 
 @dp.message()
 async def handle_message(message: types.Message):
