@@ -1,3 +1,4 @@
+Держите полный и точный обновленный код файла app.py. В него встроена проверка: бот откликается только тогда, когда сообщение начинается со слова «чат» (с пробелом, запятой или двоеточием, например: «Чат, привет» или «Чат: как дела»), а также сохранена вся логика работы с базой данных Neon и каскадом моделей Gemini:
 import os
 import logging
 import hashlib
@@ -167,8 +168,10 @@ async def handle_message(message: types.Message):
     if not user_text:
         return
 
-    # Откликаемся только если сообщение содержит слово "чат"
-    if "чат" not in user_text.lower():
+    text_lower = user_text.lower().strip()
+
+    # Откликаемся строго на обращение "чат" в самом начале сообщения
+    if not (text_lower.startswith("чат ") or text_lower.startswith("чат,") or text_lower.startswith("чат:") or text_lower == "чат"):
         return
 
     # Сохраняем сообщение пользователя заранее
@@ -250,3 +253,4 @@ async def main():
 if __name__ == "__main__":
     import asyncio
     asyncio.run(main())
+
