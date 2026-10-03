@@ -8,6 +8,28 @@ import psycopg2
 from google import genai
 from google.genai import types as genai_types
 
+
+
+# 1. Создаем простейший HTTP-сервер для Render, чтобы он видел открытый порт
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot is alive!")
+
+def run_http_server():
+    port = int(os.environ.get("PORT", 10000))
+    server = HTTPServer(("0.0.0.0", port), HealthCheckHandler)
+    print(f"HTTP server started on port {port}")
+    server.serve_forever()
+
+# 2. Запускаем HTTP-сервер в отдельном потоке перед стартом бота
+if __name__ == "__main__":
+    server_thread = threading.Thread(target=run_http_server, daemon=True)
+    server_thread.start()
+    
+    # Здесь ваш стандартный запуск бота (например, asyncio.run(dp.start_polling(bot)))
+
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
 
