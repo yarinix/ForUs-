@@ -9,7 +9,6 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.filters import CommandStart
 from aiogram.types import Message, InlineQuery, InlineQueryResultArticle, InputTextMessageContent
-from aiogram.utils.deep_linking import create_start_link
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO, stream=sys.stdout)
@@ -28,6 +27,36 @@ client = genai.Client(api_key=GEMINI_API_KEY)
 bot = Bot(token=TELEGRAM_BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher()
 
+# Функция для запроса к Gemini с автоповтором и сменой модели при 503 ошибке
+async def generate_with_retry(prompt: str) -> str:
+    models_to_try = ['gemini-3.8-flash', 'gemini-2.5-flash']
+    
+    for model_name in models_to_try:
+        # Делаем до 3 попыток для каждой модели
+        for attempt in range(3):
+            try:
+                # generate_content синхронный метод, запускаем через to_thread чтобы не вешать бота
+                response = await asyncio.to_thread(
+                    client.models.generate_content,
+                    model=model_name,
+                    contents=prompt,
+                )
+                if response and response.text:
+                    return response.text
+            except Exception as e:
+                error_str = str(e)
+                # Если ошибка 503 или перегрузка, ждем и пробуем снова
+                if "503" in error_str or "UNAVAILABLE" in error_str or "high demand" in error_str:
+                    logging.warning(f"Модель {model_name} перегружена (попытка {attempt + 1}/3). Ждем...")
+                    await asyncio.sleep(2 ** attempt)  # 1с, 2с, 4с
+                    continue
+                else:
+                    # Другие ошибки (например, контент заблокирован) пробрасываем дальше
+                    raise e
+        logging.warning(f"Модель {model_name} исчерпала попытки, пробуем запасную...")
+    
+    raise Exception("Все доступные модели временно перегружены. Попробуйте отправить запрос еще раз через минуту.")
+
 @dp.message(CommandStart())
 async def command_start_handler(message: Message) -> None:
     await message.answer(f"Привет, {html.quote(message.from_user.first_name)}! Я на связи. Меня можно использовать и в личных сообщениях, и через инлайн-режим в любых чатах (@имя_бота запрос).")
@@ -36,20 +65,16 @@ async def command_start_handler(message: Message) -> None:
 @dp.message()
 async def chat_with_gemini(message: Message) -> None:
     try:
-        response = client.models.generate_content(
-            model='gemini-3.8-flash',
-            contents=message.text,
-        )
-        await message.answer(response.text)
+        answer_text = await generate_with_retry(message.text)
+        await message.answer(answer_text)
     except Exception as e:
         await message.answer(f"Что-то пошло не так: {e}")
 
-# Обработка инлайн-запросов (когда пишут @bot username текст)
+# Обработка инлайн-запросов
 @dp.inline_query()
 async def inline_gemini_handler(inline_query: InlineQuery) -> None:
     query = inline_query.query.strip()
     
-    # Если пользователь ничего не написал после имени бота
     if not query:
         result = InlineQueryResultArticle(
             id="empty_query",
@@ -63,16 +88,10 @@ async def inline_gemini_handler(inline_query: InlineQuery) -> None:
         return
 
     try:
-        # Запрос к Gemini
-        response = client.models.generate_content(
-            model='gemini-3.8-flash',
-            contents=query,
-        )
-        answer_text = response.text
+        answer_text = await generate_with_retry(query)
     except Exception as e:
-        answer_text = f"Произошла ошибка при обращении к Gemini: {e}"
+        answer_text = f"Ошибка: {e}"
 
-    # Формируем результат для отправки в чат
     result_id = str(hash(query))
     result = InlineQueryResultArticle(
         id=result_id,
@@ -84,7 +103,6 @@ async def inline_gemini_handler(inline_query: InlineQuery) -> None:
         description=answer_text[:100] + "..." if len(answer_text) > 100 else answer_text
     )
     
-    # Отправляем ответ (cache_time=0 чтобы не кэшировать временные ошибки или одинаковые запросы)
     await inline_query.answer([result], cache_time=0, is_personal=True)
 
 # Заглушка для веб-сервера Render, чтобы порт был открыт
@@ -101,7 +119,6 @@ async def web_server():
     logging.info(f"Web server started on port {PORT}")
 
 async def main() -> None:
-    # Запускаем и веб-сервер для порта, и поллинг бота одновременно
     await web_server()
     await dp.start_polling(bot)
 
