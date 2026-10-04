@@ -11,7 +11,7 @@ import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 
-# 1. Создаем простейший HTTP-сервер для Render, чтобы он видел открытый порт
+# 1. Простейший HTTP-сервер для Render
 class HealthCheckHandler(BaseHTTPRequestHandler):
   def do_GET(self):
     self.send_response(200)
@@ -26,7 +26,6 @@ def run_http_server():
   server.serve_forever()
 
 
-# 2. Запускаем HTTP-сервер в отдельном потоке перед стартом бота
 if __name__ == "__main__":
   server_thread = threading.Thread(target=run_http_server, daemon=True)
   server_thread.start()
@@ -39,7 +38,7 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-# Читаем белый список пользователей из переменных окружения
+# Читаем белый список пользователей
 ALLOWED_USERS_RAW = os.getenv("ALLOWED_USERS", "5084782149,1253880871")
 ALLOWED_USER_IDS = [
     int(uid.strip()) for uid in ALLOWED_USERS_RAW.split(",") if uid.strip().isdigit()
@@ -68,22 +67,35 @@ def init_db():
   conn = get_db_connection()
   cursor = conn.cursor()
 
+  # Таблица сообщений с поддержкой разделения по типу чата
   cursor.execute("""
         CREATE TABLE IF NOT EXISTS messages (
             id SERIAL PRIMARY KEY,
             chat_id BIGINT,
             user_id BIGINT,
+            chat_type TEXT,
             role TEXT,
             content TEXT,
             timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
     """)
   cursor.execute("ALTER TABLE messages ADD COLUMN IF NOT EXISTS chat_id BIGINT;")
+  cursor.execute(
+      "ALTER TABLE messages ADD COLUMN IF NOT EXISTS chat_type TEXT;"
+  )
 
-  # Таблица долгосрочной памяти
+  # Личная память пользователя
   cursor.execute("""
         CREATE TABLE IF NOT EXISTS user_memory (
-            user_id BIGINT,
+            user_id BIGINT PRIMARY KEY,
+            memory_text TEXT
+        );
+    """)
+
+  # Общая память пары
+  cursor.execute("""
+        CREATE TABLE IF NOT EXISTS couple_memory (
+            id INT PRIMARY KEY,
             memory_text TEXT
         );
     """)
@@ -93,27 +105,29 @@ def init_db():
   conn.close()
 
 
-def save_message(chat_id: int, user_id: int, role: str, content: str):
+def save_message(
+    chat_id: int, user_id: int, chat_type: str, role: str, content: str
+):
   conn = get_db_connection()
   cursor = conn.cursor()
   cursor.execute(
-      "INSERT INTO messages (chat_id, user_id, role, content) VALUES (%s, %s,"
-      " %s, %s)",
-      (chat_id, user_id, role, content),
+      "INSERT INTO messages (chat_id, user_id, chat_type, role, content)"
+      " VALUES (%s, %s, %s, %s, %s)",
+      (chat_id, user_id, chat_type, role, content),
   )
   conn.commit()
   cursor.close()
   conn.close()
 
 
-def get_user_history(user_id: int, limit: int = 10):
-  """История сообщений едина для всех чатов пользователя по user_id"""
+def get_chat_history(chat_id: int, limit: int = 10):
+  """История конкретного чата (личного или группового)"""
   conn = get_db_connection()
   cursor = conn.cursor()
   cursor.execute(
-      "SELECT role, content FROM messages WHERE user_id = %s ORDER BY id DESC"
+      "SELECT role, content FROM messages WHERE chat_id = %s ORDER BY id DESC"
       " LIMIT %s",
-      (user_id, limit),
+      (chat_id, limit),
   )
   rows = cursor.fetchall()
   cursor.close()
@@ -135,16 +149,12 @@ def get_user_memory(user_id: int) -> str:
   row = cursor.fetchone()
   cursor.close()
   conn.close()
-  return (
-      row[0]
-      if row and row[0]
-      else "Пока нет сохраненной информации о пользователе."
-  )
+  return row[0] if row and row[0] else "Нет личной сохраненной информации."
 
 
 def update_user_memory(user_id: int, new_fact: str):
   current_memory = get_user_memory(user_id)
-  if current_memory == "Пока нет сохраненной информации о пользователе.":
+  if current_memory == "Нет личной сохраненной информации.":
     updated = new_fact
   else:
     if new_fact.lower() in current_memory.lower():
@@ -153,21 +163,42 @@ def update_user_memory(user_id: int, new_fact: str):
 
   conn = get_db_connection()
   cursor = conn.cursor()
+  cursor.execute(
+      "INSERT INTO user_memory (user_id, memory_text) VALUES (%s, %s)"
+      " ON CONFLICT (user_id) DO UPDATE SET memory_text = EXCLUDED.memory_text",
+      (user_id, updated),
+  )
+  conn.commit()
+  cursor.close()
+  conn.close()
 
-  cursor.execute("SELECT user_id FROM user_memory WHERE user_id = %s", (user_id,))
-  exists = cursor.fetchone()
 
-  if exists:
-    cursor.execute(
-        "UPDATE user_memory SET memory_text = %s WHERE user_id = %s",
-        (updated, user_id),
-    )
+def get_couple_memory() -> str:
+  conn = get_db_connection()
+  cursor = conn.cursor()
+  cursor.execute("SELECT memory_text FROM couple_memory WHERE id = 1")
+  row = cursor.fetchone()
+  cursor.close()
+  conn.close()
+  return row[0] if row and row[0] else "Пока нет общей информации о паре."
+
+
+def update_couple_memory(new_fact: str):
+  current_memory = get_couple_memory()
+  if current_memory == "Пока нет общей информации о паре.":
+    updated = new_fact
   else:
-    cursor.execute(
-        "INSERT INTO user_memory (user_id, memory_text) VALUES (%s, %s)",
-        (user_id, updated),
-    )
+    if new_fact.lower() in current_memory.lower():
+      return
+    updated = f"{current_memory}\n- {new_fact}"
 
+  conn = get_db_connection()
+  cursor = conn.cursor()
+  cursor.execute(
+      "INSERT INTO couple_memory (id, memory_text) VALUES (1, %s) ON CONFLICT"
+      " (id) DO UPDATE SET memory_text = EXCLUDED.memory_text",
+      (updated,),
+  )
   conn.commit()
   cursor.close()
   conn.close()
@@ -196,14 +227,13 @@ async def process_with_cascade(history_contents, contents, system_prompt):
   raise Exception("Все модели из каскада временно недоступны.")
 
 
-async def extract_and_save_facts(user_id: int, user_message: str):
+async def extract_and_save_facts(user_id: int, chat_type: str, user_message: str):
   prompt = (
-      f"Проанализируй реплику пользователя и выдели из нее важные долгосрочные"
-      f" факты о нем (его интересы, предпочтения, проекты, цели, стиль жизни,"
-      f" имена близких), если они там есть. Выдавай факты кратко, с дефисом в"
-      f" начале (например: '- Любит научную фантастику'). Если фактов нет"
-      f" вообще, ответь строго: 'НЕЧЕГО ВЫДЕЛЯТЬ'.\n\nРеплика:"
-      f" {user_message}"
+      f"Проанализируй реплику пользователя. Определи, что из этого является"
+      f" личным фактом о пользователе, а что — общей информацией о паре"
+      f" (отношения, совместные планы, быт, поездки). Выдай ответ строго в"
+      f" формате:\nPERSONAL: [факт или НЕТ]\nCOUPLE: [факт или"
+      f" НЕТ]\n\nРеплика: {user_message}"
   )
 
   for model_name in MODELS_CASCADE:
@@ -211,9 +241,23 @@ async def extract_and_save_facts(user_id: int, user_message: str):
       response = client.models.generate_content(
           model=model_name, contents=prompt
       )
-      fact = response.text.strip()
-      if fact and "НЕЧЕГО ВЫДЕЛЯТЬ" not in fact:
-        update_user_memory(user_id, fact)
+      text = response.text.strip()
+
+      # Парсим ответ классификатора фактов
+      lines = text.split("\n")
+      personal_fact, couple_fact = "НЕТ", "НЕТ"
+      for line in lines:
+        if line.startswith("PERSONAL:"):
+          personal_fact = line.replace("PERSONAL:", "").strip()
+        elif line.startswith("COUPLE:"):
+          couple_fact = line.replace("COUPLE:", "").strip()
+
+      if personal_fact and "НЕТ" not in personal_fact.upper():
+        update_user_memory(user_id, personal_fact)
+
+      if couple_fact and "НЕТ" not in couple_fact.upper():
+        update_couple_memory(couple_fact)
+
       return
     except Exception as e:
       logging.warning(
@@ -230,19 +274,20 @@ async def extract_and_save_facts(user_id: int, user_message: str):
 async def cmd_start(message: types.Message):
   if message.from_user.id not in ALLOWED_USER_IDS:
     logging.warning(
-        f"⚠️ Попытка неавторизованного доступа (cmd_start): user_id={message.from_user.id}, username=@{message.from_user.username}"
+        f"⚠️ Попытка неавторизованного доступа (cmd_start):"
+        f" user_id={message.from_user.id},"
+        f" username=@{message.from_user.username}"
     )
     return
 
   await message.answer(
       "Привет! Я твой личный ИИ-помощник.\n"
-      "• Текстовые сообщения я обрабатываю **строго** по префиксу **«чат»**"
-      " (например: *«чат привет»*).\n"
-      "• Голосовые сообщения, кружочки и фотографии я принимаю и понимаю"
-      " нативно!\n"
-      "• Моя память и история диалогов едины для всех чатов. Команда"
-      " **/memory** покажет, что я помню о тебе.\n"
-      "• Также поддерживается работа через инлайн-режим в любых чатах."
+      "• Текстовые сообщения обрабатываются по префиксу **«чат»** (например:"
+      " *«чат привет»*).\n"
+      "• Понимаю голосовые, кружочки и фото.\n"
+      "• Различаю личные и групповые чаты, храню общую память о паре и личную"
+      " память.\n"
+      "• Команда **/memory** покажет, что я знаю."
   )
 
 
@@ -251,12 +296,19 @@ async def cmd_memory(message: types.Message):
   user_id = message.from_user.id
   if user_id not in ALLOWED_USER_IDS:
     logging.warning(
-        f"⚠️ Попытка неавторизованного доступа (cmd_memory): user_id={user_id}, username=@{message.from_user.username}"
+        f"⚠️ Попытка неавторизованного доступа (cmd_memory): user_id={user_id},"
+        f" username=@{message.from_user.username}"
     )
     return
 
-  memory = get_user_memory(user_id)
-  await message.answer(f"🧠 **Что я помню о тебе (во всех чатах):**\n\n{memory}")
+  user_mem = get_user_memory(user_id)
+  couple_mem = get_couple_memory()
+
+  await message.answer(
+      f"🧠 **Память бота:**\n\n"
+      f"💞 **Общая информация о паре:**\n{couple_mem}\n\n"
+      f"👤 **Твоя личная память:**\n{user_mem}"
+  )
 
 
 @dp.message(F.text | F.voice | F.video_note | F.photo)
@@ -265,11 +317,15 @@ async def handle_media_or_text(message: types.Message):
 
   if user_id not in ALLOWED_USER_IDS:
     logging.warning(
-        f"⚠️ Попытка неавторизованного доступа (сообщение/медиа): user_id={user_id}, username=@{message.from_user.username}"
+        f"⚠️ Попытка неавторизованного доступа (сообщение/медиа):"
+        f" user_id={user_id}, username=@{message.from_user.username}"
     )
     return
 
   chat_id = message.chat.id
+  chat_type = (
+      "private" if message.chat.type == "private" else "group"
+  )  # private или group
 
   user_text = ""
   file_bytes = None
@@ -316,16 +372,26 @@ async def handle_media_or_text(message: types.Message):
         message.caption or "Что изображено на этой фотографии? Опиши и проанализируй."
     )
 
-  # Подтягиваем глобальную память и общую историю со ВСЕХ чатов пользователя
-  long_term_memory = get_user_memory(user_id)
-  recent_history = get_user_history(user_id, limit=10)
+  # Подтягиваем контекст в зависимости от типа чата
+  couple_memory = get_couple_memory()
+  recent_history = get_chat_history(chat_id, limit=10)
 
-  system_prompt = (
-      f"Ты — умный и эмпатичный ИИ-помощник. Вот что тебе важно знать о"
-      f" пользователе (эта информация и последние диалоги синхронизированы из"
-      f" всех его чатов):\n{long_term_memory}\n\nУчитывай эту информацию при"
-      f" ответах, общайся естественно."
-  )
+  if chat_type == "private":
+    user_memory = get_user_memory(user_id)
+    system_prompt = (
+        f"Ты — эмпатичный ИИ-помощник. Ты находишься в ЛИЧНОМ чате с"
+        f" пользователем.\n\n"
+        f"💞 Общая информация о паре:\n{couple_memory}\n\n"
+        f"👤 Личная информация о пользователе:\n{user_memory}\n\n"
+        f"Общайся естественно, учитывая оба уровня контекста."
+    )
+  else:
+    system_prompt = (
+        f"Ты — эмпатичный ИИ-помощник. Ты находишься в ГРУППОВОМ чате, где"
+        f" общаются пара (ты общаешься с ними обоими в общей беседе).\n\n"
+        f"💞 Общая информация о паре:\n{couple_memory}\n\n"
+        f"Учитывай этот контекст при ответах в группе."
+    )
 
   try:
     if file_bytes:
@@ -342,10 +408,12 @@ async def handle_media_or_text(message: types.Message):
         recent_history, contents, system_prompt
     )
 
-    save_message(chat_id, user_id, "user", saved_content)
-    save_message(chat_id, user_id, "model", bot_response_text)
+    save_message(chat_id, user_id, chat_type, "user", saved_content)
+    save_message(chat_id, user_id, chat_type, "model", bot_response_text)
 
-    asyncio.create_task(extract_and_save_facts(user_id, saved_content))
+    asyncio.create_task(
+        extract_and_save_facts(user_id, chat_type, saved_content)
+    )
 
     await message.answer(bot_response_text)
 
@@ -364,7 +432,8 @@ async def inline_query_handler(query: types.InlineQuery):
   user_id = query.from_user.id
   if user_id not in ALLOWED_USER_IDS:
     logging.warning(
-        f"⚠️ Попытка неавторизованного доступа (inline_query): user_id={user_id}, username=@{query.from_user.username}"
+        f"⚠️ Попытка неавторизованного доступа (inline_query): user_id={user_id},"
+        f" username=@{query.from_user.username}"
     )
     return
 
@@ -372,10 +441,12 @@ async def inline_query_handler(query: types.InlineQuery):
   if not query_text:
     return
 
-  long_term_memory = get_user_memory(user_id)
+  couple_memory = get_couple_memory()
+  user_memory = get_user_memory(user_id)
   system_prompt = (
-      f"Ты — встроенный ИИ-ассистент в Telegram. Учитывай глобальный контекст о"
-      f" пользователе:\n{long_term_memory}"
+      f"Ты — встроенный ИИ-ассистент в Telegram.\n"
+      f"Общая информация о паре:\n{couple_memory}\n"
+      f"Личная информация о пользователе:\n{user_memory}"
   )
 
   try:
