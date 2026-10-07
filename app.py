@@ -41,7 +41,7 @@ class WebAppHandler(BaseHTTPRequestHandler):
       self.send_response(404)
       self.end_headers()
 
-  def do_POST(self):
+    def do_POST(self):
     parsed_path = urllib.parse.urlparse(self.path)
     if parsed_path.path == "/api/upload":
       content_length = int(self.headers.get("Content-Length", 0))
@@ -49,6 +49,7 @@ class WebAppHandler(BaseHTTPRequestHandler):
       try:
         data = json.loads(body.decode("utf-8"))
         chat_id = data.get("chat_id")
+        user_name = data.get("name", "Пользователь")
         image_base64 = data.get("image")
 
         if image_base64 and chat_id:
@@ -56,14 +57,21 @@ class WebAppHandler(BaseHTTPRequestHandler):
             image_base64 = image_base64.split(",")[1]
 
           image_bytes = base64.b64decode(image_base64)
+          
+          # Формируем подпись
+          caption_text = f"От {user_name} ♥️"
 
-          # Отправляем картинку в чат через Telegram Bot API
+          # Отправляем картинку с подписью в чат через Telegram Bot API
           url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
           boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW"
+          
           body_data = (
               f"--{boundary}\r\n"
               f'Content-Disposition: form-data; name="chat_id"\r\n\r\n'
               f"{chat_id}\r\n"
+              f"--{boundary}\r\n"
+              f'Content-Disposition: form-data; name="caption"\r\n\r\n'
+              f"{caption_text}\r\n"
               f"--{boundary}\r\n"
               f'Content-Disposition: form-data; name="photo";'
               f' filename="drawing.png"\r\n'
@@ -89,6 +97,7 @@ class WebAppHandler(BaseHTTPRequestHandler):
         self.send_response(500)
         self.end_headers()
         self.wfile.write(b"Error")
+
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
