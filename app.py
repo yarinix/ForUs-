@@ -288,12 +288,11 @@ async def process_with_cascade(history_contents, contents, system_prompt):
 async def extract_and_save_facts(user_id: int, chat_type: str, user_message: str):
   speaker_name = USER_NAMES.get(user_id, "Пользователь")
   prompt = (
-      f"Проанализируй реплику от пользователя '{speaker_name}' (ID: {user_id})."
-      f" Определи, что из этого является личным фактом именно для"
-      f" {speaker_name} (записывать в его личную память), а что — общей"
-      f" информацией о паре (отношения, совместные планы, быт). Выдай ответ"
-      f" строго в формате:\nPERSONAL: [факт или НЕТ]\nCOUPLE: [факт или"
-      f" НЕТ]\n\nРеплика: {user_message}"
+      f"Проанализируй реплику от '{speaker_name}' (ID: {user_id}). Определи,"
+      f" что из этого является личным фактом для {speaker_name} (записывать"
+      f" в его личную память), а что — общей информацией о паре (отношения,"
+      f" совместные планы, быт). Выдай ответ строго в формате:\nPERSONAL:"
+      f" [факт или НЕТ]\nCOUPLE: [факт или НЕТ]\n\nРеплика: {user_message}"
   )
 
   for model_name in MODELS_CASCADE:
@@ -332,35 +331,23 @@ async def extract_and_save_facts(user_id: int, chat_type: str, user_message: str
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
   if message.from_user.id not in ALLOWED_USER_IDS:
-    logging.warning(
-        f"⚠️ Попытка неавторизованного доступа (cmd_start):"
-        f" user_id={message.from_user.id},"
-        f" username=@{message.from_user.username}"
-    )
     return
-
   await message.answer(
       "Привет! Я твой личный ИИ-помощник.\n"
-      "• Сообщения обрабатываются по префиксу **«чат»**.\n"
-      "• Введите команду **/command**, чтобы посмотреть список всех доступных"
-      " команд."
+      "• В личке я общаюсь с тобой напрямую.\n"
+      "• В общем чате я молча слушаю и запоминаю, а отзываюсь на префикс"
+      " **«чат»** или ответ реплаем."
   )
 
 
 @dp.message(Command("command"))
 async def cmd_command_list(message: types.Message):
-  user_id = message.from_user.id
-  if user_id not in ALLOWED_USER_IDS:
-    logging.warning(
-        f"⚠️ Попытка неавторизованного доступа (cmd_command): user_id={user_id},"
-        f" username=@{message.from_user.username}"
-    )
+  if message.from_user.id not in ALLOWED_USER_IDS:
     return
-
   await message.answer(
       "📋 **Доступные команды бота:**\n\n"
       "• `/start` — Приветствие и справка.\n"
-      "• `/command` — Показать этот список команд.\n"
+      "• `/command` — Список команд.\n"
       "• `/memory` — Посмотреть личную и общую память пары.\n"
       "• `/memorydelete <фраза>` — Удалить факт по ключевой фразе.\n"
       "• `/memoryclear` — Полностью очистить память.\n\n"
@@ -375,19 +362,11 @@ async def cmd_command_list(message: types.Message):
 async def cmd_memory(message: types.Message):
   user_id = message.from_user.id
   if user_id not in ALLOWED_USER_IDS:
-    logging.warning(
-        f"⚠️ Попытка неавторизованного доступа (cmd_memory): user_id={user_id},"
-        f" username=@{message.from_user.username}"
-    )
     return
-
-  user_mem = get_user_memory(user_id)
-  couple_mem = get_couple_memory()
-
   await message.answer(
       f"🧠 **Память бота:**\n\n"
-      f"💞 **Общая информация о паре:**\n{couple_mem}\n\n"
-      f"👤 **Твоя личная память:**\n{user_mem}"
+      f"💞 **Общая информация о паре:**\n{get_couple_memory()}\n\n"
+      f"👤 **Твоя личная память:**\n{get_user_memory(user_id)}"
   )
 
 
@@ -395,12 +374,7 @@ async def cmd_memory(message: types.Message):
 async def cmd_memory_delete(message: types.Message):
   user_id = message.from_user.id
   if user_id not in ALLOWED_USER_IDS:
-    logging.warning(
-        f"⚠️ Попытка неавторизованного доступа (cmd_memorydelete):"
-        f" user_id={user_id}, username=@{message.from_user.username}"
-    )
     return
-
   parts = message.text.split(maxsplit=1)
   if len(parts) < 2:
     await message.answer(
@@ -408,10 +382,8 @@ async def cmd_memory_delete(message: types.Message):
         parse_mode="Markdown",
     )
     return
-
   phrase = parts[1].strip()
   deleted = delete_memory_phrase(user_id, phrase)
-
   if deleted:
     await message.answer(
         f"🗑 Успешно удалено из разделов: **{', '.join(deleted)}**.",
@@ -425,12 +397,7 @@ async def cmd_memory_delete(message: types.Message):
 async def cmd_memory_clear(message: types.Message):
   user_id = message.from_user.id
   if user_id not in ALLOWED_USER_IDS:
-    logging.warning(
-        f"⚠️ Попытка неавторизованного доступа (cmd_memoryclear):"
-        f" user_id={user_id}, username=@{message.from_user.username}"
-    )
     return
-
   with get_db() as conn:
     with conn.cursor() as cursor:
       cursor.execute(
@@ -442,21 +409,16 @@ async def cmd_memory_clear(message: types.Message):
           "UPDATE couple_memory SET memory_text = 'Пока нет общей информации о"
           " паре.' WHERE id = 1"
       )
+  await message.answer("🧹 Вся память успешно очищена!")
 
-  await message.answer(
-      "🧹 Вся твоя личная память и общая память пары полностью очищены!"
-  )
+
+# --- ГЛАВНЫЙ ОБРАБОТЧИК СООБЩЕНИЙ (ПАССИВ + АКТИВ) ---
 
 
 @dp.message(F.text | F.voice | F.video_note | F.photo)
 async def handle_media_or_text(message: types.Message):
   user_id = message.from_user.id
-
   if user_id not in ALLOWED_USER_IDS:
-    logging.warning(
-        f"⚠️ Попытка неавторизованного доступа (сообщение/медиа):"
-        f" user_id={user_id}, username=@{message.from_user.username}"
-    )
     return
 
   chat_id = message.chat.id
@@ -469,68 +431,67 @@ async def handle_media_or_text(message: types.Message):
 
   if message.text:
     user_text = message.text.strip()
-    text_lower = user_text.lower()
-
-    if text_lower.startswith("чат"):
-      if len(text_lower) == 3 or text_lower[3] in " ,:;!?.-":
-        user_text = user_text[3:].lstrip(" ,:;!?.-")
-        if not user_text:
-          user_text = "Привет!"
-      else:
-        return
-    else:
-      return
-
   elif message.voice:
-    file_id = message.voice.file_id
-    file = await bot.get_file(file_id)
+    file = await bot.get_file(message.voice.file_id)
     file_bytes = await bot.download_file(file.file_path)
     mime_type = "audio/ogg"
-    user_text = (
-        message.caption or "Послушай это голосовое сообщение и ответь на него."
-    )
-
+    user_text = message.caption or "Голосовое сообщение"
   elif message.video_note:
-    file_id = message.video_note.file_id
-    file = await bot.get_file(file_id)
+    file = await bot.get_file(message.video_note.file_id)
     file_bytes = await bot.download_file(file.file_path)
     mime_type = "video/mp4"
-    user_text = (
-        message.caption or "Посмотри это видеосообщение и ответь на него."
-    )
-
+    user_text = message.caption or "Видеосообщение"
   elif message.photo:
     photo = message.photo[-1]
     file = await bot.get_file(photo.file_id)
     file_bytes = await bot.download_file(file.file_path)
     mime_type = "image/jpeg"
-    user_text = (
-        message.caption or "Что изображено на этой фотографии? Опиши и проанализируй."
-    )
+    user_text = message.caption or "Фотография"
 
+  # Определяем, нужно ли боту отвечать (активный режим) или просто слушать (пассивный)
+  is_addressed_to_bot = False
+  text_lower = user_text.lower()
+
+  if chat_type == "private":
+    is_addressed_to_bot = True  # В личке бот отвечает на всё
+  else:
+    # В группе проверяем префикс «чат» или ответ реплаем на сообщение бота
+    if text_lower.startswith("чат"):
+      is_addressed_to_bot = True
+      user_text = user_text[3:].lstrip(" ,:;!?.-")
+      if not user_text:
+        user_text = "Привет!"
+    elif message.reply_to_message and message.reply_to_message.from_user.id == bot.id:
+      is_addressed_to_bot = True
+
+  # 1. ВСЕГДА сохраняем сообщение в историю БД, чтобы бот видел хронологию общения
+  save_message(chat_id, user_id, chat_type, "user", f"{speaker_name}: {user_text}")
+
+  # 2. ВСЕГДА запускаем фоновый анализ фактов для памяти
+  asyncio.create_task(
+      extract_and_save_facts(user_id, chat_type, f"{speaker_name}: {user_text}")
+  )
+
+  # 3. Если к боту не обращались (пассивный режим в группе) — просто выходим
+  if not is_addressed_to_bot:
+    return
+
+  # --- АКТИВНЫЙ РЕЖИМ (отправка ответа пользователю) ---
   couple_memory = get_couple_memory()
   recent_history = get_chat_history(chat_id, limit=10)
 
   if chat_type == "private":
     user_memory = get_user_memory(user_id)
     system_prompt = (
-        f"Ты — эмпатичный ИИ-помощник. Ты находишься в ЛИЧНОМ чате с"
-        f" пользователем {speaker_name}.\n\n"
+        f"Ты — эмпатичный ИИ-помощник. ЛИЧНЫЙ чат с {speaker_name}.\n\n"
         f"💞 Общая информация о паре:\n{couple_memory}\n\n"
-        f"👤 Личная информация о пользователе"
-        f" {speaker_name}:\n{user_memory}\n\n"
-        f"Правила:\n"
-        f"1. Общайся естественно.\n"
-        f"2. Если тема сменилась, не цепляйся за старые сообщения из истории."
+        f"👤 Личная память:\n{user_memory}"
     )
   else:
     system_prompt = (
-        f"Ты — эмпатичный ИИ-помощник. Ты находишься в ГРУППОВОМ чате с"
-        f" парой.\nСейчас пишет: {speaker_name}.\n\n"
-        f"💞 Общая информация о паре:\n{couple_memory}\n\n"
-        f"Правила:\n"
-        f"1. Учитывай контекст пары.\n"
-        f"2. Если тема сменилась, не зацикливайся на прошлом."
+        f"Ты — эмпатичный ИИ-помощник. ГРУППОВОЙ чат пары.\n"
+        f"Сейчас обращается: {speaker_name}.\n\n"
+        f"💞 Общая информация о паре:\n{couple_memory}"
     )
 
   try:
@@ -539,28 +500,20 @@ async def handle_media_or_text(message: types.Message):
           file=file_bytes, config={"mime_type": mime_type}
       )
       contents = [uploaded_file, user_text]
-      saved_content = f"[Медиафайл] {user_text}"
     else:
       contents = user_text
-      saved_content = user_text
 
     bot_response_text = await process_with_cascade(
         recent_history, contents, system_prompt
     )
 
-    save_message(chat_id, user_id, chat_type, "user", saved_content)
     save_message(chat_id, user_id, chat_type, "model", bot_response_text)
-
-    asyncio.create_task(
-        extract_and_save_facts(user_id, chat_type, saved_content)
-    )
-
     await message.answer(bot_response_text)
 
   except Exception as e:
     logging.error(f"Ошибка при обработке запроса: {e}")
     await message.answer(
-        "Произошла ошибка при обработке вашего сообщения. Попробуйте еще раз."
+        "Произошла ошибка при обработке сообщения. Попробуйте еще раз."
     )
 
 
@@ -569,14 +522,8 @@ async def handle_media_or_text(message: types.Message):
 
 @dp.inline_query()
 async def inline_query_handler(query: types.InlineQuery):
-  user_id = query.from_user.id
-  if user_id not in ALLOWED_USER_IDS:
-    logging.warning(
-        f"⚠️ Попытка неавторизованного доступа (inline_query): user_id={user_id},"
-        f" username=@{query.from_user.username}"
-    )
+  if query.from_user.id not in ALLOWED_USER_IDS:
     return
-
   query_text = query.query.strip()
   if not query_text:
     return
@@ -584,10 +531,8 @@ async def inline_query_handler(query: types.InlineQuery):
   if query_text.lower().startswith(("погода", "weather")):
     parts = query_text.split(maxsplit=1)
     city = parts[1].strip() if len(parts) > 1 else "Москва"
-
     loop = asyncio.get_running_loop()
     weather_text = await loop.run_in_executor(None, get_weather, city)
-
     articles = [
         InlineQueryResultArticle(
             id="weather_res",
@@ -603,12 +548,10 @@ async def inline_query_handler(query: types.InlineQuery):
 
   system_prompt = (
       "Ты — быстрый встроенный ИИ-ассистент в Telegram. Отвечай точно, кратко и"
-      " по делу на запрос пользователя."
+      " по делу."
   )
-
   try:
     response_text = await process_with_cascade([], query_text, system_prompt)
-
     articles = [
         InlineQueryResultArticle(
             id="ai_response",
@@ -629,7 +572,7 @@ async def inline_query_handler(query: types.InlineQuery):
 
 async def main():
   init_db()
-  logging.info("Бот запущен и готов к работе...")
+  logging.info("Бот запущен в гибридном режиме (пассив + актив)...")
   await dp.start_polling(bot)
 
 
