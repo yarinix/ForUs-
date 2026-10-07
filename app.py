@@ -207,32 +207,6 @@ async def cmd_draw(message: types.Message):
   )
 
 
-@dp.inline_query()
-async def inline_draw(query: types.InlineQuery):
-    base_url = os.getenv("RENDER_EXTERNAL_URL", "https://твой-сайт.onrender.com")
-    web_app_url = f"{base_url}/draw"
-
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[[
-            InlineKeyboardButton(
-                text="🎨 Открыть холст", web_app=WebAppInfo(url=web_app_url)
-            )
-        ]]
-    )
-
-    result = InlineQueryResultArticle(
-        id="draw_canvas",
-        title="🎨 Нарисовать рисунок",
-        description="Открыть интерактивный холст для рисования",
-        input_message_content=InputTextMessageContent(
-            message_text="🎨 Холст для рисования:"
-        ),
-        reply_markup=keyboard
-    )
-
-    await query.answer([result], cache_time=1, is_personal=True)
-
-
 def save_message(
     chat_id: int, user_id: int, chat_type: str, role: str, content: str
 ):
@@ -642,19 +616,46 @@ async def handle_media_or_text(message: types.Message):
 
 @dp.inline_query()
 async def inline_query_handler(query: types.InlineQuery):
-  if query.from_user.id not in ALLOWED_USER_IDS:
-    return
-  query_text = query.query.strip()
-  if not query_text:
-    return
+    if query.from_user.id not in ALLOWED_USER_IDS:
+        return
 
-  if query_text.lower().startswith(("погода", "weather")):
-    parts = query_text.split(maxsplit=1)
-    city = parts[1].strip() if len(parts) > 1 else "Москва"
-    loop = asyncio.get_running_loop()
-    weather_text = await loop.run_in_executor(None, get_weather, city)
-    articles = [
-        InlineQueryResultArticle(
+    query_text = query.query.strip()
+    articles = []
+
+    # 1. Создаем карточку для холста рисования (она будет доступна всегда)
+    base_url = os.getenv("RENDER_EXTERNAL_URL", "https://твой-реальный-сервис.onrender.com")
+    web_app_url = f"{base_url}/draw"
+
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[[
+            InlineKeyboardButton(
+                text="🎨 Открыть холст", web_app=WebAppInfo(url=web_app_url)
+            )
+        ]]
+    )
+
+    draw_result = InlineQueryResultArticle(
+        id="draw_canvas",
+        title="🎨 Нарисовать рисунок",
+        description="Открыть интерактивный холст для рисования",
+        input_message_content=InputTextMessageContent(
+            message_text="🎨 Холст для рисования:"
+        ),
+        reply_markup=keyboard
+    )
+
+    # 2. Обрабатываем запросы в зависимости от текста
+    if not query_text:
+        # Если текст пустой, показываем только холст
+        articles.append(draw_result)
+
+    elif query_text.lower().startswith(("погода", "weather")):
+        parts = query_text.split(maxsplit=1)
+        city = parts[1].strip() if len(parts) > 1 else "Москва"
+        loop = asyncio.get_running_loop()
+        weather_text = await loop.run_in_executor(None, get_weather, city)
+        
+        weather_article = InlineQueryResultArticle(
             id="weather_res",
             title=f"Погода в городе: {city}",
             input_message_content=InputTextMessageContent(
@@ -662,29 +663,32 @@ async def inline_query_handler(query: types.InlineQuery):
             ),
             description=weather_text,
         )
-    ]
-    await query.answer(articles, cache_time=60)
-    return
+        # Сначала погода, вторым пунктом — холст
+        articles = [weather_article, draw_result]
 
-  system_prompt = (
-      "Ты — быстрый встроенный ИИ-ассистент в Telegram. Отвечай точно, кратко и"
-      " по делу."
-  )
-  try:
-    response_text = await process_with_cascade([], query_text, system_prompt)
-    articles = [
-        InlineQueryResultArticle(
-            id="ai_response",
-            title="Ответ от Gemini",
-            input_message_content=InputTextMessageContent(
-                message_text=response_text
-            ),
-            description=response_text[:100] + "...",
+    else:
+        system_prompt = (
+            "Ты — быстрый встроенный ИИ-ассистент в Telegram. Отвечай точно, кратко и по делу."
         )
-    ]
-    await query.answer(articles, cache_time=1)
-  except Exception as e:
-    logging.error(f"Ошибка в инлайн-режиме: {e}")
+        try:
+            response_text = await process_with_cascade([], query_text, system_prompt)
+            ai_article = InlineQueryResultArticle(
+                id="ai_response",
+                title="Ответ от Gemini",
+                input_message_content=InputTextMessageContent(
+                    message_text=response_text
+                ),
+                description=response_text[:100] + "...",
+            )
+            # Сначала ответ нейросети, вторым пунктом — холст
+            articles = [ai_article, draw_result]
+        except Exception as e:
+            logging.error(f"Ошибка в инлайн-режиме: {e}")
+            # Даже при ошибке ИИ дадим возможность открыть холст
+            articles = [draw_result]
+
+    await query.answer(articles, cache_time=1, is_personal=True)
+
 
 
 # --- ЗАПУСК БОТА ---
