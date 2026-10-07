@@ -1,1 +1,146 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Рисование</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #111;
+            color: #fff;
+            font-family: sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+        canvas {
+            background: #222;
+            touch-action: none;
+            flex-grow: 1;
+            width: 100%;
+        }
+        .toolbar {
+            padding: 15px;
+            display: flex;
+            gap: 15px;
+            width: 100%;
+            box-sizing: border-box;
+            background: #1a1a1a;
+            justify-content: center;
+        }
+        button {
+            background: #2ea6ff;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        button.clear {
+            background: #ff4757;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="paintCanvas"></canvas>
+    <div class="toolbar">
+        <button class="clear" onclick="clearCanvas()">Очистить</button>
+        <button onclick="sendDrawing()">Отправить</button>
+    </div>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.expand();
+
+        const canvas = document.getElementById('paintCanvas');
+        const ctx = canvas.getContext('2d');
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight - 70;
+            ctx.fillStyle = '#222';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 5;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        let painting = false;
+
+        function startPosition(e) {
+            painting = true;
+            draw(e);
+        }
+
+        function endPosition() {
+            painting = false;
+            ctx.beginPath();
+        }
+
+        function draw(e) {
+            if (!painting) return;
+            e.preventDefault();
+            
+            const rect = canvas.getBoundingClientRect();
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            
+            const x = clientX - rect.left;
+            const y = clientY - rect.top;
+
+            ctx.lineTo(x, y);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+        }
+
+        canvas.addEventListener('mousedown', startPosition);
+        canvas.addEventListener('mouseup', endPosition);
+        canvas.addEventListener('mousemove', draw);
+
+        canvas.addEventListener('touchstart', startPosition);
+        canvas.addEventListener('touchend', endPosition);
+        canvas.addEventListener('touchmove', draw);
+
+        function clearCanvas() {
+            ctx.fillStyle = '#222';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+
+        function sendDrawing() {
+            const dataURL = canvas.toDataURL('image/png');
+            const chatId = tg.initDataUnsafe?.user?.id;
+
+            if (!chatId) {
+                alert('Не удалось определить пользователя');
+                return;
+            }
+
+            fetch('/api/upload', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ chat_id: chatId, image: dataURL })
+            }).then(response => {
+                if (response.ok) {
+                    tg.close();
+                } else {
+                    alert('Ошибка при отправке рисунка');
+                }
+            }).catch(err => {
+                alert('Ошибка сети: ' + err);
+            });
+        }
+    </script>
+</body>
+</html>
 
