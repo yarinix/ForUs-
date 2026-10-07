@@ -207,6 +207,32 @@ async def cmd_draw(message: types.Message):
   )
 
 
+@dp.inline_query()
+async def inline_draw(query: types.InlineQuery):
+    base_url = os.getenv("RENDER_EXTERNAL_URL", "https://твой-сайт.onrender.com")
+    web_app_url = f"{base_url}/draw"
+
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[[
+            InlineKeyboardButton(
+                text="🎨 Открыть холст", web_app=WebAppInfo(url=web_app_url)
+            )
+        ]]
+    )
+
+    result = InlineQueryResultArticle(
+        id="draw_canvas",
+        title="🎨 Нарисовать рисунок",
+        description="Открыть интерактивный холст для рисования",
+        input_message_content=InputTextMessageContent(
+            message_text="🎨 Холст для рисования:"
+        ),
+        reply_markup=keyboard
+    )
+
+    await query.answer([result], cache_time=1, is_personal=True)
+
+
 def save_message(
     chat_id: int, user_id: int, chat_type: str, role: str, content: str
 ):
