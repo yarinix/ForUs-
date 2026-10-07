@@ -262,7 +262,7 @@ def get_weather(city: str) -> str:
     return f"Не удалось получить погоду для города: {city}"
 
 
-# --- КАСКАДНАЯ ОТПРАВКА ЗАПРОСОВ В GEMINI (С GOOGLE SEARCH) ---
+# --- КАСКАДНАЯ ОТПРАВКА ЗАПРОСОВ В GEMINI ---
 
 
 async def process_with_cascade(history_contents, contents, system_prompt):
@@ -272,10 +272,7 @@ async def process_with_cascade(history_contents, contents, system_prompt):
           model=model_name,
           history=history_contents,
           config=genai_types.GenerateContentConfig(
-              system_instruction=system_prompt,
-              tools=[
-                  {"google_search": {}}
-              ],  # Встроенный поиск Google от Gemini
+              system_instruction=system_prompt
           ),
       )
       response = chat.send_message(contents)
@@ -343,7 +340,7 @@ async def cmd_start(message: types.Message):
     return
 
   await message.answer(
-      "Привет! Я твой личный ИИ-помощник с встроенным поиском Google.\n"
+      "Привет! Я твой личный ИИ-помощник.\n"
       "• Сообщения обрабатываются по префиксу **«чат»**.\n"
       "• Введите команду **/command**, чтобы посмотреть список всех доступных"
       " команд."
@@ -367,9 +364,6 @@ async def cmd_command_list(message: types.Message):
       "• `/memory` — Посмотреть личную и общую память пары.\n"
       "• `/memorydelete <фраза>` — Удалить факт по ключевой фразе.\n"
       "• `/memoryclear` — Полностью очистить память.\n\n"
-      "🌐 **Поиск в интернете:**\n"
-      "• Бот автоматически использует официальный поиск Google, когда в диалоге"
-      " требуются свежие данные.\n\n"
       "🌤 **Инлайн-режим (@имя_бота):**\n"
       "• `погода <город>` — узнать погоду.\n"
       "• Любой текст — быстрый ответ от ИИ.",
@@ -520,26 +514,23 @@ async def handle_media_or_text(message: types.Message):
   if chat_type == "private":
     user_memory = get_user_memory(user_id)
     system_prompt = (
-        f"Ты — эмпатичный ИИ-помощник с доступом к поиску Google. Ты находишься"
-        f" в ЛИЧНОМ чате с пользователем {speaker_name}.\n\n"
+        f"Ты — эмпатичный ИИ-помощник. Ты находишься в ЛИЧНОМ чате с"
+        f" пользователем {speaker_name}.\n\n"
         f"💞 Общая информация о паре:\n{couple_memory}\n\n"
         f"👤 Личная информация о пользователе"
         f" {speaker_name}:\n{user_memory}\n\n"
         f"Правила:\n"
         f"1. Общайся естественно.\n"
-        f"2. Если для ответа на вопрос нужны актуальные данные, используй"
-        f" встроенный поиск Google.\n"
-        f"3. Если тема сменилась, не цепляйся за старые сообщения из истории."
+        f"2. Если тема сменилась, не цепляйся за старые сообщения из истории."
     )
   else:
     system_prompt = (
-        f"Ты — эмпатичный ИИ-помощник с доступом к поиску Google. Ты находишься"
-        f" в ГРУППОВОМ чате с парой.\nСейчас пишет: {speaker_name}.\n\n"
+        f"Ты — эмпатичный ИИ-помощник. Ты находишься в ГРУППОВОМ чате с"
+        f" парой.\nСейчас пишет: {speaker_name}.\n\n"
         f"💞 Общая информация о паре:\n{couple_memory}\n\n"
         f"Правила:\n"
         f"1. Учитывай контекст пары.\n"
-        f"2. Используй встроенный поиск Google при необходимости.\n"
-        f"3. Если тема сменилась, не зацикливайся на прошлом."
+        f"2. Если тема сменилась, не зацикливайся на прошлом."
     )
 
   try:
@@ -611,7 +602,7 @@ async def inline_query_handler(query: types.InlineQuery):
     return
 
   system_prompt = (
-      "Ты — быстрый встроенный ИИ-помощник в Telegram. Отвечай точно, кратко и"
+      "Ты — быстрый встроенный ИИ-ассистент в Telegram. Отвечай точно, кратко и"
       " по делу на запрос пользователя."
   )
 
