@@ -12,26 +12,83 @@ from google import genai
 from google.genai import types as genai_types
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
+import json
+import base64
 
 
 # 1. Простейший HTTP-сервер для Render
-class HealthCheckHandler(BaseHTTPRequestHandler):
+class WebAppHandler(BaseHTTPRequestHandler):
+
   def do_GET(self):
-    self.send_response(200)
-    self.end_headers()
-    self.wfile.write(b"Bot is alive!")
+    parsed_path = urllib.parse.urlparse(self.path)
+    if parsed_path.path == "/" or parsed_path.path == "/health":
+      self.send_response(200)
+      self.end_headers()
+      self.wfile.write(b"Bot is alive!")
+    elif parsed_path.path == "/draw":
+      try:
+        with open("static/draw.html", "rb") as f:
+          content = f.read()
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.end_headers()
+        self.wfile.write(content)
+      except Exception as e:
+        self.send_response(404)
+        self.end_headers()
+        self.wfile.write(b"Drawing page not found")
+    else:
+      self.send_response(404)
+      self.end_headers()
 
+  def do_POST(self):
+    parsed_path = urllib.parse.urlparse(self.path)
+    if parsed_path.path == "/api/upload":
+      content_length = int(self.headers.get("Content-Length", 0))
+      body = self.rfile.read(content_length)
+      try:
+        data = json.loads(body.decode("utf-8"))
+        chat_id = data.get("chat_id")
+        image_base64 = data.get("image")
 
-def run_http_server():
-  port = int(os.environ.get("PORT", 10000))
-  server = HTTPServer(("0.0.0.0", port), HealthCheckHandler)
-  print(f"HTTP server started on port {port}")
-  server.serve_forever()
+        if image_base64 and chat_id:
+          if "," in image_base64:
+            image_base64 = image_base64.split(",")[1]
 
+          image_bytes = base64.b64decode(image_base64)
 
-if __name__ == "__main__":
-  server_thread = threading.Thread(target=run_http_server, daemon=True)
-  server_thread.start()
+          # Отправляем картинку в чат через Telegram Bot API
+          url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
+          boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW"
+          body_data = (
+              f"--{boundary}\r\n"
+              f'Content-Disposition: form-data; name="chat_id"\r\n\r\n'
+              f"{chat_id}\r\n"
+              f"--{boundary}\r\n"
+              f'Content-Disposition: form-data; name="photo";'
+              f' filename="drawing.png"\r\n'
+              f"Content-Type: image/png\r\n\r\n"
+          ).encode("utf-8") + image_bytes + f"\r\n--{boundary}--\r\n".encode(
+              "utf-8"
+          )
+
+          req = urllib.request.Request(
+              url,
+              data=body_data,
+              headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+          )
+          with urllib.request.urlopen(req) as resp:
+            pass
+
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(json.dumps({"status": "ok"}).encode("utf-8"))
+      except Exception as e:
+        logging.error(f"Ошибка загрузки рисунка: {e}")
+        self.send_response(500)
+        self.end_headers()
+        self.wfile.write(b"Error")
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -115,6 +172,30 @@ def init_db():
                     memory_text TEXT
                 );
             """)
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
+
+
+@dp.message(Command("draw"))
+async def cmd_draw(message: types.Message):
+  if message.from_user.id not in ALLOWED_USER_IDS:
+    return
+
+  # Render автоматически задает RENDER_EXTERNAL_URL (например, https:// твой-бот.onrender.com)
+  base_url = os.getenv("RENDER_EXTERNAL_URL", "https:// твой-сайт.onrender.com")
+  web_app_url = f"{base_url}/draw"
+
+  keyboard = InlineKeyboardMarkup(
+      inline_keyboard=[[
+          InlineKeyboardButton(
+              text="🎨 Открыть холст", web_app=WebAppInfo(url=web_app_url)
+          )
+      ]]
+  )
+
+  await message.answer(
+      "Нажми на кнопку ниже, чтобы нарисовать что-нибудь:",
+      reply_markup=keyboard,
+  )
 
 
 def save_message(
@@ -574,11 +655,25 @@ async def inline_query_handler(query: types.InlineQuery):
 # --- ЗАПУСК БОТА ---
 
 
-async def main():
-  init_db()
-  logging.info("Бот запущен в гибридном режиме (пассив + актив)...")
-  await dp.start_polling(bot)
 
+
+# Функция для запуска нашего веб-сервера
+def run_http_server():
+    port = int(os.environ.get("PORT", 10000))
+    server = HTTPServer(("0.0.0.0", port), WebAppHandler)
+    print(f"HTTP server started on port {port}")
+    server.serve_forever()
+
+async def main():
+    # Если у тебя здесь уже есть свой запуск или инициализация базы, 
+    # оставь их, главное — запуск поллинга бота:
+    logging.info("Бот запущен...")
+    await dp.start_polling(bot)
 
 if __name__ == "__main__":
-  asyncio.run(main())
+    # 1. Запускаем HTTP-сервер в фоновом потоке (чтобы Render видел порт и отдавал /draw)
+    server_thread = threading.Thread(target=run_http_server, daemon=True)
+    server_thread.start()
+    
+    # 2. Запускаем Telegram-бота в основном потоке
+    asyncio.run(main())
