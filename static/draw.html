@@ -14,13 +14,14 @@
             font-family: sans-serif;
             display: flex;
             flex-direction: column;
-            align-items: center;
             height: 100vh;
             overflow: hidden;
         }
         canvas {
             background: #1e1e1e;
             touch-action: none;
+            flex: 1; /* Холст занимает всю доступную высоту */
+            width: 100%;
             display: block;
         }
         .toolbar {
@@ -33,6 +34,7 @@
             background: #1a1a1a;
             align-items: center;
             border-top: 1px solid #333;
+            flex-shrink: 0; /* Панель никогда не сжимается */
         }
         .colors {
             display: flex;
@@ -105,21 +107,23 @@
 
         function resize() {
             const dpr = window.devicePixelRatio || 1;
-            const displayWidth = window.innerWidth;
-            const displayHeight = window.innerHeight - 100;
+            
+            // Берем реальные размеры, которые выделил браузер под canvas через flexbox
+            const displayWidth = canvas.clientWidth;
+            const displayHeight = canvas.clientHeight;
 
-            // Сохраняем текущий рисунок при изменении ориентации/размера
+            if (displayWidth === 0 || displayHeight === 0) return;
+
+            // Сохраняем текущий рисунок при повороте или изменении размера
             const tempCanvas = document.createElement('canvas');
             const tempCtx = tempCanvas.getContext('2d');
             tempCanvas.width = canvas.width;
             tempCanvas.height = canvas.height;
             tempCtx.drawImage(canvas, 0, 0);
 
-            // Устанавливаем реальные физические размеры холста с учетом плотности пикселей экрана
+            // Устанавливаем физическое разрешение с учетом Retina
             canvas.width = displayWidth * dpr;
             canvas.height = displayHeight * dpr;
-            canvas.style.width = displayWidth + 'px';
-            canvas.style.height = displayHeight + 'px';
 
             ctx.scale(dpr, dpr);
 
@@ -137,7 +141,9 @@
         }
 
         window.addEventListener('resize', resize);
-        resize();
+        
+        // Даем браузеру секунду на построение элементов и запускаем подгонку холста
+        setTimeout(resize, 50);
 
         function setColor(color, element) {
             currentColor = color;
@@ -185,13 +191,13 @@
         canvas.addEventListener('touchmove', draw);
 
         function clearCanvas() {
-            const displayWidth = window.innerWidth;
-            const displayHeight = window.innerHeight - 100;
+            const displayWidth = canvas.clientWidth;
+            const displayHeight = canvas.clientHeight;
             ctx.fillStyle = '#1e1e1e';
             ctx.fillRect(0, 0, displayWidth, displayHeight);
         }
 
-                function sendDrawing() {
+        function sendDrawing() {
             const dataURL = canvas.toDataURL('image/png');
             const user = tg.initDataUnsafe?.user;
             const chatId = user?.id;
@@ -210,22 +216,6 @@
                     name: userName, 
                     image: dataURL 
                 })
-            }).then(response => {
-                if (response.ok) {
-                    tg.close();
-                } else {
-                    alert('Ошибка при отправке рисунка');
-                }
-            }).catch(err => {
-                alert('Ошибка сети: ' + err);
-            });
-        }
-
-
-            fetch('/api/upload', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ chat_id: chatId, image: dataURL })
             }).then(response => {
                 if (response.ok) {
                     tg.close();
