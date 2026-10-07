@@ -41,7 +41,7 @@ class WebAppHandler(BaseHTTPRequestHandler):
       self.send_response(404)
       self.end_headers()
 
-    def do_POST(self):
+  def do_POST(self):
     parsed_path = urllib.parse.urlparse(self.path)
     if parsed_path.path == "/api/upload":
       content_length = int(self.headers.get("Content-Length", 0))
