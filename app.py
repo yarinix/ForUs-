@@ -12,6 +12,7 @@ from google import genai
 from google.genai import types as genai_types
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from duckduckgo_search import DDGS
 
 
 # 1. Простейший HTTP-сервер для Render
@@ -206,7 +207,6 @@ def delete_memory_phrase(user_id: int, phrase: str):
   deleted_from = []
 
   with get_db() as conn:
-    # 1. Личная память
     with conn.cursor() as cursor:
       cursor.execute(
           "SELECT memory_text FROM user_memory WHERE user_id = %s", (user_id,)
@@ -227,7 +227,6 @@ def delete_memory_phrase(user_id: int, phrase: str):
           )
           deleted_from.append("личную память")
 
-    # 2. Память пары
     with conn.cursor() as cursor:
       cursor.execute("SELECT memory_text FROM couple_memory WHERE id = 1")
       row = cursor.fetchone()
@@ -249,7 +248,7 @@ def delete_memory_phrase(user_id: int, phrase: str):
   return deleted_from
 
 
-# --- ФУНКЦИЯ ПОЛУЧЕНИЯ ПОГОДЫ ---
+# --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ (ПОГОДА И ПОИСК) ---
 
 
 def get_weather(city: str) -> str:
@@ -262,6 +261,18 @@ def get_weather(city: str) -> str:
   except Exception as e:
     logging.error(f"Ошибка получения погоды: {e}")
     return f"Не удалось получить погоду для города: {city}"
+
+
+def web_search(query: str) -> str:
+  """Выполняет поиск в интернете через DuckDuckGo и возвращает результаты"""
+  try:
+    with DDGS() as ddgs:
+      results = [r.get("body", "") for r in ddgs.text(query, max_results=3)]
+      if results:
+        return "\n".join([f"- {res}" for res in results])
+  except Exception as e:
+    logging.error(f"Ошибка веб-поиска: {e}")
+  return ""
 
 
 # --- КАСКАДНАЯ ОТПРАВКА ЗАПРОСОВ В GEMINI ---
@@ -342,9 +353,8 @@ async def cmd_start(message: types.Message):
     return
 
   await message.answer(
-      "Привет! Я твой личный ИИ-помощник.\n"
+      "Привет! Я твой личный ИИ-помощник с функцией веб-поиска.\n"
       "• Сообщения обрабатываются по префиксу **«чат»**.\n"
-      "• В инлайн-режиме можно писать **«погода <город>»**.\n"
       "• Введите команду **/command**, чтобы посмотреть список всех доступных"
       " команд."
   )
@@ -362,16 +372,17 @@ async def cmd_command_list(message: types.Message):
 
   await message.answer(
       "📋 **Доступные команды бота:**\n\n"
-      "• `/start` — Приветствие и базовая справка.\n"
+      "• `/start` — Приветствие и справка.\n"
       "• `/command` — Показать этот список команд.\n"
-      "• `/memory` — Посмотреть текущую личную память и общую память пары.\n"
-      "• `/memorydelete <фраза>` — Удалить конкретный факт из памяти по ключевой"
-      " фразе.\n"
-      "• `/memoryclear` — Полностью очистить всю личную память и память пары.\n\n"
+      "• `/memory` — Посмотреть личную и общую память пары.\n"
+      "• `/memorydelete <фраза>` — Удалить факт по ключевой фразе.\n"
+      "• `/memoryclear` — Полностью очистить память.\n\n"
+      "🌐 **Веб-поиск:**\n"
+      "• Бот автоматически умеет искать свежую информацию в интернете, если в"
+      " вопросе есть запрос актуальных данных.\n\n"
       "🌤 **Инлайн-режим (@имя_бота):**\n"
-      "• Напиши `погода <город>` (например: `погода Москва`), чтобы быстро"
-      " узнать погоду.\n"
-      "• Или напиши любой текст для ответа от ИИ.",
+      "• `погода <город>` — узнать погоду.\n"
+      "• Любой текст — быстрый ответ от ИИ.",
       parse_mode="Markdown",
   )
 
@@ -382,7 +393,7 @@ async def cmd_memory(message: types.Message):
   if user_id not in ALLOWED_USER_IDS:
     logging.warning(
         f"⚠️ Попытка неавторизованного доступа (cmd_memory): user_id={user_id},"
-        f" username=@{message.from_user.username}"
+        f" username=@{query_username := message.from_user.username}"
     )
     return
 
@@ -516,27 +527,59 @@ async def handle_media_or_text(message: types.Message):
   couple_memory = get_couple_memory()
   recent_history = get_chat_history(chat_id, limit=10)
 
+  # Проверяем, нужен ли веб-поиск (если вопрос выглядит как запрос актуальной информации)
+  search_context = ""
+  if (
+      user_text
+      and not file_bytes
+      and any(
+          kw in user_text.lower()
+          for kw in [
+              "найди",
+              "поиск",
+              "что такое",
+              "кто такой",
+              "свежие",
+              "новости",
+              "курс",
+              "цена",
+              "какой",
+              "какая",
+              "сколько стоит",
+              "расписание",
+          ]
+      )
+  ):
+    loop = asyncio.get_running_loop()
+    search_results = await loop.run_in_executor(None, web_search, user_text)
+    if search_results:
+      search_context = (
+          f"\n\n🌐 Актуальная информация из интернета по запросу:\n{search_results}"
+      )
+
   if chat_type == "private":
     user_memory = get_user_memory(user_id)
     system_prompt = (
-        f"Ты — эмпатичный ИИ-помощник. Ты находишься в ЛИЧНОМ чате с"
-        f" пользователем {speaker_name}.\n\n"
+        f"Ты — эмпатичный ИИ-помощник с доступом к веб-поиску. Ты находишься в"
+        f" ЛИЧНОМ чате с пользователем {speaker_name}.\n\n"
         f"💞 Общая информация о паре:\n{couple_memory}\n\n"
         f"👤 Личная информация о пользователе"
-        f" {speaker_name}:\n{user_memory}\n\n"
+        f" {speaker_name}:\n{user_memory}{search_context}\n\n"
         f"Правила:\n"
         f"1. Общайся естественно.\n"
-        f"2. Если пользователь сменил тему, не цепляйся за старые сообщения из"
-        f" истории и не повторяй их без необходимости."
+        f"2. Используй данные из интернета, если они переданы, чтобы отвечать"
+        f" актуально.\n"
+        f"3. Если тема сменилась, не цепляйся за старые сообщения из истории."
     )
   else:
     system_prompt = (
-        f"Ты — эмпатичный ИИ-помощник. Ты находишься в ГРУППОВОМ чате с"
-        f" парой.\nСейчас пишет: {speaker_name}.\n\n"
-        f"💞 Общая информация о паре:\n{couple_memory}\n\n"
+        f"Ты — эмпатичный ИИ-помощник с доступом к веб-поиску. Ты находишься в"
+        f" ГРУППОВОМ чате с парой.\nСейчас пишет: {speaker_name}.\n\n"
+        f"💞 Общая информация о паре:\n{couple_memory}{search_context}\n\n"
         f"Правила:\n"
-        f"1. Учитывай этот контекст.\n"
-        f"2. Если тема сменилась, не зацикливайся на прошлом."
+        f"1. Учитывай контекст пары.\n"
+        f"2. Используй данные из интернета при необходимости.\n"
+        f"3. Если тема сменилась, не зацикливайся на прошлом."
     )
 
   try:
@@ -570,7 +613,7 @@ async def handle_media_or_text(message: types.Message):
     )
 
 
-# --- ИНЛАЙН-РЕЖИМ (С ПОДДЕРЖКОЙ ПОГОДЫ И ИИ) ---
+# --- ИНЛАЙН-РЕЖИМ ---
 
 
 @dp.inline_query()
@@ -587,7 +630,6 @@ async def inline_query_handler(query: types.InlineQuery):
   if not query_text:
     return
 
-  # Проверяем, запрашивают ли погоду (например: "погода Москва" или "weather London")
   if query_text.lower().startswith(("погода", "weather")):
     parts = query_text.split(maxsplit=1)
     city = parts[1].strip() if len(parts) > 1 else "Москва"
@@ -608,7 +650,6 @@ async def inline_query_handler(query: types.InlineQuery):
     await query.answer(articles, cache_time=60)
     return
 
-  # Стандартный ответ через Gemini для остальных инлайн-запросов
   system_prompt = (
       "Ты — быстрый встроенный ИИ-ассистент в Telegram. Отвечай точно, кратко и"
       " по делу на запрос пользователя."
