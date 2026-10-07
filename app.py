@@ -1,6 +1,8 @@
 import os
 import logging
 import asyncio
+import urllib.request
+import urllib.parse
 from contextlib import contextmanager
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
@@ -247,6 +249,21 @@ def delete_memory_phrase(user_id: int, phrase: str):
   return deleted_from
 
 
+# --- ФУНКЦИЯ ПОЛУЧЕНИЯ ПОГОДЫ ---
+
+
+def get_weather(city: str) -> str:
+  try:
+    encoded_city = urllib.parse.quote(city)
+    url = f"https://wttr.in/{encoded_city}?format=3&lang=ru"
+    req = urllib.request.Request(url, headers={"User-Agent": "curl/7.68.0"})
+    with urllib.request.urlopen(req, timeout=5) as response:
+      return response.read().decode("utf-8").strip()
+  except Exception as e:
+    logging.error(f"Ошибка получения погоды: {e}")
+    return f"Не удалось получить погоду для города: {city}"
+
+
 # --- КАСКАДНАЯ ОТПРАВКА ЗАПРОСОВ В GEMINI ---
 
 
@@ -327,6 +344,7 @@ async def cmd_start(message: types.Message):
   await message.answer(
       "Привет! Я твой личный ИИ-помощник.\n"
       "• Сообщения обрабатываются по префиксу **«чат»**.\n"
+      "• В инлайн-режиме можно писать **«погода <город>»**.\n"
       "• Введите команду **/command**, чтобы посмотреть список всех доступных"
       " команд."
   )
@@ -349,7 +367,11 @@ async def cmd_command_list(message: types.Message):
       "• `/memory` — Посмотреть текущую личную память и общую память пары.\n"
       "• `/memorydelete <фраза>` — Удалить конкретный факт из памяти по ключевой"
       " фразе.\n"
-      "• `/memoryclear` — Полностью очистить всю личную память и память пары.",
+      "• `/memoryclear` — Полностью очистить всю личную память и память пары.\n\n"
+      "🌤 **Инлайн-режим (@имя_бота):**\n"
+      "• Напиши `погода <город>` (например: `погода Москва`), чтобы быстро"
+      " узнать погоду.\n"
+      "• Или напиши любой текст для ответа от ИИ.",
       parse_mode="Markdown",
   )
 
@@ -548,7 +570,7 @@ async def handle_media_or_text(message: types.Message):
     )
 
 
-# --- ИНЛАЙН-РЕЖИМ ---
+# --- ИНЛАЙН-РЕЖИМ (С ПОДДЕРЖКОЙ ПОГОДЫ И ИИ) ---
 
 
 @dp.inline_query()
@@ -565,6 +587,28 @@ async def inline_query_handler(query: types.InlineQuery):
   if not query_text:
     return
 
+  # Проверяем, запрашивают ли погоду (например: "погода Москва" или "weather London")
+  if query_text.lower().startswith(("погода", "weather")):
+    parts = query_text.split(maxsplit=1)
+    city = parts[1].strip() if len(parts) > 1 else "Москва"
+
+    loop = asyncio.get_running_loop()
+    weather_text = await loop.run_in_executor(None, get_weather, city)
+
+    articles = [
+        InlineQueryResultArticle(
+            id="weather_res",
+            title=f"Погода в городе: {city}",
+            input_message_content=InputTextMessageContent(
+                message_text=weather_text
+            ),
+            description=weather_text,
+        )
+    ]
+    await query.answer(articles, cache_time=60)
+    return
+
+  # Стандартный ответ через Gemini для остальных инлайн-запросов
   system_prompt = (
       "Ты — быстрый встроенный ИИ-ассистент в Telegram. Отвечай точно, кратко и"
       " по делу на запрос пользователя."
