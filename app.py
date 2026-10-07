@@ -1,6 +1,7 @@
 import os
 import logging
 import asyncio
+from contextlib import contextmanager
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.types import InlineQueryResultArticle, InputTextMessageContent
@@ -44,7 +45,6 @@ ALLOWED_USER_IDS = [
     int(uid.strip()) for uid in ALLOWED_USERS_RAW.split(",") if uid.strip().isdigit()
 ]
 
-# Имена для точного разделения памяти между вами
 USER_NAMES = {
     5084782149: "Основной пользователь",
     1253880871: "Полина",
@@ -62,78 +62,80 @@ MODELS_CASCADE = [
 ]
 
 
-# --- РАБОТА С БАЗОЙ ДАННЫХ (NEON POSTGRESQL) ---
+# --- БЕЗОПАСНЫЙ КОНТЕКСТНЫЙ МЕНЕДЖЕР БД ---
 
 
-def get_db_connection():
-  return psycopg2.connect(DATABASE_URL)
+@contextmanager
+def get_db():
+  conn = psycopg2.connect(DATABASE_URL)
+  try:
+    yield conn
+    conn.commit()
+  except Exception as e:
+    conn.rollback()
+    logging.error(f"Ошибка базы данных: {e}")
+    raise
+  finally:
+    conn.close()
 
 
 def init_db():
-  conn = get_db_connection()
-  cursor = conn.cursor()
+  with get_db() as conn:
+    with conn.cursor() as cursor:
+      cursor.execute("""
+                CREATE TABLE IF NOT EXISTS messages (
+                    id SERIAL PRIMARY KEY,
+                    chat_id BIGINT,
+                    user_id BIGINT,
+                    chat_type TEXT,
+                    role TEXT,
+                    content TEXT,
+                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+      cursor.execute(
+          "ALTER TABLE messages ADD COLUMN IF NOT EXISTS chat_id BIGINT;"
+      )
+      cursor.execute(
+          "ALTER TABLE messages ADD COLUMN IF NOT EXISTS chat_type TEXT;"
+      )
 
-  cursor.execute("""
-        CREATE TABLE IF NOT EXISTS messages (
-            id SERIAL PRIMARY KEY,
-            chat_id BIGINT,
-            user_id BIGINT,
-            chat_type TEXT,
-            role TEXT,
-            content TEXT,
-            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-    """)
-  cursor.execute("ALTER TABLE messages ADD COLUMN IF NOT EXISTS chat_id BIGINT;")
-  cursor.execute(
-      "ALTER TABLE messages ADD COLUMN IF NOT EXISTS chat_type TEXT;"
-  )
+      cursor.execute("""
+                CREATE TABLE IF NOT EXISTS user_memory (
+                    user_id BIGINT PRIMARY KEY,
+                    memory_text TEXT
+                );
+            """)
 
-  cursor.execute("""
-        CREATE TABLE IF NOT EXISTS user_memory (
-            user_id BIGINT PRIMARY KEY,
-            memory_text TEXT
-        );
-    """)
-
-  cursor.execute("""
-        CREATE TABLE IF NOT EXISTS couple_memory (
-            id INT PRIMARY KEY,
-            memory_text TEXT
-        );
-    """)
-
-  conn.commit()
-  cursor.close()
-  conn.close()
+      cursor.execute("""
+                CREATE TABLE IF NOT EXISTS couple_memory (
+                    id INT PRIMARY KEY,
+                    memory_text TEXT
+                );
+            """)
 
 
 def save_message(
     chat_id: int, user_id: int, chat_type: str, role: str, content: str
 ):
-  conn = get_db_connection()
-  cursor = conn.cursor()
-  cursor.execute(
-      "INSERT INTO messages (chat_id, user_id, chat_type, role, content)"
-      " VALUES (%s, %s, %s, %s, %s)",
-      (chat_id, user_id, chat_type, role, content),
-  )
-  conn.commit()
-  cursor.close()
-  conn.close()
+  with get_db() as conn:
+    with conn.cursor() as cursor:
+      cursor.execute(
+          "INSERT INTO messages (chat_id, user_id, chat_type, role, content)"
+          " VALUES (%s, %s, %s, %s, %s)",
+          (chat_id, user_id, chat_type, role, content),
+      )
 
 
 def get_chat_history(chat_id: int, limit: int = 10):
-  conn = get_db_connection()
-  cursor = conn.cursor()
-  cursor.execute(
-      "SELECT role, content FROM messages WHERE chat_id = %s ORDER BY id DESC"
-      " LIMIT %s",
-      (chat_id, limit),
-  )
-  rows = cursor.fetchall()
-  cursor.close()
-  conn.close()
+  with get_db() as conn:
+    with conn.cursor() as cursor:
+      cursor.execute(
+          "SELECT role, content FROM messages WHERE chat_id = %s ORDER BY id"
+          " DESC LIMIT %s",
+          (chat_id, limit),
+      )
+      rows = cursor.fetchall()
 
   history = []
   for role, content in reversed(rows):
@@ -143,14 +145,12 @@ def get_chat_history(chat_id: int, limit: int = 10):
 
 
 def get_user_memory(user_id: int) -> str:
-  conn = get_db_connection()
-  cursor = conn.cursor()
-  cursor.execute(
-      "SELECT memory_text FROM user_memory WHERE user_id = %s", (user_id,)
-  )
-  row = cursor.fetchone()
-  cursor.close()
-  conn.close()
+  with get_db() as conn:
+    with conn.cursor() as cursor:
+      cursor.execute(
+          "SELECT memory_text FROM user_memory WHERE user_id = %s", (user_id,)
+      )
+      row = cursor.fetchone()
   return row[0] if row and row[0] else "Нет личной сохраненной информации."
 
 
@@ -163,25 +163,21 @@ def update_user_memory(user_id: int, new_fact: str):
       return
     updated = f"{current_memory}\n- {new_fact}"
 
-  conn = get_db_connection()
-  cursor = conn.cursor()
-  cursor.execute(
-      "INSERT INTO user_memory (user_id, memory_text) VALUES (%s, %s)"
-      " ON CONFLICT (user_id) DO UPDATE SET memory_text = EXCLUDED.memory_text",
-      (user_id, updated),
-  )
-  conn.commit()
-  cursor.close()
-  conn.close()
+  with get_db() as conn:
+    with conn.cursor() as cursor:
+      cursor.execute(
+          "INSERT INTO user_memory (user_id, memory_text) VALUES (%s, %s)"
+          " ON CONFLICT (user_id) DO UPDATE SET memory_text ="
+          " EXCLUDED.memory_text",
+          (user_id, updated),
+      )
 
 
 def get_couple_memory() -> str:
-  conn = get_db_connection()
-  cursor = conn.cursor()
-  cursor.execute("SELECT memory_text FROM couple_memory WHERE id = 1")
-  row = cursor.fetchone()
-  cursor.close()
-  conn.close()
+  with get_db() as conn:
+    with conn.cursor() as cursor:
+      cursor.execute("SELECT memory_text FROM couple_memory WHERE id = 1")
+      row = cursor.fetchone()
   return row[0] if row and row[0] else "Пока нет общей информации о паре."
 
 
@@ -194,64 +190,60 @@ def update_couple_memory(new_fact: str):
       return
     updated = f"{current_memory}\n- {new_fact}"
 
-  conn = get_db_connection()
-  cursor = conn.cursor()
-  cursor.execute(
-      "INSERT INTO couple_memory (id, memory_text) VALUES (1, %s) ON CONFLICT"
-      " (id) DO UPDATE SET memory_text = EXCLUDED.memory_text",
-      (updated,),
-  )
-  conn.commit()
-  cursor.close()
-  conn.close()
+  with get_db() as conn:
+    with conn.cursor() as cursor:
+      cursor.execute(
+          "INSERT INTO couple_memory (id, memory_text) VALUES (1, %s) ON CONFLICT"
+          " (id) DO UPDATE SET memory_text = EXCLUDED.memory_text",
+          (updated,),
+      )
 
 
 def delete_memory_phrase(user_id: int, phrase: str):
-  """Удаляет строки, содержащие указанную фразу, из личной памяти и памяти пары"""
   phrase_lower = phrase.lower().strip()
   deleted_from = []
-  conn = get_db_connection()
 
-  # 1. Проверяем и очищаем личную память пользователя
-  cursor = conn.cursor()
-  cursor.execute(
-      "SELECT memory_text FROM user_memory WHERE user_id = %s", (user_id,)
-  )
-  row = cursor.fetchone()
-  if row and row[0]:
-    lines = row[0].split("\n")
-    new_lines = [line for line in lines if phrase_lower not in line.lower()]
-    if len(new_lines) < len(lines):
-      updated = "\n".join(new_lines).strip()
-      if not updated:
-        updated = "Нет личной сохраненной информации."
+  with get_db() as conn:
+    # 1. Личная память
+    with conn.cursor() as cursor:
       cursor.execute(
-          "UPDATE user_memory SET memory_text = %s WHERE user_id = %s",
-          (updated, user_id),
+          "SELECT memory_text FROM user_memory WHERE user_id = %s", (user_id,)
       )
-      deleted_from.append("личную память")
-  cursor.close()
+      row = cursor.fetchone()
+      if row and row[0]:
+        lines = row[0].split("\n")
+        new_lines = [line for line in lines if phrase_lower not in line.lower()]
+        if len(new_lines) < len(lines):
+          updated = (
+              "\n".join(new_lines).strip()
+              if new_lines
+              else "Нет личной сохраненной информации."
+          )
+          cursor.execute(
+              "UPDATE user_memory SET memory_text = %s WHERE user_id = %s",
+              (updated, user_id),
+          )
+          deleted_from.append("личную память")
 
-  # 2. Проверяем и очищаем общую память пары
-  cursor = conn.cursor()
-  cursor.execute("SELECT memory_text FROM couple_memory WHERE id = 1")
-  row = cursor.fetchone()
-  if row and row[0]:
-    lines = row[0].split("\n")
-    new_lines = [line for line in lines if phrase_lower not in line.lower()]
-    if len(new_lines) < len(lines):
-      updated = "\n".join(new_lines).strip()
-      if not updated:
-        updated = "Пока нет общей информации о паре."
-      cursor.execute(
-          "UPDATE couple_memory SET memory_text = %s WHERE id = 1",
-          (updated,),
-      )
-      deleted_from.append("общую память пары")
-  cursor.close()
+    # 2. Память пары
+    with conn.cursor() as cursor:
+      cursor.execute("SELECT memory_text FROM couple_memory WHERE id = 1")
+      row = cursor.fetchone()
+      if row and row[0]:
+        lines = row[0].split("\n")
+        new_lines = [line for line in lines if phrase_lower not in line.lower()]
+        if len(new_lines) < len(lines):
+          updated = (
+              "\n".join(new_lines).strip()
+              if new_lines
+              else "Пока нет общей информации о паре."
+          )
+          cursor.execute(
+              "UPDATE couple_memory SET memory_text = %s WHERE id = 1",
+              (updated,),
+          )
+          deleted_from.append("общую память пары")
 
-  conn.commit()
-  conn.close()
   return deleted_from
 
 
@@ -280,7 +272,6 @@ async def process_with_cascade(history_contents, contents, system_prompt):
 
 async def extract_and_save_facts(user_id: int, chat_type: str, user_message: str):
   speaker_name = USER_NAMES.get(user_id, "Пользователь")
-
   prompt = (
       f"Проанализируй реплику от пользователя '{speaker_name}' (ID: {user_id})."
       f" Определи, что из этого является личным фактом именно для"
@@ -335,10 +326,31 @@ async def cmd_start(message: types.Message):
 
   await message.answer(
       "Привет! Я твой личный ИИ-помощник.\n"
-      "• Сообщения обрабатываются по префиксу **«чат»** (например: *«чат"
-      " привет»*).\n"
-      "• Команда **/memory** покажет текущую память.\n"
-      "• Команда **/memorydelete <фраза>** удалит ненужный факт."
+      "• Сообщения обрабатываются по префиксу **«чат»**.\n"
+      "• Введите команду **/command**, чтобы посмотреть список всех доступных"
+      " команд."
+  )
+
+
+@dp.message(Command("command"))
+async def cmd_command_list(message: types.Message):
+  user_id = message.from_user.id
+  if user_id not in ALLOWED_USER_IDS:
+    logging.warning(
+        f"⚠️ Попытка неавторизованного доступа (cmd_command): user_id={user_id},"
+        f" username=@{message.from_user.username}"
+    )
+    return
+
+  await message.answer(
+      "📋 **Доступные команды бота:**\n\n"
+      "• `/start` — Приветствие и базовая справка.\n"
+      "• `/command` — Показать этот список команд.\n"
+      "• `/memory` — Посмотреть текущую личную память и общую память пары.\n"
+      "• `/memorydelete <фраза>` — Удалить конкретный факт из памяти по ключевой"
+      " фразе.\n"
+      "• `/memoryclear` — Полностью очистить всю личную память и память пары.",
+      parse_mode="Markdown",
   )
 
 
@@ -375,26 +387,48 @@ async def cmd_memory_delete(message: types.Message):
   parts = message.text.split(maxsplit=1)
   if len(parts) < 2:
     await message.answer(
-        "⚠️ Укажи текст, который нужно удалить из памяти.\nПример:"
-        " `/memorydelete любимый цвет`",
+        "⚠️ Укажи текст для удаления. Пример: `/memorydelete горы`",
         parse_mode="Markdown",
     )
     return
 
-  phrase_to_delete = parts[1].strip()
-  deleted_locations = delete_memory_phrase(user_id, phrase_to_delete)
+  phrase = parts[1].strip()
+  deleted = delete_memory_phrase(user_id, phrase)
 
-  if deleted_locations:
-    locs_str = ", ".join(deleted_locations)
+  if deleted:
     await message.answer(
-        f"🗑 Успешно удалено из следующих разделов памяти: **{locs_str}**.",
+        f"🗑 Успешно удалено из разделов: **{', '.join(deleted)}**.",
         parse_mode="Markdown",
     )
   else:
-    await message.answer(
-        "❌ Не найдено совпадений с такой фразой ни в личной памяти, ни в"
-        " общей памяти пары."
+    await message.answer("❌ Совпадений с такой фразой в памяти не найдено.")
+
+
+@dp.message(Command("memoryclear"))
+async def cmd_memory_clear(message: types.Message):
+  user_id = message.from_user.id
+  if user_id not in ALLOWED_USER_IDS:
+    logging.warning(
+        f"⚠️ Попытка неавторизованного доступа (cmd_memoryclear):"
+        f" user_id={user_id}, username=@{message.from_user.username}"
     )
+    return
+
+  with get_db() as conn:
+    with conn.cursor() as cursor:
+      cursor.execute(
+          "UPDATE user_memory SET memory_text = 'Нет личной сохраненной"
+          " информации.' WHERE user_id = %s",
+          (user_id,),
+      )
+      cursor.execute(
+          "UPDATE couple_memory SET memory_text = 'Пока нет общей информации о"
+          " паре.' WHERE id = 1"
+      )
+
+  await message.answer(
+      "🧹 Вся твоя личная память и общая память пары полностью очищены!"
+  )
 
 
 @dp.message(F.text | F.voice | F.video_note | F.photo)
