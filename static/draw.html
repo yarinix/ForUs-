@@ -19,29 +19,55 @@
             overflow: hidden;
         }
         canvas {
-            background: #222;
+            background: #1e1e1e;
             touch-action: none;
-            flex-grow: 1;
-            width: 100%;
+            display: block;
         }
         .toolbar {
-            padding: 15px;
+            padding: 12px 15px;
             display: flex;
-            gap: 15px;
+            flex-direction: column;
+            gap: 10px;
             width: 100%;
             box-sizing: border-box;
             background: #1a1a1a;
+            align-items: center;
+            border-top: 1px solid #333;
+        }
+        .colors {
+            display: flex;
+            gap: 12px;
+            align-items: center;
             justify-content: center;
+        }
+        .color-btn {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            cursor: pointer;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            transition: transform 0.15s, border-color 0.15s;
+        }
+        .color-btn.active {
+            border-color: #fff;
+            transform: scale(1.2);
+        }
+        .actions {
+            display: flex;
+            gap: 10px;
+            width: 100%;
+            justify-content: space-between;
         }
         button {
             background: #2ea6ff;
             color: white;
             border: none;
-            padding: 12px 24px;
+            padding: 10px 20px;
             border-radius: 8px;
-            font-size: 16px;
+            font-size: 15px;
             cursor: pointer;
             font-weight: bold;
+            flex: 1;
         }
         button.clear {
             background: #ff4757;
@@ -50,9 +76,21 @@
 </head>
 <body>
     <canvas id="paintCanvas"></canvas>
+    
     <div class="toolbar">
-        <button class="clear" onclick="clearCanvas()">Очистить</button>
-        <button onclick="sendDrawing()">Отправить</button>
+        <div class="colors">
+            <div class="color-btn active" style="background: #ffffff;" onclick="setColor('#ffffff', this)"></div>
+            <div class="color-btn" style="background: #ff4757;" onclick="setColor('#ff4757', this)"></div>
+            <div class="color-btn" style="background: #2ed573;" onclick="setColor('#2ed573', this)"></div>
+            <div class="color-btn" style="background: #1e90ff;" onclick="setColor('#1e90ff', this)"></div>
+            <div class="color-btn" style="background: #ffa502;" onclick="setColor('#ffa502', this)"></div>
+            <div class="color-btn" style="background: #9b59b6;" onclick="setColor('#9b59b6', this)"></div>
+            <div class="color-btn" style="background: #ff6b81;" onclick="setColor('#ff6b81', this)"></div>
+        </div>
+        <div class="actions">
+            <button class="clear" onclick="clearCanvas()">Очистить</button>
+            <button onclick="sendDrawing()">Отправить</button>
+        </div>
     </div>
 
     <script>
@@ -62,18 +100,52 @@
         const canvas = document.getElementById('paintCanvas');
         const ctx = canvas.getContext('2d');
 
+        let currentColor = '#ffffff';
+        let currentLineWidth = 6;
+
         function resize() {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight - 70;
-            ctx.fillStyle = '#222';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            ctx.strokeStyle = '#ffffff';
-            ctx.lineWidth = 5;
+            const dpr = window.devicePixelRatio || 1;
+            const displayWidth = window.innerWidth;
+            const displayHeight = window.innerHeight - 100;
+
+            // Сохраняем текущий рисунок при изменении ориентации/размера
+            const tempCanvas = document.createElement('canvas');
+            const tempCtx = tempCanvas.getContext('2d');
+            tempCanvas.width = canvas.width;
+            tempCanvas.height = canvas.height;
+            tempCtx.drawImage(canvas, 0, 0);
+
+            // Устанавливаем реальные физические размеры холста с учетом плотности пикселей экрана
+            canvas.width = displayWidth * dpr;
+            canvas.height = displayHeight * dpr;
+            canvas.style.width = displayWidth + 'px';
+            canvas.style.height = displayHeight + 'px';
+
+            ctx.scale(dpr, dpr);
+
+            // Заливка фона
+            ctx.fillStyle = '#1e1e1e';
+            ctx.fillRect(0, 0, displayWidth, displayHeight);
+
+            // Восстанавливаем рисунок
+            ctx.drawImage(tempCanvas, 0, 0, tempCanvas.width / dpr, tempCanvas.height / dpr);
+
+            ctx.strokeStyle = currentColor;
+            ctx.lineWidth = currentLineWidth;
             ctx.lineCap = 'round';
             ctx.lineJoin = 'round';
         }
+
         window.addEventListener('resize', resize);
         resize();
+
+        function setColor(color, element) {
+            currentColor = color;
+            ctx.strokeStyle = color;
+            
+            document.querySelectorAll('.color-btn').forEach(btn => btn.classList.remove('active'));
+            element.classList.add('active');
+        }
 
         let painting = false;
 
@@ -113,18 +185,42 @@
         canvas.addEventListener('touchmove', draw);
 
         function clearCanvas() {
-            ctx.fillStyle = '#222';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            const displayWidth = window.innerWidth;
+            const displayHeight = window.innerHeight - 100;
+            ctx.fillStyle = '#1e1e1e';
+            ctx.fillRect(0, 0, displayWidth, displayHeight);
         }
 
-        function sendDrawing() {
+                function sendDrawing() {
             const dataURL = canvas.toDataURL('image/png');
-            const chatId = tg.initDataUnsafe?.user?.id;
+            const user = tg.initDataUnsafe?.user;
+            const chatId = user?.id;
+            const userName = user?.first_name || user?.username || "Друг";
 
             if (!chatId) {
                 alert('Не удалось определить пользователя');
                 return;
             }
+
+            fetch('/api/upload', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    chat_id: chatId, 
+                    name: userName, 
+                    image: dataURL 
+                })
+            }).then(response => {
+                if (response.ok) {
+                    tg.close();
+                } else {
+                    alert('Ошибка при отправке рисунка');
+                }
+            }).catch(err => {
+                alert('Ошибка сети: ' + err);
+            });
+        }
+
 
             fetch('/api/upload', {
                 method: 'POST',
@@ -143,4 +239,3 @@
     </script>
 </body>
 </html>
-
