@@ -12,7 +12,6 @@ from google import genai
 from google.genai import types as genai_types
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from duckduckgo_search import DDGS
 
 
 # 1. Простейший HTTP-сервер для Render
@@ -248,7 +247,7 @@ def delete_memory_phrase(user_id: int, phrase: str):
   return deleted_from
 
 
-# --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ (ПОГОДА И ПОИСК) ---
+# --- ФУНКЦИЯ ПОГОДЫ ---
 
 
 def get_weather(city: str) -> str:
@@ -263,19 +262,7 @@ def get_weather(city: str) -> str:
     return f"Не удалось получить погоду для города: {city}"
 
 
-def web_search(query: str) -> str:
-  """Выполняет поиск в интернете через DuckDuckGo и возвращает результаты"""
-  try:
-    with DDGS() as ddgs:
-      results = [r.get("body", "") for r in ddgs.text(query, max_results=3)]
-      if results:
-        return "\n".join([f"- {res}" for res in results])
-  except Exception as e:
-    logging.error(f"Ошибка веб-поиска: {e}")
-  return ""
-
-
-# --- КАСКАДНАЯ ОТПРАВКА ЗАПРОСОВ В GEMINI ---
+# --- КАСКАДНАЯ ОТПРАВКА ЗАПРОСОВ В GEMINI (С GOOGLE SEARCH) ---
 
 
 async def process_with_cascade(history_contents, contents, system_prompt):
@@ -285,7 +272,10 @@ async def process_with_cascade(history_contents, contents, system_prompt):
           model=model_name,
           history=history_contents,
           config=genai_types.GenerateContentConfig(
-              system_instruction=system_prompt
+              system_instruction=system_prompt,
+              tools=[
+                  {"google_search": {}}
+              ],  # Встроенный поиск Google от Gemini
           ),
       )
       response = chat.send_message(contents)
@@ -353,7 +343,7 @@ async def cmd_start(message: types.Message):
     return
 
   await message.answer(
-      "Привет! Я твой личный ИИ-помощник с функцией веб-поиска.\n"
+      "Привет! Я твой личный ИИ-помощник с встроенным поиском Google.\n"
       "• Сообщения обрабатываются по префиксу **«чат»**.\n"
       "• Введите команду **/command**, чтобы посмотреть список всех доступных"
       " команд."
@@ -377,9 +367,9 @@ async def cmd_command_list(message: types.Message):
       "• `/memory` — Посмотреть личную и общую память пары.\n"
       "• `/memorydelete <фраза>` — Удалить факт по ключевой фразе.\n"
       "• `/memoryclear` — Полностью очистить память.\n\n"
-      "🌐 **Веб-поиск:**\n"
-      "• Бот автоматически умеет искать свежую информацию в интернете, если в"
-      " вопросе есть запрос актуальных данных.\n\n"
+      "🌐 **Поиск в интернете:**\n"
+      "• Бот автоматически использует официальный поиск Google, когда в диалоге"
+      " требуются свежие данные.\n\n"
       "🌤 **Инлайн-режим (@имя_бота):**\n"
       "• `погода <город>` — узнать погоду.\n"
       "• Любой текст — быстрый ответ от ИИ.",
@@ -393,7 +383,7 @@ async def cmd_memory(message: types.Message):
   if user_id not in ALLOWED_USER_IDS:
     logging.warning(
         f"⚠️ Попытка неавторизованного доступа (cmd_memory): user_id={user_id},"
-        f" username=@{query_username := message.from_user.username}"
+        f" username=@{message.from_user.username}"
     )
     return
 
@@ -527,58 +517,28 @@ async def handle_media_or_text(message: types.Message):
   couple_memory = get_couple_memory()
   recent_history = get_chat_history(chat_id, limit=10)
 
-  # Проверяем, нужен ли веб-поиск (если вопрос выглядит как запрос актуальной информации)
-  search_context = ""
-  if (
-      user_text
-      and not file_bytes
-      and any(
-          kw in user_text.lower()
-          for kw in [
-              "найди",
-              "поиск",
-              "что такое",
-              "кто такой",
-              "свежие",
-              "новости",
-              "курс",
-              "цена",
-              "какой",
-              "какая",
-              "сколько стоит",
-              "расписание",
-          ]
-      )
-  ):
-    loop = asyncio.get_running_loop()
-    search_results = await loop.run_in_executor(None, web_search, user_text)
-    if search_results:
-      search_context = (
-          f"\n\n🌐 Актуальная информация из интернета по запросу:\n{search_results}"
-      )
-
   if chat_type == "private":
     user_memory = get_user_memory(user_id)
     system_prompt = (
-        f"Ты — эмпатичный ИИ-помощник с доступом к веб-поиску. Ты находишься в"
-        f" ЛИЧНОМ чате с пользователем {speaker_name}.\n\n"
+        f"Ты — эмпатичный ИИ-помощник с доступом к поиску Google. Ты находишься"
+        f" в ЛИЧНОМ чате с пользователем {speaker_name}.\n\n"
         f"💞 Общая информация о паре:\n{couple_memory}\n\n"
         f"👤 Личная информация о пользователе"
-        f" {speaker_name}:\n{user_memory}{search_context}\n\n"
+        f" {speaker_name}:\n{user_memory}\n\n"
         f"Правила:\n"
         f"1. Общайся естественно.\n"
-        f"2. Используй данные из интернета, если они переданы, чтобы отвечать"
-        f" актуально.\n"
+        f"2. Если для ответа на вопрос нужны актуальные данные, используй"
+        f" встроенный поиск Google.\n"
         f"3. Если тема сменилась, не цепляйся за старые сообщения из истории."
     )
   else:
     system_prompt = (
-        f"Ты — эмпатичный ИИ-помощник с доступом к веб-поиску. Ты находишься в"
-        f" ГРУППОВОМ чате с парой.\nСейчас пишет: {speaker_name}.\n\n"
-        f"💞 Общая информация о паре:\n{couple_memory}{search_context}\n\n"
+        f"Ты — эмпатичный ИИ-помощник с доступом к поиску Google. Ты находишься"
+        f" в ГРУППОВОМ чате с парой.\nСейчас пишет: {speaker_name}.\n\n"
+        f"💞 Общая информация о паре:\n{couple_memory}\n\n"
         f"Правила:\n"
         f"1. Учитывай контекст пары.\n"
-        f"2. Используй данные из интернета при необходимости.\n"
+        f"2. Используй встроенный поиск Google при необходимости.\n"
         f"3. Если тема сменилась, не зацикливайся на прошлом."
     )
 
@@ -651,7 +611,7 @@ async def inline_query_handler(query: types.InlineQuery):
     return
 
   system_prompt = (
-      "Ты — быстрый встроенный ИИ-ассистент в Telegram. Отвечай точно, кратко и"
+      "Ты — быстрый встроенный ИИ-помощник в Telegram. Отвечай точно, кратко и"
       " по делу на запрос пользователя."
   )
 
