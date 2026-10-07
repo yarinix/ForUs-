@@ -618,11 +618,11 @@ async def handle_media_or_text(message: types.Message):
 async def inline_query_handler(query: types.InlineQuery):
     if query.from_user.id not in ALLOWED_USER_IDS:
         return
-
+    
     query_text = query.query.strip()
     articles = []
 
-    # 1. Создаем карточку для холста рисования (она будет доступна всегда)
+    # 1. Всегда создаем карточку холста для рисования
     base_url = os.getenv("RENDER_EXTERNAL_URL", "https://твой-реальный-сервис.onrender.com")
     web_app_url = f"{base_url}/draw"
 
@@ -644,12 +644,13 @@ async def inline_query_handler(query: types.InlineQuery):
         reply_markup=keyboard
     )
 
-    # 2. Обрабатываем запросы в зависимости от текста
+    # 2. Если ничего не введено — показываем только холст
     if not query_text:
-        # Если текст пустой, показываем только холст
-        articles.append(draw_result)
+        await query.answer([draw_result], cache_time=1)
+        return
 
-    elif query_text.lower().startswith(("погода", "weather")):
+    # 3. Обработка погоды
+    if query_text.lower().startswith(("погода", "weather")):
         parts = query_text.split(maxsplit=1)
         city = parts[1].strip() if len(parts) > 1 else "Москва"
         loop = asyncio.get_running_loop()
@@ -663,10 +664,10 @@ async def inline_query_handler(query: types.InlineQuery):
             ),
             description=weather_text,
         )
-        # Сначала погода, вторым пунктом — холст
         articles = [weather_article, draw_result]
 
     else:
+        # 4. Обработка нейросети
         system_prompt = (
             "Ты — быстрый встроенный ИИ-ассистент в Telegram. Отвечай точно, кратко и по делу."
         )
@@ -680,14 +681,14 @@ async def inline_query_handler(query: types.InlineQuery):
                 ),
                 description=response_text[:100] + "...",
             )
-            # Сначала ответ нейросети, вторым пунктом — холст
             articles = [ai_article, draw_result]
         except Exception as e:
             logging.error(f"Ошибка в инлайн-режиме: {e}")
-            # Даже при ошибке ИИ дадим возможность открыть холст
             articles = [draw_result]
 
-    await query.answer(articles, cache_time=1, is_personal=True)
+    # Отправляем результаты без проблемного параметра is_personal
+    await query.answer(articles, cache_time=1)
+
 
 
 
