@@ -620,60 +620,34 @@ async def inline_query_handler(query: types.InlineQuery):
         return
     
     query_text = query.query.strip()
-    articles = []
-
-    # 1. Всегда создаем карточку холста для рисования
-    base_url = os.getenv("RENDER_EXTERNAL_URL", "https://твой-реальный-сервис.onrender.com")
-    web_app_url = f"{base_url}/draw"
-
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[[
-            InlineKeyboardButton(
-                text="🎨 Открыть холст", web_app=WebAppInfo(url=web_app_url)
-            )
-        ]]
-    )
-
-    draw_result = InlineQueryResultArticle(
-        id="draw_canvas",
-        title="🎨 Нарисовать рисунок",
-        description="Открыть интерактивный холст для рисования",
-        input_message_content=InputTextMessageContent(
-            message_text="🎨 Холст для рисования:"
-        ),
-        reply_markup=keyboard
-    )
-
-    # 2. Если ничего не введено — показываем только холст
     if not query_text:
-        await query.answer([draw_result], cache_time=1)
         return
 
-    # 3. Обработка погоды
     if query_text.lower().startswith(("погода", "weather")):
         parts = query_text.split(maxsplit=1)
         city = parts[1].strip() if len(parts) > 1 else "Москва"
         loop = asyncio.get_running_loop()
         weather_text = await loop.run_in_executor(None, get_weather, city)
-        
-        weather_article = InlineQueryResultArticle(
-            id="weather_res",
-            title=f"Погода в городе: {city}",
-            input_message_content=InputTextMessageContent(
-                message_text=weather_text
-            ),
-            description=weather_text,
-        )
-        articles = [weather_article, draw_result]
+        articles = [
+            InlineQueryResultArticle(
+                id="weather_res",
+                title=f"Погода в городе: {city}",
+                input_message_content=InputTextMessageContent(
+                    message_text=weather_text
+                ),
+                description=weather_text,
+            )
+        ]
+        await query.answer(articles, cache_time=60)
+        return
 
-    else:
-        # 4. Обработка нейросети
-        system_prompt = (
-            "Ты — быстрый встроенный ИИ-ассистент в Telegram. Отвечай точно, кратко и по делу."
-        )
-        try:
-            response_text = await process_with_cascade([], query_text, system_prompt)
-            ai_article = InlineQueryResultArticle(
+    system_prompt = (
+        "Ты — быстрый встроенный ИИ-ассистент в Telegram. Отвечай точно, кратко и по делу."
+    )
+    try:
+        response_text = await process_with_cascade([], query_text, system_prompt)
+        articles = [
+            InlineQueryResultArticle(
                 id="ai_response",
                 title="Ответ от Gemini",
                 input_message_content=InputTextMessageContent(
@@ -681,13 +655,11 @@ async def inline_query_handler(query: types.InlineQuery):
                 ),
                 description=response_text[:100] + "...",
             )
-            articles = [ai_article, draw_result]
-        except Exception as e:
-            logging.error(f"Ошибка в инлайн-режиме: {e}")
-            articles = [draw_result]
+        ]
+        await query.answer(articles, cache_time=1)
+    except Exception as e:
+        logging.error(f"Ошибка в инлайн-режиме: {e}")
 
-    # Отправляем результаты без проблемного параметра is_personal
-    await query.answer(articles, cache_time=1)
 
 
 
