@@ -44,6 +44,12 @@ ALLOWED_USER_IDS = [
     int(uid.strip()) for uid in ALLOWED_USERS_RAW.split(",") if uid.strip().isdigit()
 ]
 
+# Имена для точного разделения памяти между вами
+USER_NAMES = {
+    5084782149: "Основной пользователь",
+    1253880871: "Полина",
+}
+
 # Инициализация бота и клиента Gemini
 bot = Bot(token=TELEGRAM_TOKEN)
 dp = Dispatcher()
@@ -67,7 +73,6 @@ def init_db():
   conn = get_db_connection()
   cursor = conn.cursor()
 
-  # Таблица сообщений с поддержкой разделения по типу чата
   cursor.execute("""
         CREATE TABLE IF NOT EXISTS messages (
             id SERIAL PRIMARY KEY,
@@ -84,7 +89,6 @@ def init_db():
       "ALTER TABLE messages ADD COLUMN IF NOT EXISTS chat_type TEXT;"
   )
 
-  # Личная память пользователя
   cursor.execute("""
         CREATE TABLE IF NOT EXISTS user_memory (
             user_id BIGINT PRIMARY KEY,
@@ -92,7 +96,6 @@ def init_db():
         );
     """)
 
-  # Общая память пары
   cursor.execute("""
         CREATE TABLE IF NOT EXISTS couple_memory (
             id INT PRIMARY KEY,
@@ -121,7 +124,6 @@ def save_message(
 
 
 def get_chat_history(chat_id: int, limit: int = 10):
-  """История конкретного чата (личного или группового)"""
   conn = get_db_connection()
   cursor = conn.cursor()
   cursor.execute(
@@ -204,6 +206,55 @@ def update_couple_memory(new_fact: str):
   conn.close()
 
 
+def delete_memory_phrase(user_id: int, phrase: str):
+  """Удаляет строки, содержащие указанную фразу, из личной памяти и памяти пары"""
+  phrase_lower = phrase.lower().strip()
+  deleted_from = []
+  conn = get_db_connection()
+
+  # 1. Проверяем и очищаем личную память пользователя
+  cursor = conn.cursor()
+  cursor.execute(
+      "SELECT memory_text FROM user_memory WHERE user_id = %s", (user_id,)
+  )
+  row = cursor.fetchone()
+  if row and row[0]:
+    lines = row[0].split("\n")
+    new_lines = [line for line in lines if phrase_lower not in line.lower()]
+    if len(new_lines) < len(lines):
+      updated = "\n".join(new_lines).strip()
+      if not updated:
+        updated = "Нет личной сохраненной информации."
+      cursor.execute(
+          "UPDATE user_memory SET memory_text = %s WHERE user_id = %s",
+          (updated, user_id),
+      )
+      deleted_from.append("личную память")
+  cursor.close()
+
+  # 2. Проверяем и очищаем общую память пары
+  cursor = conn.cursor()
+  cursor.execute("SELECT memory_text FROM couple_memory WHERE id = 1")
+  row = cursor.fetchone()
+  if row and row[0]:
+    lines = row[0].split("\n")
+    new_lines = [line for line in lines if phrase_lower not in line.lower()]
+    if len(new_lines) < len(lines):
+      updated = "\n".join(new_lines).strip()
+      if not updated:
+        updated = "Пока нет общей информации о паре."
+      cursor.execute(
+          "UPDATE couple_memory SET memory_text = %s WHERE id = 1",
+          (updated,),
+      )
+      deleted_from.append("общую память пары")
+  cursor.close()
+
+  conn.commit()
+  conn.close()
+  return deleted_from
+
+
 # --- КАСКАДНАЯ ОТПРАВКА ЗАПРОСОВ В GEMINI ---
 
 
@@ -228,11 +279,14 @@ async def process_with_cascade(history_contents, contents, system_prompt):
 
 
 async def extract_and_save_facts(user_id: int, chat_type: str, user_message: str):
+  speaker_name = USER_NAMES.get(user_id, "Пользователь")
+
   prompt = (
-      f"Проанализируй реплику пользователя. Определи, что из этого является"
-      f" личным фактом о пользователе, а что — общей информацией о паре"
-      f" (отношения, совместные планы, быт, поездки). Выдай ответ строго в"
-      f" формате:\nPERSONAL: [факт или НЕТ]\nCOUPLE: [факт или"
+      f"Проанализируй реплику от пользователя '{speaker_name}' (ID: {user_id})."
+      f" Определи, что из этого является личным фактом именно для"
+      f" {speaker_name} (записывать в его личную память), а что — общей"
+      f" информацией о паре (отношения, совместные планы, быт). Выдай ответ"
+      f" строго в формате:\nPERSONAL: [факт или НЕТ]\nCOUPLE: [факт или"
       f" НЕТ]\n\nРеплика: {user_message}"
   )
 
@@ -243,7 +297,6 @@ async def extract_and_save_facts(user_id: int, chat_type: str, user_message: str
       )
       text = response.text.strip()
 
-      # Парсим ответ классификатора фактов
       lines = text.split("\n")
       personal_fact, couple_fact = "НЕТ", "НЕТ"
       for line in lines:
@@ -282,12 +335,10 @@ async def cmd_start(message: types.Message):
 
   await message.answer(
       "Привет! Я твой личный ИИ-помощник.\n"
-      "• Текстовые сообщения обрабатываются по префиксу **«чат»** (например:"
-      " *«чат привет»*).\n"
-      "• Понимаю голосовые, кружочки и фото.\n"
-      "• Различаю личные и групповые чаты, храню общую память о паре и личную"
-      " память.\n"
-      "• Команда **/memory** покажет, что я знаю."
+      "• Сообщения обрабатываются по префиксу **«чат»** (например: *«чат"
+      " привет»*).\n"
+      "• Команда **/memory** покажет текущую память.\n"
+      "• Команда **/memorydelete <фраза>** удалит ненужный факт."
   )
 
 
@@ -311,6 +362,41 @@ async def cmd_memory(message: types.Message):
   )
 
 
+@dp.message(Command("memorydelete"))
+async def cmd_memory_delete(message: types.Message):
+  user_id = message.from_user.id
+  if user_id not in ALLOWED_USER_IDS:
+    logging.warning(
+        f"⚠️ Попытка неавторизованного доступа (cmd_memorydelete):"
+        f" user_id={user_id}, username=@{message.from_user.username}"
+    )
+    return
+
+  parts = message.text.split(maxsplit=1)
+  if len(parts) < 2:
+    await message.answer(
+        "⚠️ Укажи текст, который нужно удалить из памяти.\nПример:"
+        " `/memorydelete любимый цвет`",
+        parse_mode="Markdown",
+    )
+    return
+
+  phrase_to_delete = parts[1].strip()
+  deleted_locations = delete_memory_phrase(user_id, phrase_to_delete)
+
+  if deleted_locations:
+    locs_str = ", ".join(deleted_locations)
+    await message.answer(
+        f"🗑 Успешно удалено из следующих разделов памяти: **{locs_str}**.",
+        parse_mode="Markdown",
+    )
+  else:
+    await message.answer(
+        "❌ Не найдено совпадений с такой фразой ни в личной памяти, ни в"
+        " общей памяти пары."
+    )
+
+
 @dp.message(F.text | F.voice | F.video_note | F.photo)
 async def handle_media_or_text(message: types.Message):
   user_id = message.from_user.id
@@ -323,9 +409,8 @@ async def handle_media_or_text(message: types.Message):
     return
 
   chat_id = message.chat.id
-  chat_type = (
-      "private" if message.chat.type == "private" else "group"
-  )  # private или group
+  chat_type = "private" if message.chat.type == "private" else "group"
+  speaker_name = USER_NAMES.get(user_id, "Пользователь")
 
   user_text = ""
   file_bytes = None
@@ -372,7 +457,6 @@ async def handle_media_or_text(message: types.Message):
         message.caption or "Что изображено на этой фотографии? Опиши и проанализируй."
     )
 
-  # Подтягиваем контекст в зависимости от типа чата
   couple_memory = get_couple_memory()
   recent_history = get_chat_history(chat_id, limit=10)
 
@@ -380,17 +464,23 @@ async def handle_media_or_text(message: types.Message):
     user_memory = get_user_memory(user_id)
     system_prompt = (
         f"Ты — эмпатичный ИИ-помощник. Ты находишься в ЛИЧНОМ чате с"
-        f" пользователем.\n\n"
+        f" пользователем {speaker_name}.\n\n"
         f"💞 Общая информация о паре:\n{couple_memory}\n\n"
-        f"👤 Личная информация о пользователе:\n{user_memory}\n\n"
-        f"Общайся естественно, учитывая оба уровня контекста."
+        f"👤 Личная информация о пользователе"
+        f" {speaker_name}:\n{user_memory}\n\n"
+        f"Правила:\n"
+        f"1. Общайся естественно.\n"
+        f"2. Если пользователь сменил тему, не цепляйся за старые сообщения из"
+        f" истории и не повторяй их без необходимости."
     )
   else:
     system_prompt = (
-        f"Ты — эмпатичный ИИ-помощник. Ты находишься в ГРУППОВОМ чате, где"
-        f" общаются пара (ты общаешься с ними обоими в общей беседе).\n\n"
+        f"Ты — эмпатичный ИИ-помощник. Ты находишься в ГРУППОВОМ чате с"
+        f" парой.\nСейчас пишет: {speaker_name}.\n\n"
         f"💞 Общая информация о паре:\n{couple_memory}\n\n"
-        f"Учитывай этот контекст при ответах в группе."
+        f"Правила:\n"
+        f"1. Учитывай этот контекст.\n"
+        f"2. Если тема сменилась, не зацикливайся на прошлом."
     )
 
   try:
@@ -441,12 +531,9 @@ async def inline_query_handler(query: types.InlineQuery):
   if not query_text:
     return
 
-  couple_memory = get_couple_memory()
-  user_memory = get_user_memory(user_id)
   system_prompt = (
-      f"Ты — встроенный ИИ-ассистент в Telegram.\n"
-      f"Общая информация о паре:\n{couple_memory}\n"
-      f"Личная информация о пользователе:\n{user_memory}"
+      "Ты — быстрый встроенный ИИ-ассистент в Telegram. Отвечай точно, кратко и"
+      " по делу на запрос пользователя."
   )
 
   try:
