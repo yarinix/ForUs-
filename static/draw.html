@@ -18,33 +18,56 @@
             overflow: hidden;
         }
         canvas {
-            background: #1e1e1e;
             touch-action: none;
-            flex: 1; /* Холст занимает всю доступную высоту */
+            flex: 1;
             width: 100%;
             display: block;
         }
         .toolbar {
-            padding: 12px 15px;
+            padding: 10px 12px;
             display: flex;
             flex-direction: column;
-            gap: 10px;
+            gap: 8px;
             width: 100%;
             box-sizing: border-box;
             background: #1a1a1a;
             align-items: center;
             border-top: 1px solid #333;
-            flex-shrink: 0; /* Панель никогда не сжимается */
+            flex-shrink: 0;
+        }
+        .row {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+        }
+        .tool-btn {
+            background: #2a2a2a;
+            color: #aaa;
+            border: 1px solid #444;
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-size: 13px;
+            cursor: pointer;
+            flex: 1;
+            text-align: center;
+            font-weight: 500;
+        }
+        .tool-btn.active {
+            background: #2ea6ff;
+            color: #fff;
+            border-color: #2ea6ff;
         }
         .colors {
             display: flex;
-            gap: 12px;
+            gap: 10px;
             align-items: center;
             justify-content: center;
         }
         .color-btn {
-            width: 30px;
-            height: 30px;
+            width: 26px;
+            height: 26px;
             border-radius: 50%;
             cursor: pointer;
             border: 2px solid rgba(255, 255, 255, 0.2);
@@ -54,19 +77,31 @@
             border-color: #fff;
             transform: scale(1.2);
         }
+        .bg-colors {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+        }
+        .bg-btn {
+            width: 20px;
+            height: 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            border: 1px solid #555;
+        }
         .actions {
             display: flex;
-            gap: 10px;
+            gap: 8px;
             width: 100%;
             justify-content: space-between;
         }
-        button {
+        button.action-btn {
             background: #2ea6ff;
             color: white;
             border: none;
-            padding: 10px 20px;
-            border-radius: 8px;
-            font-size: 15px;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 14px;
             cursor: pointer;
             font-weight: bold;
             flex: 1;
@@ -80,6 +115,20 @@
     <canvas id="paintCanvas"></canvas>
     
     <div class="toolbar">
+        <!-- Ряд 1: Инструменты (Кисть, Ластик, Заливка) и выбор фона -->
+        <div class="row">
+            <button class="tool-btn active" id="btnPen" onclick="setTool('pen')">✏️ Кисть</button>
+            <button class="tool-btn" id="btnEraser" onclick="setTool('eraser')">🧹 Ластик</button>
+            <button class="tool-btn" id="btnFill" onclick="setTool('fill')">🪣 Заливка</button>
+            <div class="bg-colors" title="Цвет фона">
+                <div class="bg-btn" style="background: #1e1e1e;" onclick="setBgColor('#1e1e1e')"></div>
+                <div class="bg-btn" style="background: #ffffff;" onclick="setBgColor('#ffffff')"></div>
+                <div class="bg-btn" style="background: #000000;" onclick="setBgColor('#000000')"></div>
+                <div class="bg-btn" style="background: #f4eedb;" onclick="setBgColor('#f4eedb')"></div>
+            </div>
+        </div>
+
+        <!-- Ряд 2: Палитра цветов для кисти -->
         <div class="colors">
             <div class="color-btn active" style="background: #ffffff;" onclick="setColor('#ffffff', this)"></div>
             <div class="color-btn" style="background: #ff4757;" onclick="setColor('#ff4757', this)"></div>
@@ -88,10 +137,13 @@
             <div class="color-btn" style="background: #ffa502;" onclick="setColor('#ffa502', this)"></div>
             <div class="color-btn" style="background: #9b59b6;" onclick="setColor('#9b59b6', this)"></div>
             <div class="color-btn" style="background: #ff6b81;" onclick="setColor('#ff6b81', this)"></div>
+            <div class="color-btn" style="background: #000000;" onclick="setColor('#000000', this)"></div>
         </div>
+
+        <!-- Ряд 3: Кнопки очистки и отправки -->
         <div class="actions">
-            <button class="clear" onclick="clearCanvas()">Очистить</button>
-            <button onclick="sendDrawing()">Отправить</button>
+            <button class="action-btn clear" onclick="clearCanvas()">Очистить</button>
+            <button class="action-btn" onclick="sendDrawing()">Отправить</button>
         </div>
     </div>
 
@@ -100,63 +152,110 @@
         tg.expand();
 
         const canvas = document.getElementById('paintCanvas');
-        const ctx = canvas.getContext('2d');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
+        let currentTool = 'pen'; // 'pen', 'eraser', 'fill'
         let currentColor = '#ffffff';
+        let currentBgColor = '#1e1e1e';
         let currentLineWidth = 6;
 
         function resize() {
             const dpr = window.devicePixelRatio || 1;
-            
-            // Берем реальные размеры, которые выделил браузер под canvas через flexbox
             const displayWidth = canvas.clientWidth;
             const displayHeight = canvas.clientHeight;
 
             if (displayWidth === 0 || displayHeight === 0) return;
 
-            // Сохраняем текущий рисунок при повороте или изменении размера
             const tempCanvas = document.createElement('canvas');
             const tempCtx = tempCanvas.getContext('2d');
             tempCanvas.width = canvas.width;
             tempCanvas.height = canvas.height;
             tempCtx.drawImage(canvas, 0, 0);
 
-            // Устанавливаем физическое разрешение с учетом Retina
             canvas.width = displayWidth * dpr;
             canvas.height = displayHeight * dpr;
 
             ctx.scale(dpr, dpr);
 
-            // Заливка фона
-            ctx.fillStyle = '#1e1e1e';
+            // Первоначальная заливка фона, если холст пустой
+            ctx.fillStyle = currentBgColor;
             ctx.fillRect(0, 0, displayWidth, displayHeight);
 
-            // Восстанавливаем рисунок
             ctx.drawImage(tempCanvas, 0, 0, tempCanvas.width / dpr, tempCanvas.height / dpr);
 
-            ctx.strokeStyle = currentColor;
-            ctx.lineWidth = currentLineWidth;
+            updateContextStyles();
+        }
+
+        window.addEventListener('resize', resize);
+        setTimeout(resize, 50);
+
+        function updateContextStyles() {
+            if (currentTool === 'eraser') {
+                ctx.strokeStyle = currentBgColor;
+                ctx.lineWidth = currentLineWidth * 2; // Ластик чуть толще
+            } else {
+                ctx.strokeStyle = currentColor;
+                ctx.lineWidth = currentLineWidth;
+            }
             ctx.lineCap = 'round';
             ctx.lineJoin = 'round';
         }
 
-        window.addEventListener('resize', resize);
-        
-        // Даем браузеру секунду на построение элементов и запускаем подгонку холста
-        setTimeout(resize, 50);
+        function setTool(tool) {
+            currentTool = tool;
+            document.querySelectorAll('.tool-btn').forEach(btn => btn.classList.remove('active'));
+            if (tool === 'pen') document.getElementById('btnPen').classList.add('active');
+            if (tool === 'eraser') document.getElementById('btnEraser').classList.add('active');
+            if (tool === 'fill') document.getElementById('btnFill').classList.add('active');
+            updateContextStyles();
+        }
 
         function setColor(color, element) {
             currentColor = color;
-            ctx.strokeStyle = color;
-            
+            setTool('pen'); // При выборе цвета автоматически переключаемся на кисть
             document.querySelectorAll('.color-btn').forEach(btn => btn.classList.remove('active'));
             element.classList.add('active');
         }
 
+        function setBgColor(color) {
+            const displayWidth = canvas.clientWidth;
+            const displayHeight = canvas.clientHeight;
+            
+            // Сохраняем текущий рисунок
+            const tempCanvas = document.createElement('canvas');
+            const tempCtx = tempCanvas.getContext('2d');
+            tempCanvas.width = canvas.width;
+            tempCanvas.height = canvas.height;
+            tempCtx.drawImage(canvas, 0, 0);
+
+            // Меняем фон
+            currentBgColor = color;
+            ctx.fillStyle = currentBgColor;
+            ctx.fillRect(0, 0, displayWidth, displayHeight);
+
+            // Возвращаем старый рисунок поверх
+            ctx.drawImage(tempCanvas, 0, 0, tempCanvas.width / dpr, tempCanvas.height / dpr);
+            updateContextStyles();
+        }
+
         let painting = false;
 
-        function startPosition(e) {
+        function startAction(e) {
+            const rect = canvas.getBoundingClientRect();
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            
+            const x = clientX - rect.left;
+            const y = clientY - rect.top;
+
+            if (currentTool === 'fill') {
+                floodFill(Math.floor(x), Math.floor(y), currentColor);
+                return;
+            }
+
             painting = true;
+            ctx.beginPath();
+            ctx.moveTo(x, y);
             draw(e);
         }
 
@@ -166,7 +265,7 @@
         }
 
         function draw(e) {
-            if (!painting) return;
+            if (!painting || currentTool === 'fill') return;
             e.preventDefault();
             
             const rect = canvas.getBoundingClientRect();
@@ -182,18 +281,82 @@
             ctx.moveTo(x, y);
         }
 
-        canvas.addEventListener('mousedown', startPosition);
+        // Алгоритм заливки (Flood Fill)
+        function floodFill(startX, startY, fillColor) {
+            const dpr = window.devicePixelRatio || 1;
+            const width = canvas.width;
+            const height = canvas.height;
+            const imgData = ctx.getImageData(0, 0, width, height);
+            const data = imgData.data;
+
+            const fx = Math.floor(startX * dpr);
+            const fy = Math.floor(startY * dpr);
+
+            if (fx < 0 || fx >= width || fy < 0 || fy >= height) return;
+
+            const targetIdx = (fy * width + fx) * 4;
+            const startR = data[targetIdx];
+            const startG = data[targetIdx + 1];
+            const startB = data[targetIdx + 2];
+            const startA = data[targetIdx + 3];
+
+            const fillRgb = hexToRgb(fillColor);
+            if (!fillRgb) return;
+
+            if (startR === fillRgb.r && startG === fillRgb.g && startB === fillRgb.b && startA === 255) return;
+
+            const queue = [[fx, fy]];
+            const visited = new Uint8Array(width * height);
+
+            while (queue.length > 0) {
+                const [cx, cy] = queue.pop();
+                const idx = (cy * width + cx) * 4;
+                const vIdx = cy * width + cx;
+
+                if (visited[vIdx]) continue;
+
+                if (
+                    data[idx] === startR &&
+                    data[idx + 1] === startG &&
+                    data[idx + 2] === startB &&
+                    data[idx + 3] === startA
+                ) {
+                    visited[vIdx] = 1;
+                    data[idx] = fillRgb.r;
+                    data[idx + 1] = fillRgb.g;
+                    data[idx + 2] = fillRgb.b;
+                    data[idx + 3] = 255;
+
+                    if (cx > 0) queue.push([cx - 1, cy]);
+                    if (cx < width - 1) queue.push([cx + 1, cy]);
+                    if (cy > 0) queue.push([cx, cy - 1]);
+                    if (cy < height - 1) queue.push([cx, cy + 1]);
+                }
+            }
+
+            ctx.putImageData(imgData, 0, 0);
+        }
+
+        function hexToRgb(hex) {
+            const bigint = parseInt(hex.replace('#', ''), 16);
+            const r = (bigint >> 16) & 255;
+            const g = (bigint >> 8) & 255;
+            const b = bigint & 255;
+            return { r, g, b };
+        }
+
+        canvas.addEventListener('mousedown', startAction);
         canvas.addEventListener('mouseup', endPosition);
         canvas.addEventListener('mousemove', draw);
 
-        canvas.addEventListener('touchstart', startPosition);
+        canvas.addEventListener('touchstart', startAction);
         canvas.addEventListener('touchend', endPosition);
         canvas.addEventListener('touchmove', draw);
 
         function clearCanvas() {
             const displayWidth = canvas.clientWidth;
             const displayHeight = canvas.clientHeight;
-            ctx.fillStyle = '#1e1e1e';
+            ctx.fillStyle = currentBgColor;
             ctx.fillRect(0, 0, displayWidth, displayHeight);
         }
 
