@@ -214,7 +214,7 @@ async def cmd_draw(message: types.Message):
         logging.error(f"Ошибка при вызове холста: {e}")
 
 
-  await message.answer(
+    await message.answer(
       "Нажми на кнопку ниже, чтобы нарисовать что-нибудь:",
       reply_markup=keyboard,
   )
