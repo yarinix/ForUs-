@@ -189,9 +189,28 @@ async def cmd_draw(message: types.Message):
     if ALLOWED_USER_IDS and message.from_user.id not in ALLOWED_USER_IDS:
         return
 
+    # Проверка на групповой чат (в группах Web App кнопки запрещены Telegram)
+    if message.chat.type != "private":
+        bot_info = await bot.get_me()
+        private_link = f"https://t.me/{bot_info.username}?start=draw"
+        
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[[
+                InlineKeyboardButton(
+                    text="🎨 Перейти в ЛС для рисования", url=private_link
+                )
+            ]]
+        )
+        await message.answer(
+            "🎨 Создание рисунков через холст доступно только в **личных сообщениях** с ботом.\n\nНажми на кнопку ниже:",
+            reply_markup=keyboard
+        )
+        return
+
+    # Логика для личных сообщений
     base_url = os.getenv("RENDER_EXTERNAL_URL", "").strip()
     if not base_url:
-        base_url = "https://forus-jyem.onrender.com"
+        base_url = "https://твой-реальный-сервис.onrender.com"
     elif base_url.startswith("http://"):
         base_url = base_url.replace("http://", "https://", 1)
 
@@ -212,12 +231,6 @@ async def cmd_draw(message: types.Message):
         )
     except Exception as e:
         logging.error(f"Ошибка при вызове холста: {e}")
-
-
-    await message.answer(
-      "Нажми на кнопку ниже, чтобы нарисовать что-нибудь:",
-      reply_markup=keyboard,
-  )
 
 
 def save_message(
