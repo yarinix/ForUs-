@@ -191,7 +191,7 @@ async def cmd_draw(message: types.Message):
 
     base_url = os.getenv("RENDER_EXTERNAL_URL", "").strip()
     if not base_url:
-        base_url = "https://твой-реальный-сервис.onrender.com"
+        base_url = "https://forus-jyem.onrender.com"
     elif base_url.startswith("http://"):
         base_url = base_url.replace("http://", "https://", 1)
 
