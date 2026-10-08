@@ -363,7 +363,9 @@
         function sendDrawing() {
             const dataURL = canvas.toDataURL('image/png');
             const user = tg.initDataUnsafe?.user;
-            const chatId = user?.id;
+            const chat = tg.initDataUnsafe?.chat;
+            const chatId = chat?.id || user?.id;
+
             const userName = user?.first_name || user?.username || "Друг";
 
             if (!chatId) {
