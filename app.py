@@ -189,10 +189,8 @@ async def cmd_draw(message: types.Message):
     if ALLOWED_USER_IDS and message.from_user.id not in ALLOWED_USER_IDS:
         return
 
-    # Получаем базовый URL и гарантируем, что он безопасный (HTTPS)
     base_url = os.getenv("RENDER_EXTERNAL_URL", "").strip()
     if not base_url:
-        # Укажи здесь на всякий случай свой реальный адрес с Render (например, https://твой-бот.onrender.com)
         base_url = "https://твой-реальный-сервис.onrender.com"
     elif base_url.startswith("http://"):
         base_url = base_url.replace("http://", "https://", 1)
