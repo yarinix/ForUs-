@@ -186,20 +186,35 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
 
 @dp.message(Command("draw"))
 async def cmd_draw(message: types.Message):
-  if message.from_user.id not in ALLOWED_USER_IDS:
-    return
+    if ALLOWED_USER_IDS and message.from_user.id not in ALLOWED_USER_IDS:
+        return
 
-  # Render автоматически задает RENDER_EXTERNAL_URL (например, https:// твой-бот.onrender.com)
-  base_url = os.getenv("RENDER_EXTERNAL_URL", "https:// твой-сайт.onrender.com")
-  web_app_url = f"{base_url}/draw"
+    # Получаем базовый URL и гарантируем, что он безопасный (HTTPS)
+    base_url = os.getenv("RENDER_EXTERNAL_URL", "").strip()
+    if not base_url:
+        # Укажи здесь на всякий случай свой реальный адрес с Render (например, https://твой-бот.onrender.com)
+        base_url = "https://твой-реальный-сервис.onrender.com"
+    elif base_url.startswith("http://"):
+        base_url = base_url.replace("http://", "https://", 1)
 
-  keyboard = InlineKeyboardMarkup(
-      inline_keyboard=[[
-          InlineKeyboardButton(
-              text="🎨 Открыть холст", web_app=WebAppInfo(url=web_app_url)
-          )
-      ]]
-  )
+    web_app_url = f"{base_url.rstrip('/')}/draw"
+
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[[
+            InlineKeyboardButton(
+                text="🎨 Открыть холст", web_app=WebAppInfo(url=web_app_url)
+            )
+        ]]
+    )
+
+    try:
+        await message.answer(
+            "Нажми на кнопку ниже, чтобы нарисовать что-нибудь:",
+            reply_markup=keyboard
+        )
+    except Exception as e:
+        logging.error(f"Ошибка при вызове холста: {e}")
+
 
   await message.answer(
       "Нажми на кнопку ниже, чтобы нарисовать что-нибудь:",
