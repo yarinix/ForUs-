@@ -297,7 +297,25 @@ def save_memory(user_id: int, memory_type: str, content: str):
                 (user_id, memory_type, content),
             )
 
+def get_memories(user_id: int, limit: int = 20):
+    with get_db() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT memory_type, content
+                FROM memories
+                WHERE user_id = %s OR user_id IS NULL
+                ORDER BY id DESC
+                LIMIT %s
+                """,
+                (user_id, limit),
+            )
+            rows = cursor.fetchall()
 
+    return [
+        {"type": memory_type, "content": content}
+        for memory_type, content in reversed(rows)
+    ]
 def get_user_memory(user_id: int) -> str:
   with get_db() as conn:
     with conn.cursor() as cursor:
