@@ -377,34 +377,87 @@
         let sending = false;
 
         // Картинка не больше 1280 px по длинной стороне: меньше вес, быстрее отправка
-        // Стабильный экспорт через PNG, который не ломает графический буфер iOS
-function exportImage(maxSide = 1200) {
-    const sourceWidth = canvas.width;
-    const sourceHeight = canvas.height;
-    
-    const scale = Math.min(1, maxSide / Math.max(sourceWidth, sourceHeight));
-    const out = document.createElement('canvas');
-    out.width = Math.max(1, Math.round(sourceWidth * scale));
-    out.height = Math.max(1, Math.round(sourceHeight * scale));
-    
-    const octx = out.getContext('2d');
-    octx.fillStyle = currentBgColor;
-    octx.fillRect(0, 0, out.width, out.height);
-    
-    // Сбрасываем трансформации холста перед копированием
-    ctx.save();
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    octx.drawImage(canvas, 0, 0, sourceWidth, sourceHeight, 0, 0, out.width, out.height);
-    ctx.restore();
-    
-    return out.toDataURL('image/png');
-}
+        function exportImage(type, quality, maxSide) {
+            const scale = Math.min(1, maxSide / Math.max(canvas.width, canvas.height));
+            const out = document.createElement('canvas');
+            out.width = Math.round(canvas.width * scale);
+            out.height = Math.round(canvas.height * scale);
+            out.getContext('2d').drawImage(canvas, 0, 0, out.width, out.height);
+            return out.toDataURL(type, quality);
+        }
 
-async function exportVerifiedJpeg() {
-    const dataURL = exportImage(1200);
-    return { image: dataURL, note: 'png-stable' };
-}
+        // ---- Экспорт JPEG с самопроверкой ----
+        // На некоторых iPhone кодирование JPEG из canvas иногда портит нижнюю часть
+        // (серая заливка). Поэтому каждый результат декодируется обратно и сверяется
+        // с исходным холстом; при расхождении пробуем другой способ.
+        function blobToDataURL(blob) {
+            return new Promise((resolve, reject) => {
+                const fr = new FileReader();
+                fr.onload = () => resolve(fr.result);
+                fr.onerror = () => reject(new Error('чтение картинки'));
+                fr.readAsDataURL(blob);
+            });
+        }
 
+        function canvasToJpegBlob(c, quality) {
+            return new Promise((resolve, reject) =>
+                c.toBlob(b => b ? resolve(b) : reject(new Error('не удалось закодировать')), 'image/jpeg', quality));
+        }
+
+        function scaledCanvas(maxSide, viaPixels) {
+            const scale = Math.min(1, maxSide / Math.max(canvas.width, canvas.height));
+            const out = document.createElement('canvas');
+            out.width = Math.max(1, Math.round(canvas.width * scale));
+            out.height = Math.max(1, Math.round(canvas.height * scale));
+            const octx = out.getContext('2d');
+            if (viaPixels && scale === 1) {
+                // без drawImage: переносим пиксели напрямую
+                octx.putImageData(ctx.getImageData(0, 0, canvas.width, canvas.height), 0, 0);
+            } else {
+                octx.fillStyle = currentBgColor;
+                octx.fillRect(0, 0, out.width, out.height);
+                octx.drawImage(canvas, 0, 0, out.width, out.height);
+            }
+            return out;
+        }
+
+        // Сравниваем точки декодированного JPEG с точками исходного холста
+        async function jpegMatchesCanvas(dataURL) {
+            const img = new Image();
+            img.src = dataURL;
+            await img.decode();
+            const chk = document.createElement('canvas');
+            chk.width = img.naturalWidth; chk.height = img.naturalHeight;
+            const cctx = chk.getContext('2d', { willReadFrequently: true });
+            cctx.drawImage(img, 0, 0);
+            let bad = 0, total = 0;
+            for (const fy of [0.03, 0.12, 0.22, 0.32, 0.42, 0.52, 0.62, 0.72, 0.82, 0.92, 0.97]) {
+                for (const fx of [0.04, 0.5, 0.96]) {
+                    const a = cctx.getImageData(Math.floor(fx * (chk.width - 1)), Math.floor(fy * (chk.height - 1)), 1, 1).data;
+                    const b = ctx.getImageData(Math.floor(fx * (canvas.width - 1)), Math.floor(fy * (canvas.height - 1)), 1, 1).data;
+                    total++;
+                    if (Math.abs(a[0] - b[0]) > 60 || Math.abs(a[1] - b[1]) > 60 || Math.abs(a[2] - b[2]) > 60) bad++;
+                }
+            }
+            return bad <= 2;   // допускаем пару точек на линиях рисунка
+        }
+
+        async function exportVerifiedJpeg() {
+            const strategies = [
+                { note: 'full-blob',   max: 1280, pixels: false, q: 0.9 },
+                { note: 'pixels-blob', max: 4096, pixels: true,  q: 0.9 },
+                { note: 'small-blob',  max: 800,  pixels: false, q: 0.85 },
+                { note: 'tiny-blob',   max: 480,  pixels: false, q: 0.85 },
+            ];
+            for (const s of strategies) {
+                try {
+                    const blob = await canvasToJpegBlob(scaledCanvas(s.max, s.pixels), s.q);
+                    const dataURL = await blobToDataURL(blob);
+                    if (await jpegMatchesCanvas(dataURL)) return { image: dataURL, note: s.note };
+                } catch (e) { /* пробуем следующий способ */ }
+            }
+            throw new Error('не удалось подготовить картинку на этом устройстве');
+        }
 
         function showPreview(res) {
             return new Promise(resolve => {
@@ -450,34 +503,7 @@ async function exportVerifiedJpeg() {
             const chatId = chat?.id || user?.id;
             const inline = !!tg.initDataUnsafe?.query_id;
             // если есть query_id, Telegram принимает только JPEG
-            // Стабильный экспорт через PNG, который не ломает графический буфер iOS
-function exportImage(maxSide = 1200) {
-    const sourceWidth = canvas.width;
-    const sourceHeight = canvas.height;
-    
-    const scale = Math.min(1, maxSide / Math.max(sourceWidth, sourceHeight));
-    const out = document.createElement('canvas');
-    out.width = Math.max(1, Math.round(sourceWidth * scale));
-    out.height = Math.max(1, Math.round(sourceHeight * scale));
-    
-    const octx = out.getContext('2d');
-    octx.fillStyle = currentBgColor;
-    octx.fillRect(0, 0, out.width, out.height);
-    
-    // Сбрасываем трансформации холста перед копированием
-    ctx.save();
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    octx.drawImage(canvas, 0, 0, sourceWidth, sourceHeight, 0, 0, out.width, out.height);
-    ctx.restore();
-    
-    return out.toDataURL('image/png');
-}
-
-async function exportVerifiedJpeg() {
-    const dataURL = exportImage(1200);
-    return { image: dataURL, note: 'png-stable' };
-}
-
+            const dataURL = inline ? exportImage('image/jpeg', 0.92, 1920) : canvas.toDataURL('image/png');
 
             sending = true;
             fetch('/api/upload', {
