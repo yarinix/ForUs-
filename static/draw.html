@@ -218,23 +218,21 @@
         }
 
         function setBgColor(color) {
-            const displayWidth = canvas.clientWidth;
-            const displayHeight = canvas.clientHeight;
-            
-            // Сохраняем текущий рисунок
-            const tempCanvas = document.createElement('canvas');
-            const tempCtx = tempCanvas.getContext('2d');
-            tempCanvas.width = canvas.width;
-            tempCanvas.height = canvas.height;
-            tempCtx.drawImage(canvas, 0, 0);
-
-            // Меняем фон
+            // Заменяем пиксели старого фона на новый (рисунок остаётся на месте)
+            const oldRgb = hexToRgb(currentBgColor);
+            const newRgb = hexToRgb(color);
             currentBgColor = color;
-            ctx.fillStyle = currentBgColor;
-            ctx.fillRect(0, 0, displayWidth, displayHeight);
 
-            // Возвращаем старый рисунок поверх
-            ctx.drawImage(tempCanvas, 0, 0, tempCanvas.width / dpr, tempCanvas.height / dpr);
+            const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const d = imgData.data;
+            for (let i = 0; i < d.length; i += 4) {
+                if (d[i] === oldRgb.r && d[i + 1] === oldRgb.g && d[i + 2] === oldRgb.b) {
+                    d[i] = newRgb.r;
+                    d[i + 1] = newRgb.g;
+                    d[i + 2] = newRgb.b;
+                }
+            }
+            ctx.putImageData(imgData, 0, 0);
             updateContextStyles();
         }
 
@@ -360,7 +358,10 @@
             ctx.fillRect(0, 0, displayWidth, displayHeight);
         }
 
+        let sending = false;
+
         function sendDrawing() {
+            if (sending) return;
             const dataURL = canvas.toDataURL('image/png');
             const user = tg.initDataUnsafe?.user;
             const chat = tg.initDataUnsafe?.chat;
@@ -368,26 +369,30 @@
 
             const userName = user?.first_name || user?.username || "Друг";
 
-            if (!chatId) {
-                alert('Не удалось определить пользователя');
+            if (!chatId || !tg.initData) {
+                alert('Не удалось определить пользователя. Открой холст через Telegram.');
                 return;
             }
 
+            sending = true;
             fetch('/api/upload', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    chat_id: chatId, 
-                    name: userName, 
-                    image: dataURL 
+                body: JSON.stringify({
+                    chat_id: chatId,
+                    name: userName,
+                    image: dataURL,
+                    init_data: tg.initData   // подпись Telegram: по ней бот проверяет, что это ты
                 })
             }).then(response => {
                 if (response.ok) {
                     tg.close();
                 } else {
+                    sending = false;
                     alert('Ошибка при отправке рисунка');
                 }
             }).catch(err => {
+                sending = false;
                 alert('Ошибка сети: ' + err);
             });
         }
