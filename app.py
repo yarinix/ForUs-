@@ -703,9 +703,13 @@ def run_http_server():
     server.serve_forever()
 
 async def main():
-    # Если у тебя здесь уже есть свой запуск или инициализация базы, 
-    # оставь их, главное — запуск поллинга бота:
+    logging.info("Инициализация базы данных...")
+
+    await asyncio.to_thread(init_db)
+
+    logging.info("База данных готова.")
     logging.info("Бот запущен...")
+
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
