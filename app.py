@@ -514,6 +514,55 @@ async def cmd_command_list(message: types.Message):
   )
 
 
+@dp.message(Command("memorytest"))
+async def cmd_memory_test(message: types.Message):
+    user_id = message.from_user.id
+
+    if user_id not in ALLOWED_USER_IDS:
+        return
+
+    test_text = "Тестовая запись памяти"
+
+    try:
+        await asyncio.to_thread(
+            save_memory,
+            user_id,
+            "inside_joke",
+            test_text,
+        )
+
+        with get_db() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT id
+                    FROM memories
+                    WHERE user_id = %s
+                      AND memory_type = %s
+                      AND content = %s
+                    ORDER BY id DESC
+                    LIMIT 1
+                    """,
+                    (user_id, "inside_joke", test_text),
+                )
+                result = cursor.fetchone()
+
+        if result:
+            await message.answer(
+                f"✅ Тест пройден! Воспоминание сохранено. ID: {result[0]}"
+            )
+        else:
+            await message.answer(
+                "⚠️ Запись не найдена после сохранения."
+            )
+
+    except Exception:
+        logging.exception("Ошибка тестирования новой памяти")
+        await message.answer(
+            "❌ Проверка не пройдена. Посмотри логи Render."
+        )
+
+
 @dp.message(Command("memory"))
 async def cmd_memory(message: types.Message):
   user_id = message.from_user.id
