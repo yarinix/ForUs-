@@ -1,534 +1,902 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Рисование</title>
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <style>
-        body {
-            margin: 0;
-            padding: 0;
-            background: #111;
-            color: #fff;
-            font-family: sans-serif;
-            display: flex;
-            flex-direction: column;
-            height: 100vh;
-            overflow: hidden;
-        }
-        canvas {
-            touch-action: none;
-            flex: 1;
-            width: 100%;
-            display: block;
-        }
-        .toolbar {
-            padding: 10px 12px;
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-            width: 100%;
-            box-sizing: border-box;
-            background: #1a1a1a;
-            align-items: center;
-            border-top: 1px solid #333;
-            flex-shrink: 0;
-        }
-        .row {
-            display: flex;
-            gap: 8px;
-            align-items: center;
-            justify-content: center;
-            width: 100%;
-        }
-        .tool-btn {
-            background: #2a2a2a;
-            color: #aaa;
-            border: 1px solid #444;
-            padding: 6px 10px;
-            border-radius: 6px;
-            font-size: 13px;
-            cursor: pointer;
-            flex: 1;
-            text-align: center;
-            font-weight: 500;
-        }
-        .tool-btn.active {
-            background: #2ea6ff;
-            color: #fff;
-            border-color: #2ea6ff;
-        }
-        .colors {
-            display: flex;
-            gap: 10px;
-            align-items: center;
-            justify-content: center;
-        }
-        .color-btn {
-            width: 26px;
-            height: 26px;
-            border-radius: 50%;
-            cursor: pointer;
-            border: 2px solid rgba(255, 255, 255, 0.2);
-            transition: transform 0.15s, border-color 0.15s;
-        }
-        .color-btn.active {
-            border-color: #fff;
-            transform: scale(1.2);
-        }
-        .bg-colors {
-            display: flex;
-            gap: 6px;
-            align-items: center;
-        }
-        .bg-btn {
-            width: 20px;
-            height: 20px;
-            border-radius: 4px;
-            cursor: pointer;
-            border: 1px solid #555;
-        }
-        .actions {
-            display: flex;
-            gap: 8px;
-            width: 100%;
-            justify-content: space-between;
-        }
-        button.action-btn {
-            background: #2ea6ff;
-            color: white;
-            border: none;
-            padding: 8px 16px;
-            border-radius: 6px;
-            font-size: 14px;
-            cursor: pointer;
-            font-weight: bold;
-            flex: 1;
-        }
-        button.clear {
-            background: #ff4757;
-        }
-        #preview {
-            position: fixed; inset: 0; z-index: 10; display: none;
-            flex-direction: column; background: #000; padding: 12px; box-sizing: border-box; gap: 10px;
-        }
-        #preview .note { text-align: center; font-size: 13px; color: #aaa; }
-        #previewImg { flex: 1; min-height: 0; width: 100%; object-fit: contain; background: #333; }
-        #preview .row button { flex: 1; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Рисунок</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+:root {
+  --bg-a: #2c2950;
+  --bg-b: #17152b;
+  --panel: rgba(36, 33, 66, 0.86);
+  --glass: rgba(255, 255, 255, 0.09);
+  --glass-line: rgba(255, 255, 255, 0.10);
+  --text: #ece9ff;
+  --muted: #9d98c4;
+  --accent: #b9a8ff;
+  --accent-soft: rgba(185, 168, 255, 0.18);
+  --paper-shadow: 0 14px 40px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.07);
+  --send-a: #ff5d8f;
+  --send-b: #ff9a6b;
+  --rounded: ui-rounded, "SF Pro Rounded", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+[data-theme="light"] {
+  --bg-a: #f4f1ff;
+  --bg-b: #e3deF6;
+  --panel: rgba(255, 255, 255, 0.9);
+  --glass: rgba(60, 50, 110, 0.07);
+  --glass-line: rgba(60, 50, 110, 0.12);
+  --text: #2b2540;
+  --muted: #7a7499;
+  --accent: #6d52e8;
+  --accent-soft: rgba(109, 82, 232, 0.14);
+  --paper-shadow: 0 12px 32px rgba(60, 50, 110, 0.22), 0 0 0 1px rgba(60, 50, 110, 0.10);
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; height: 100%; overflow: hidden; overscroll-behavior: none; }
+body {
+  font-family: var(--rounded);
+  color: var(--text);
+  background: radial-gradient(120% 80% at 50% 0%, var(--bg-a) 0%, var(--bg-b) 65%);
+  user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+}
+button { font: inherit; color: inherit; border: 0; background: none; padding: 0; cursor: pointer; }
+svg { display: block; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+#app {
+  height: 100vh; height: 100dvh;
+  display: flex; flex-direction: column;
+}
+
+/* ---------- верхняя панель ---------- */
+#topbar {
+  display: flex; align-items: center; gap: 8px;
+  padding: calc(8px + env(safe-area-inset-top, 0px)) 12px 6px;
+  flex-shrink: 0;
+}
+.spacer { flex: 1; }
+.icon-btn {
+  width: 40px; height: 40px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--glass); border: 1px solid var(--glass-line);
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  transition: transform .12s, opacity .12s, background .12s;
+}
+.icon-btn svg { width: 20px; height: 20px; }
+.icon-btn:active { transform: scale(.92); }
+.icon-btn[disabled] { opacity: .35; pointer-events: none; }
+.icon-btn[hidden] { display: none; }
+
+.send {
+  height: 40px; padding: 0 18px 0 14px; border-radius: 20px;
+  display: flex; align-items: center; gap: 7px;
+  color: #fff; font-weight: 700; font-size: 15px; letter-spacing: .1px;
+  background: linear-gradient(135deg, var(--send-a), var(--send-b));
+  box-shadow: 0 6px 18px rgba(255, 93, 143, .38);
+  transition: transform .12s, filter .12s;
+}
+.send svg { width: 18px; height: 18px; fill: #fff; stroke: none; }
+.send:active { transform: scale(.96); }
+.send[disabled] { filter: saturate(.6) brightness(.9); pointer-events: none; }
+.send .spin { display: none; width: 16px; height: 16px; border-radius: 50%;
+  border: 2.4px solid rgba(255,255,255,.45); border-top-color: #fff; animation: spin .7s linear infinite; }
+.send.busy .spin { display: block; }
+.send.busy .heart { display: none; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.send.done .heart { animation: beat .5s ease; }
+@keyframes beat { 0% { transform: scale(1);} 40% { transform: scale(1.45);} 100% { transform: scale(1);} }
+
+/* ---------- лист ---------- */
+#viewport {
+  position: relative; flex: 1; min-height: 0; overflow: hidden;
+  touch-action: none;
+}
+#stage {
+  position: absolute; left: 12px; top: 8px;
+  transform-origin: 0 0;
+  border-radius: 14px; overflow: hidden;
+  box-shadow: var(--paper-shadow);
+  will-change: transform;
+}
+#stage canvas { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: block; }
+#liveCanvas { pointer-events: none; }
+#textMark { position: absolute; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%;
+  border: 2px solid var(--accent); background: rgba(255,255,255,.7); display: none; pointer-events: none; }
+
+#zoomBadge {
+  position: absolute; right: 22px; top: 16px; padding: 4px 10px; border-radius: 12px;
+  font-size: 12px; font-weight: 600; background: var(--panel); border: 1px solid var(--glass-line);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); display: none; pointer-events: none;
+}
+
+/* ---------- нижняя панель ---------- */
+#dock {
+  flex-shrink: 0; background: var(--panel);
+  backdrop-filter: blur(22px); -webkit-backdrop-filter: blur(22px);
+  border-top: 1px solid var(--glass-line); border-radius: 22px 22px 0 0;
+  padding: 10px 10px calc(8px + env(safe-area-inset-bottom, 0px));
+  display: flex; flex-direction: column; gap: 8px;
+}
+#context { min-height: 40px; display: flex; align-items: center; gap: 10px; padding: 0 4px; }
+.dot-preview { width: 40px; height: 40px; flex-shrink: 0; display: grid; place-items: center; border-radius: 12px; background: var(--glass); }
+.dot-preview i { display: block; border-radius: 50%; background: currentColor; max-width: 34px; max-height: 34px; }
+.hint { color: var(--muted); font-size: 13px; line-height: 1.3; }
+
+input[type=range] { -webkit-appearance: none; appearance: none; flex: 1; height: 28px; background: none; margin: 0; }
+input[type=range]::-webkit-slider-runnable-track { height: 5px; border-radius: 3px; background: var(--glass-line); }
+input[type=range]::-moz-range-track { height: 5px; border-radius: 3px; background: var(--glass-line); }
+input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 24px; height: 24px; margin-top: -9.5px; border-radius: 50%;
+  background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.35); border: 3px solid var(--accent); }
+input[type=range]::-moz-range-thumb { width: 18px; height: 18px; border-radius: 50%; background: #fff; border: 3px solid var(--accent); }
+
+.chips { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; flex: 1; }
+.chips::-webkit-scrollbar { display: none; }
+.chip { min-width: 40px; height: 38px; padding: 0 10px; border-radius: 12px; display: grid; place-items: center; flex-shrink: 0;
+  background: var(--glass); font-size: 22px; transition: background .12s, transform .12s; }
+.chip svg { width: 22px; height: 22px; }
+.chip.text { font-size: 13px; font-weight: 600; }
+.chip.on { background: var(--accent-soft); color: var(--accent); box-shadow: inset 0 0 0 1.5px var(--accent); }
+.chip:active { transform: scale(.94); }
+
+#colors { display: flex; align-items: center; gap: 9px; overflow-x: auto; scrollbar-width: none; padding: 3px 4px; }
+#colors::-webkit-scrollbar { display: none; }
+.sw { width: 30px; height: 30px; flex-shrink: 0; border-radius: 50%; position: relative;
+  box-shadow: inset 0 0 0 1px rgba(128,128,128,.35); transition: transform .12s; }
+.sw.on { transform: scale(1.12); }
+.sw.on::after { content: ""; position: absolute; inset: -4px; border-radius: 50%; border: 2.5px solid var(--text); }
+.sw.custom { background: conic-gradient(#ff4d6d, #ffd23f, #2ec27e, #3a86ff, #b388eb, #ff4d6d); }
+.sw.custom input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
+.sep { width: 1px; height: 22px; background: var(--glass-line); flex-shrink: 0; }
+#colors.off .sw { opacity: .35; pointer-events: none; }
+.bg-btn { width: 30px; height: 30px; flex-shrink: 0; border-radius: 9px; display: grid; place-items: center; background: var(--glass); }
+.bg-btn svg { width: 18px; height: 18px; }
+
+#tools { display: flex; gap: 2px; }
+.tool { flex: 1; min-width: 0; padding: 6px 0 5px; border-radius: 14px; display: flex; flex-direction: column; align-items: center; gap: 3px;
+  color: var(--muted); transition: background .12s, color .12s, transform .12s; }
+.tool svg { width: 24px; height: 24px; }
+.tool span { font-size: 10.5px; font-weight: 600; line-height: 1; }
+.tool.on { background: var(--accent-soft); color: var(--accent); }
+.tool:active { transform: scale(.94); }
+
+/* ---------- окна ---------- */
+.sheet-wrap { position: fixed; inset: 0; z-index: 20; display: none; align-items: flex-end; background: rgba(8,6,20,.45); }
+.sheet-wrap.open { display: flex; }
+.sheet { width: 100%; background: var(--panel); border-radius: 24px 24px 0 0; padding: 16px 16px calc(18px + env(safe-area-inset-bottom, 0px));
+  backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); border-top: 1px solid var(--glass-line);
+  animation: rise .22s ease-out; }
+@keyframes rise { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+.sheet h3 { margin: 0 0 12px; font-size: 16px; font-weight: 700; }
+.sheet .row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; align-items: center; }
+.paper-sw { width: 44px; height: 44px; border-radius: 12px; box-shadow: inset 0 0 0 1px rgba(128,128,128,.4); position: relative; }
+.paper-sw.on { box-shadow: inset 0 0 0 1px rgba(128,128,128,.4), 0 0 0 3px var(--accent); }
+.paper-sw.custom { background: conic-gradient(#ffd6e0, #d9e8ff, #e6dcff, #fff4cc, #ffd6e0); }
+.paper-sw.custom input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; }
+.pill { height: 38px; padding: 0 14px; border-radius: 19px; background: var(--glass); font-size: 14px; font-weight: 600; }
+.pill.on { background: var(--accent-soft); color: var(--accent); box-shadow: inset 0 0 0 1.5px var(--accent); }
+.pill.main { background: var(--accent); color: #17152b; }
+.sheet .actions { display: flex; gap: 8px; }
+.sheet .actions .pill { flex: 1; height: 44px; border-radius: 22px; }
+#textInput { width: 100%; height: 48px; border-radius: 14px; border: 1.5px solid var(--glass-line); background: var(--glass);
+  color: var(--text); font: inherit; font-size: 18px; padding: 0 14px; margin-bottom: 12px; outline: none; user-select: text; -webkit-user-select: text; }
+#textInput:focus { border-color: var(--accent); }
+
+#toast { position: fixed; left: 50%; bottom: 190px; transform: translate(-50%, 10px); max-width: 86%; padding: 10px 16px; border-radius: 16px;
+  background: var(--panel); border: 1px solid var(--glass-line); font-size: 14px; font-weight: 600; text-align: center;
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; z-index: 30; }
+#toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
 </head>
-<body>
-    <canvas id="paintCanvas"></canvas>
-    
-    <div class="toolbar">
-        <!-- Ряд 1: Инструменты (Кисть, Ластик, Заливка) и выбор фона -->
-        <div class="row">
-            <button class="tool-btn active" id="btnPen" onclick="setTool('pen')">✏️ Кисть</button>
-            <button class="tool-btn" id="btnEraser" onclick="setTool('eraser')">🧹 Ластик</button>
-            <button class="tool-btn" id="btnFill" onclick="setTool('fill')">🪣 Заливка</button>
-            <div class="bg-colors" title="Цвет фона">
-                <div class="bg-btn" style="background: #1e1e1e;" onclick="setBgColor('#1e1e1e')"></div>
-                <div class="bg-btn" style="background: #ffffff;" onclick="setBgColor('#ffffff')"></div>
-                <div class="bg-btn" style="background: #000000;" onclick="setBgColor('#000000')"></div>
-                <div class="bg-btn" style="background: #f4eedb;" onclick="setBgColor('#f4eedb')"></div>
-            </div>
-        </div>
+<body data-theme="dark">
+<div id="app">
 
-        <!-- Ряд 2: Палитра цветов для кисти -->
-        <div class="colors">
-            <div class="color-btn active" style="background: #ffffff;" onclick="setColor('#ffffff', this)"></div>
-            <div class="color-btn" style="background: #ff4757;" onclick="setColor('#ff4757', this)"></div>
-            <div class="color-btn" style="background: #2ed573;" onclick="setColor('#2ed573', this)"></div>
-            <div class="color-btn" style="background: #1e90ff;" onclick="setColor('#1e90ff', this)"></div>
-            <div class="color-btn" style="background: #ffa502;" onclick="setColor('#ffa502', this)"></div>
-            <div class="color-btn" style="background: #9b59b6;" onclick="setColor('#9b59b6', this)"></div>
-            <div class="color-btn" style="background: #ff6b81;" onclick="setColor('#ff6b81', this)"></div>
-            <div class="color-btn" style="background: #000000;" onclick="setColor('#000000', this)"></div>
-        </div>
+  <header id="topbar">
+    <button class="icon-btn" id="undo" aria-label="Отменить" disabled>
+      <svg viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>
+    </button>
+    <button class="icon-btn" id="redo" aria-label="Повторить" disabled>
+      <svg viewBox="0 0 24 24"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg>
+    </button>
+    <button class="icon-btn" id="clear" aria-label="Очистить лист">
+      <svg viewBox="0 0 24 24"><path d="M4.5 7h15"/><path d="M9.5 7V4.5h5V7"/><path d="m6.5 7 .9 12.5h9.2L17.5 7"/></svg>
+    </button>
+    <button class="icon-btn" id="resetView" aria-label="Вернуть масштаб" hidden>
+      <svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+    </button>
+    <div class="spacer"></div>
+    <button class="send" id="send" aria-label="Отправить рисунок">
+      <svg class="heart" viewBox="0 0 24 24"><path d="M12 21s-8-5-8-11.2A4.6 4.6 0 0 1 12 7a4.6 4.6 0 0 1 8 2.8C20 16 12 21 12 21z"/></svg>
+      <i class="spin"></i>
+      <span>Отправить</span>
+    </button>
+  </header>
 
-        <!-- Ряд 3: Кнопки очистки и отправки -->
-        <div class="actions">
-            <button class="action-btn clear" onclick="clearCanvas()">Очистить</button>
-            <button class="action-btn" onclick="sendDrawing()">Отправить</button>
-        </div>
+  <main id="viewport">
+    <div id="stage">
+      <canvas id="bgCanvas"></canvas>
+      <canvas id="artCanvas"></canvas>
+      <canvas id="liveCanvas"></canvas>
+      <div id="textMark"></div>
     </div>
+    <div id="zoomBadge">100%</div>
+  </main>
 
-    <div id="preview">
-        <div class="note">Так рисунок будет отправлен. Всё верно?</div>
-        <img id="previewImg" alt="Предпросмотр">
-        <div class="row">
-            <button class="action-btn clear" id="previewBack">Назад</button>
-            <button class="action-btn" id="previewOk">Отправить</button>
-        </div>
+  <section id="dock">
+    <div id="context"></div>
+    <div id="colors"></div>
+    <nav id="tools"></nav>
+  </section>
+</div>
+
+<!-- фон листа -->
+<div class="sheet-wrap" id="bgSheet">
+  <div class="sheet">
+    <h3>Фон листа</h3>
+    <div class="row" id="paperColors"></div>
+    <div class="row" id="paperPatterns"></div>
+    <div class="actions"><button class="pill main" id="bgDone">Готово</button></div>
+  </div>
+</div>
+
+<!-- текст -->
+<div class="sheet-wrap" id="textSheet">
+  <div class="sheet">
+    <h3>Надпись</h3>
+    <input id="textInput" type="text" maxlength="60" placeholder="Что написать?" autocomplete="off" autocapitalize="sentences">
+    <div class="actions">
+      <button class="pill" id="textCancel">Отмена</button>
+      <button class="pill main" id="textDone">Готово</button>
     </div>
+  </div>
+</div>
 
-    <script>
-        const tg = window.Telegram.WebApp;
-        tg.expand();
+<div id="toast" role="status"></div>
 
-        const canvas = document.getElementById('paintCanvas');
-        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+<script>
+(() => {
+  'use strict';
 
-        let currentTool = 'pen'; // 'pen', 'eraser', 'fill'
-        let currentColor = '#ffffff';
-        let currentBgColor = '#1e1e1e';
-        let currentLineWidth = 6;
+  // ================= Telegram =================
+  const tg = (window.Telegram && window.Telegram.WebApp) || {};
+  const call = (fn, ...a) => { try { return fn && fn.apply(tg, a); } catch (e) {} };
+  call(tg.ready); call(tg.expand);
+  call(tg.disableVerticalSwipes);          // чтобы свайп вниз не закрывал приложение при рисовании
+  const light = tg.colorScheme === 'light';
+  document.body.dataset.theme = light ? 'light' : 'dark';
+  call(tg.setHeaderColor, light ? '#f4f1ff' : '#2c2950');
+  call(tg.setBackgroundColor, light ? '#e3def6' : '#17152b');
+  const haptic = (kind) => {
+    const h = tg.HapticFeedback; if (!h) return;
+    try { kind === 'tick' ? h.selectionChanged() : kind === 'ok' ? h.notificationOccurred('success')
+        : kind === 'err' ? h.notificationOccurred('error') : h.impactOccurred('light'); } catch (e) {}
+  };
 
-        function resize() {
-            const dpr = window.devicePixelRatio || 1;
-            const displayWidth = canvas.clientWidth;
-            const displayHeight = canvas.clientHeight;
+  // ================= Состояние =================
+  const COLORS = ['#2b2540', '#ffffff', '#ff4d6d', '#ff8fa3', '#ff9f1c', '#ffd23f', '#2ec27e',
+                  '#12b5a6', '#3a86ff', '#6c5ce7', '#b388eb', '#8d5a3b', '#9aa0a6'];
+  const PAPERS = ['#ffffff', '#ffe9ef', '#e6f0ff', '#efe9ff', '#fff3cf', '#23232b', '#000000'];
+  const PATTERNS = [['none', 'Без узора'], ['grid', 'Клетка'], ['dots', 'Точки'], ['lines', 'Линейки']];
+  const STAMPS = ['❤️', '💖', '🌸', '⭐', '✨', '🥰', '😘', '🐱', '🌙', '🔥', '🎁', '🍓'];
+  const SHAPES = [
+    ['line',    'Линия',   '<path d="M5 19 19 5"/>'],
+    ['arrow',   'Стрелка', '<path d="M5 19 19 5"/><path d="M10 5h9v9"/>'],
+    ['rect',    'Квадрат', '<rect x="5" y="5" width="14" height="14" rx="2.5"/>'],
+    ['ellipse', 'Круг',    '<circle cx="12" cy="12" r="7.5"/>'],
+    ['heart',   'Сердце',  '<path d="M12 20s-7.5-4.6-7.5-10.4A4.2 4.2 0 0 1 12 7.2a4.2 4.2 0 0 1 7.5 2.4C19.500 15.400 12 20 12 20z"/>'],
+    ['star',    'Звезда',  '<path d="m12 4 2.4 5 5.4.7-4 3.800 1 5.400L12 16.300 7.200 18.900l1-5.400-4-3.800 5.400-.7z"/>'],
+  ];
+  const TOOLS = [
+    ['pen',    'Кисть',   '<path d="M4 20l1-4L16.500 4.500a2.100 2.100 0 0 1 3 3L8 19l-4 1z"/><path d="m14 7 3 3"/>'],
+    ['marker', 'Маркер',  '<path d="m9 15 5.500-9.500 4.500 2.600-5.500 9.500L9 18z"/><path d="M9 15l-2 4.500 4.500-1.500"/><path d="M14 20h6"/>'],
+    ['eraser', 'Ластик',  '<path d="M7 19 3.800 15.800a1.600 1.600 0 0 1 0-2.300l8.400-8.400a1.600 1.600 0 0 1 2.300 0l5 5a1.600 1.600 0 0 1 0 2.300L12 19"/><path d="M7 19h13"/><path d="m9 8.500 6.500 6.500"/>'],
+    ['fill',   'Заливка', '<path d="m5 11 7-7 7 7-6.200 6.200a2 2 0 0 1-2.800 0z"/><path d="M19.500 15c1.200 1.600 2 2.600 2 3.600a2 2 0 0 1-4 0c0-1 .8-2 2-3.600z"/>'],
+    ['pick',   'Пипетка', '<path d="m14.500 5.500 4 4"/><path d="m16 4 4 4-2 2-4-4z"/><path d="m14 7-8.500 8.500L5 19l3.500-.5L17 10"/>'],
+    ['shape',  'Фигуры',  '<rect x="3.500" y="10" width="9.500" height="9.500" rx="2"/><circle cx="15.500" cy="8.500" r="4.500"/>'],
+    ['stamp',  'Штампы',  '<path d="M12 20.500s-8-5-8-11.200A4.600 4.600 0 0 1 12 6.500a4.600 4.600 0 0 1 8 2.800C20 15.500 12 20.500 12 20.500z"/>'],
+    ['text',   'Текст',   '<path d="M5 7V5h14v2"/><path d="M12 5v14"/><path d="M9 19h6"/>'],
+  ];
 
-            if (displayWidth === 0 || displayHeight === 0) return;
+  const S = {
+    tool: 'pen', prevTool: 'pen', color: COLORS[0], size: 8,
+    shape: 'line', shapeFill: false, stamp: STAMPS[0],
+    paper: { color: '#ffffff', pattern: 'none' },
+    dirty: false, sending: false,
+  };
+  const KIND = { pen: 1, marker: 2.6, eraser: 2.2 };   // множитель толщины
 
-            const tempCanvas = document.createElement('canvas');
-            const tempCtx = tempCanvas.getContext('2d');
-            tempCanvas.width = canvas.width;
-            tempCanvas.height = canvas.height;
-            tempCtx.drawImage(canvas, 0, 0);
+  // ================= Холст =================
+  const DPR = Math.min(window.devicePixelRatio || 1, 2);
+  const PAD_X = 12, PAD_Y = 8;
+  const $ = (id) => document.getElementById(id);
+  const viewport = $('viewport'), stage = $('stage');
+  const bgCanvas = $('bgCanvas'), artCanvas = $('artCanvas'), liveCanvas = $('liveCanvas');
+  const bgCtx = bgCanvas.getContext('2d');
+  const artCtx = artCanvas.getContext('2d', { willReadFrequently: true });
+  const liveCtx = liveCanvas.getContext('2d');
+  let W = 0, H = 0;   // размер листа в CSS-пикселях
 
-            canvas.width = displayWidth * dpr;
-            canvas.height = displayHeight * dpr;
+  function applySize(canvas, ctx) {
+    canvas.width = Math.round(W * DPR); canvas.height = Math.round(H * DPR);
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  }
 
-            ctx.scale(dpr, dpr);
+  function isDark(hex) {
+    const n = parseInt(hex.slice(1), 16);
+    return (0.299 * (n >> 16) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) < 110;
+  }
 
-            // Первоначальная заливка фона, если холст пустой
-            ctx.fillStyle = currentBgColor;
-            ctx.fillRect(0, 0, displayWidth, displayHeight);
+  function drawBg() {
+    const c = bgCtx;
+    c.setTransform(DPR, 0, 0, DPR, 0, 0);
+    c.fillStyle = S.paper.color; c.fillRect(0, 0, W, H);
+    const ink = isDark(S.paper.color) ? 'rgba(255,255,255,.12)' : 'rgba(40,30,90,.10)';
+    c.strokeStyle = ink; c.fillStyle = ink; c.lineWidth = 1;
+    if (S.paper.pattern === 'grid') {
+      c.beginPath();
+      for (let x = 28; x < W; x += 28) { c.moveTo(x + .5, 0); c.lineTo(x + .5, H); }
+      for (let y = 28; y < H; y += 28) { c.moveTo(0, y + .5); c.lineTo(W, y + .5); }
+      c.stroke();
+    } else if (S.paper.pattern === 'dots') {
+      for (let x = 24; x < W; x += 24) for (let y = 24; y < H; y += 24) { c.beginPath(); c.arc(x, y, 1.3, 0, 7); c.fill(); }
+    } else if (S.paper.pattern === 'lines') {
+      c.beginPath();
+      for (let y = 36; y < H; y += 32) { c.moveTo(0, y + .5); c.lineTo(W, y + .5); }
+      c.stroke();
+    }
+  }
 
-            ctx.drawImage(tempCanvas, 0, 0, tempCanvas.width / dpr, tempCanvas.height / dpr);
+  function layout(initial) {
+    const r = viewport.getBoundingClientRect();
+    const w = Math.max(120, Math.floor(r.width - PAD_X * 2));
+    const h = Math.max(120, Math.floor(r.height - PAD_Y * 2 - 4));
+    if (!initial && w === W && h === H) return;
+    let old = null;
+    if (!initial && artCanvas.width) {
+      old = document.createElement('canvas'); old.width = artCanvas.width; old.height = artCanvas.height;
+      old.getContext('2d').drawImage(artCanvas, 0, 0);
+    }
+    W = w; H = h;
+    stage.style.width = W + 'px'; stage.style.height = H + 'px';
+    applySize(bgCanvas, bgCtx); applySize(artCanvas, artCtx); applySize(liveCanvas, liveCtx);
+    drawBg();
+    if (old) {   // рисунок остаётся на месте, привязан к левому верхнему углу
+      artCtx.save(); artCtx.setTransform(1, 0, 0, 1, 0, 0); artCtx.drawImage(old, 0, 0); artCtx.restore();
+      history.length = 0; redoStack.length = 0; updateHistoryButtons();
+    }
+    applyView();
+  }
 
-            updateContextStyles();
+  // Склеенный лист: фон + рисунок (всегда непрозрачный)
+  function flatten(withPattern = true) {
+    const c = document.createElement('canvas'); c.width = artCanvas.width; c.height = artCanvas.height;
+    const x = c.getContext('2d', { willReadFrequently: true });
+    if (withPattern) x.drawImage(bgCanvas, 0, 0);
+    else { x.fillStyle = S.paper.color; x.fillRect(0, 0, c.width, c.height); }
+    x.drawImage(artCanvas, 0, 0);
+    return c;
+  }
+
+  // ================= Отмена / повтор =================
+  const history = [], redoStack = [];
+  const MAX_HISTORY = 12;
+  const snap = () => artCtx.getImageData(0, 0, artCanvas.width, artCanvas.height);
+
+  function pushHistory() {
+    history.push(snap());
+    if (history.length > MAX_HISTORY) history.shift();
+    redoStack.length = 0; updateHistoryButtons();
+    setDirty(true);
+  }
+  function undo() {
+    if (!history.length) return;
+    redoStack.push(snap());
+    artCtx.putImageData(history.pop(), 0, 0);
+    updateHistoryButtons(); haptic('tick');
+  }
+  function redo() {
+    if (!redoStack.length) return;
+    history.push(snap());
+    artCtx.putImageData(redoStack.pop(), 0, 0);
+    updateHistoryButtons(); haptic('tick');
+  }
+  function updateHistoryButtons() {
+    $('undo').disabled = !history.length; $('redo').disabled = !redoStack.length;
+  }
+  function setDirty(v) {
+    S.dirty = v;
+    if (v) call(tg.enableClosingConfirmation); else call(tg.disableClosingConfirmation);
+  }
+
+  // ================= Масштаб и перемещение =================
+  const view = { s: 1, tx: 0, ty: 0 };
+  function clampView() {
+    if (view.s <= 1.02) { view.s = 1; view.tx = 0; view.ty = 0; return; }
+    view.tx = Math.min(0, Math.max(-(view.s - 1) * W, view.tx));
+    view.ty = Math.min(0, Math.max(-(view.s - 1) * H, view.ty));
+  }
+  function applyView() {
+    clampView();
+    stage.style.transform = `translate(${view.tx}px, ${view.ty}px) scale(${view.s})`;
+    $('resetView').hidden = view.s <= 1;
+    const badge = $('zoomBadge');
+    badge.textContent = Math.round(view.s * 100) + '%';
+  }
+  let badgeTimer;
+  function flashBadge() {
+    const b = $('zoomBadge'); b.style.display = 'block';
+    clearTimeout(badgeTimer); badgeTimer = setTimeout(() => { b.style.display = 'none'; }, 700);
+  }
+  $('resetView').onclick = () => { view.s = 1; view.tx = view.ty = 0; applyView(); haptic('tick'); };
+
+  // ================= Рисование =================
+  const pointers = new Map();
+  let stroke = null, gesture = null, gestureLock = false;
+
+  function toPaper(e) {
+    const r = stage.getBoundingClientRect();
+    return { x: (e.clientX - r.left) * (W / r.width), y: (e.clientY - r.top) * (H / r.height),
+             p: e.pointerType === 'pen' ? Math.max(0.05, e.pressure || 0.5) : 0 };
+  }
+  const widthFor = (pt) => {
+    const base = S.size * (KIND[S.tool] || 1);
+    return pt.p ? base * (0.35 + pt.p * 1.3) : base;
+  };
+
+  function clearLive() { liveCtx.save(); liveCtx.setTransform(1, 0, 0, 1, 0, 0); liveCtx.clearRect(0, 0, liveCanvas.width, liveCanvas.height); liveCtx.restore(); }
+  function commitLive(alpha = 1) {
+    artCtx.save(); artCtx.setTransform(1, 0, 0, 1, 0, 0); artCtx.globalAlpha = alpha;
+    artCtx.drawImage(liveCanvas, 0, 0); artCtx.restore(); clearLive();
+    liveCanvas.style.opacity = 1;
+  }
+
+  // фигуры
+  function heartPath(c, x, y, w, h) {
+    const cx = x + w / 2;
+    c.moveTo(cx, y + h * 0.30);
+    c.bezierCurveTo(cx, y, x, y, x, y + h * 0.32);
+    c.bezierCurveTo(x, y + h * 0.62, cx - w * 0.12, y + h * 0.78, cx, y + h);
+    c.bezierCurveTo(cx + w * 0.12, y + h * 0.78, x + w, y + h * 0.62, x + w, y + h * 0.32);
+    c.bezierCurveTo(x + w, y, cx, y, cx, y + h * 0.30);
+    c.closePath();
+  }
+  function starPath(c, x, y, w, h) {
+    const cx = x + w / 2, cy = y + h / 2 + h * 0.04, R = Math.min(w, h) / 2 * 1.08, r = R * 0.42;
+    for (let i = 0; i < 10; i++) {
+      const a = -Math.PI / 2 + i * Math.PI / 5, rad = i % 2 ? r : R;
+      const px = cx + Math.cos(a) * rad * (w / Math.min(w, h)), py = cy + Math.sin(a) * rad * (h / Math.min(w, h));
+      i ? c.lineTo(px, py) : c.moveTo(px, py);
+    }
+    c.closePath();
+  }
+  function drawShape(c, kind, a, b) {
+    c.save();
+    c.lineWidth = Math.max(2, S.size); c.lineCap = 'round'; c.lineJoin = 'round';
+    c.strokeStyle = c.fillStyle = S.color;
+    const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y), w = Math.abs(b.x - a.x), h = Math.abs(b.y - a.y);
+    c.beginPath();
+    if (kind === 'line' || kind === 'arrow') {
+      c.moveTo(a.x, a.y); c.lineTo(b.x, b.y);
+      if (kind === 'arrow') {
+        const ang = Math.atan2(b.y - a.y, b.x - a.x), L = Math.max(14, S.size * 3.2);
+        c.moveTo(b.x, b.y); c.lineTo(b.x - L * Math.cos(ang - 0.45), b.y - L * Math.sin(ang - 0.45));
+        c.moveTo(b.x, b.y); c.lineTo(b.x - L * Math.cos(ang + 0.45), b.y - L * Math.sin(ang + 0.45));
+      }
+      c.stroke();
+    } else {
+      if (kind === 'rect') { if (c.roundRect) c.roundRect(x, y, w, h, Math.min(14, w / 4, h / 4)); else c.rect(x, y, w, h); }
+      else if (kind === 'ellipse') c.ellipse(x + w / 2, y + h / 2, w / 2, h / 2, 0, 0, Math.PI * 2);
+      else if (kind === 'heart') heartPath(c, x, y, w, h);
+      else if (kind === 'star') starPath(c, x, y, w, h);
+      S.shapeFill ? c.fill() : c.stroke();
+    }
+    c.restore();
+  }
+  function stampSize() { return 30 + S.size * 3.2; }
+  function drawStamp(c, pt) {
+    c.save(); c.font = `${stampSize()}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`;
+    c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(S.stamp, pt.x, pt.y); c.restore();
+  }
+
+  function onDown(e) {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    try { viewport.setPointerCapture(e.pointerId); } catch (err) {}
+    if (pointers.size === 2) { cancelStroke(); startGesture(); return; }
+    if (pointers.size > 2 || gestureLock) return;
+
+    const pt = toPaper(e), t = S.tool;
+    if (t === 'pick') { pickColor(pt); return; }
+    if (t === 'fill') { doFill(pt); return; }
+    if (t === 'text') { openText(pt); return; }
+
+    stroke = { pid: e.pointerId, tool: t, pts: [pt], start: pt, last: pt, mid: pt, hist: false };
+    if (t === 'pen' || t === 'marker') {
+      liveCanvas.style.opacity = t === 'marker' ? 0.42 : 1;
+      const w = widthFor(pt);
+      liveCtx.fillStyle = S.color; liveCtx.beginPath(); liveCtx.arc(pt.x, pt.y, w / 2, 0, 7); liveCtx.fill();
+    } else if (t === 'eraser') {
+      stroke.snapshot = snap();
+      const w = widthFor(pt);
+      artCtx.save(); artCtx.globalCompositeOperation = 'destination-out';
+      artCtx.beginPath(); artCtx.arc(pt.x, pt.y, w / 2, 0, 7); artCtx.fill(); artCtx.restore();
+    } else if (t === 'shape') {
+      liveCanvas.style.opacity = 1;
+    } else if (t === 'stamp') {
+      clearLive(); drawStamp(liveCtx, pt);
+    }
+  }
+
+  function strokeMove(e) {
+    const s = stroke; if (!s) return;
+    const list = (e.getCoalescedEvents && e.getCoalescedEvents().length) ? e.getCoalescedEvents() : [e];
+    for (const ev of list) {
+      const pt = toPaper(ev);
+      if (s.tool === 'pen' || s.tool === 'marker') {
+        const mid = { x: (s.last.x + pt.x) / 2, y: (s.last.y + pt.y) / 2 };
+        liveCtx.save(); liveCtx.strokeStyle = S.color; liveCtx.lineWidth = widthFor(pt);
+        liveCtx.lineCap = 'round'; liveCtx.lineJoin = 'round';
+        liveCtx.beginPath(); liveCtx.moveTo(s.mid.x, s.mid.y);
+        liveCtx.quadraticCurveTo(s.last.x, s.last.y, mid.x, mid.y); liveCtx.stroke(); liveCtx.restore();
+        s.mid = mid;
+      } else if (s.tool === 'eraser') {
+        artCtx.save(); artCtx.globalCompositeOperation = 'destination-out';
+        artCtx.lineWidth = widthFor(pt); artCtx.lineCap = 'round'; artCtx.lineJoin = 'round';
+        artCtx.beginPath(); artCtx.moveTo(s.last.x, s.last.y); artCtx.lineTo(pt.x, pt.y); artCtx.stroke(); artCtx.restore();
+      } else if (s.tool === 'shape') {
+        clearLive(); drawShape(liveCtx, S.shape, s.start, pt);
+      } else if (s.tool === 'stamp') {
+        clearLive(); drawStamp(liveCtx, pt);
+      }
+      s.last = pt;
+    }
+  }
+
+  function endStroke() {
+    const s = stroke; if (!s) return; stroke = null;
+    if (s.tool === 'pen' || s.tool === 'marker') {
+      // дотягиваем линию до последней точки
+      liveCtx.save(); liveCtx.strokeStyle = S.color; liveCtx.lineWidth = widthFor(s.last); liveCtx.lineCap = 'round';
+      liveCtx.beginPath(); liveCtx.moveTo(s.mid.x, s.mid.y); liveCtx.lineTo(s.last.x, s.last.y); liveCtx.stroke(); liveCtx.restore();
+      pushHistory(); commitLive(s.tool === 'marker' ? 0.42 : 1);
+    } else if (s.tool === 'eraser') {
+      history.push(s.snapshot); if (history.length > MAX_HISTORY) history.shift();
+      redoStack.length = 0; updateHistoryButtons(); setDirty(true);
+    } else if (s.tool === 'shape') {
+      if (Math.hypot(s.last.x - s.start.x, s.last.y - s.start.y) < 4) { clearLive(); return; }
+      pushHistory(); commitLive();
+    } else if (s.tool === 'stamp') {
+      pushHistory(); commitLive(); haptic('light');
+    }
+  }
+
+  function cancelStroke() {
+    const s = stroke; if (!s) return; stroke = null;
+    if (s.tool === 'eraser' && s.snapshot) artCtx.putImageData(s.snapshot, 0, 0);
+    clearLive(); liveCanvas.style.opacity = 1;
+  }
+
+  // жест двумя пальцами
+  function startGesture() {
+    const [a, b] = [...pointers.values()];
+    const r = viewport.getBoundingClientRect();
+    gesture = { d0: Math.hypot(a.x - b.x, a.y - b.y) || 1, s0: view.s, tx0: view.tx, ty0: view.ty,
+                cx0: (a.x + b.x) / 2 - r.left, cy0: (a.y + b.y) / 2 - r.top };
+    gestureLock = true;
+  }
+  function moveGesture() {
+    const [a, b] = [...pointers.values()];
+    const r = viewport.getBoundingClientRect(), g = gesture;
+    const cx = (a.x + b.x) / 2 - r.left, cy = (a.y + b.y) / 2 - r.top;
+    const ns = Math.min(6, Math.max(1, g.s0 * Math.hypot(a.x - b.x, a.y - b.y) / g.d0));
+    const ux = (g.cx0 - PAD_X - g.tx0) / g.s0, uy = (g.cy0 - PAD_Y - g.ty0) / g.s0;
+    view.s = ns; view.tx = cx - PAD_X - ux * ns; view.ty = cy - PAD_Y - uy * ns;
+    applyView(); flashBadge();
+  }
+
+  function onMove(e) {
+    if (!pointers.has(e.pointerId)) return;
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (gesture && pointers.size >= 2) { moveGesture(); return; }
+    if (stroke && e.pointerId === stroke.pid) strokeMove(e);
+  }
+  function onUp(e) {
+    if (!pointers.has(e.pointerId)) return;
+    pointers.delete(e.pointerId);
+    try { viewport.releasePointerCapture(e.pointerId); } catch (err) {}
+    if (gesture) { if (pointers.size < 2) gesture = null; }
+    if (pointers.size === 0) gestureLock = false;
+    if (stroke && e.pointerId === stroke.pid) { e.type === 'pointercancel' ? cancelStroke() : endStroke(); }
+  }
+  viewport.addEventListener('pointerdown', onDown);
+  viewport.addEventListener('pointermove', onMove);
+  viewport.addEventListener('pointerup', onUp);
+  viewport.addEventListener('pointercancel', onUp);
+  ['gesturestart', 'gesturechange', 'gestureend', 'contextmenu'].forEach(n => document.addEventListener(n, e => e.preventDefault()));
+
+  // ================= Заливка и пипетка =================
+  function hex(r, g, b) { return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join(''); }
+  function parseHex(h) { const n = parseInt(h.slice(1), 16); return [n >> 16, (n >> 8) & 255, n & 255]; }
+
+  function pickColor(pt) {
+    const comp = flatten(true).getContext('2d');
+    const px = Math.min(artCanvas.width - 1, Math.max(0, Math.round(pt.x * DPR)));
+    const py = Math.min(artCanvas.height - 1, Math.max(0, Math.round(pt.y * DPR)));
+    const d = comp.getImageData(px, py, 1, 1).data;
+    setColor(hex(d[0], d[1], d[2]));
+    setTool(S.prevTool === 'pick' ? 'pen' : S.prevTool);
+    haptic('tick');
+  }
+
+  function doFill(pt) {
+    const pw = artCanvas.width, ph = artCanvas.height;
+    const src = flatten(false).getContext('2d').getImageData(0, 0, pw, ph).data;
+    const sx = Math.min(pw - 1, Math.max(0, Math.round(pt.x * DPR)));
+    const sy = Math.min(ph - 1, Math.max(0, Math.round(pt.y * DPR)));
+    const si = (sy * pw + sx) * 4, r0 = src[si], g0 = src[si + 1], b0 = src[si + 2];
+    const [fr, fg, fb] = parseHex(S.color);
+    if (Math.abs(fr - r0) + Math.abs(fg - g0) + Math.abs(fb - b0) < 6) return;   // уже такого цвета
+    const TOL = 54;
+    const match = (x, y) => { const i = (y * pw + x) * 4;
+      return Math.abs(src[i] - r0) + Math.abs(src[i + 1] - g0) + Math.abs(src[i + 2] - b0) <= TOL; };
+    let mask = new Uint8Array(pw * ph);
+    const stack = [sx, sy];
+    while (stack.length) {
+      const y = stack.pop(), x = stack.pop();
+      if (mask[y * pw + x] || !match(x, y)) continue;
+      let xl = x, xr = x;
+      while (xl > 0 && !mask[y * pw + xl - 1] && match(xl - 1, y)) xl--;
+      while (xr < pw - 1 && !mask[y * pw + xr + 1] && match(xr + 1, y)) xr++;
+      for (let i = xl; i <= xr; i++) mask[y * pw + i] = 1;
+      for (const ny of [y - 1, y + 1]) {
+        if (ny < 0 || ny >= ph) continue;
+        let inSpan = false;
+        for (let i = xl; i <= xr; i++) {
+          const ok = !mask[ny * pw + i] && match(i, ny);
+          if (ok && !inSpan) { stack.push(i, ny); inSpan = true; } else if (!ok) inSpan = false;
         }
+      }
+    }
+    // расширяем область на пару пикселей, чтобы под линиями не оставалось щелей
+    for (let pass = 0; pass < 2; pass++) {
+      const next = mask.slice();
+      for (let y = 0; y < ph; y++) for (let x = 0; x < pw; x++) {
+        if (mask[y * pw + x]) continue;
+        if ((x > 0 && mask[y * pw + x - 1]) || (x < pw - 1 && mask[y * pw + x + 1]) ||
+            (y > 0 && mask[(y - 1) * pw + x]) || (y < ph - 1 && mask[(y + 1) * pw + x])) next[y * pw + x] = 1;
+      }
+      mask = next;
+    }
+    const out = new ImageData(pw, ph), o = out.data;
+    for (let i = 0; i < mask.length; i++) if (mask[i]) { const j = i * 4; o[j] = fr; o[j + 1] = fg; o[j + 2] = fb; o[j + 3] = 255; }
+    const tmp = document.createElement('canvas'); tmp.width = pw; tmp.height = ph; tmp.getContext('2d').putImageData(out, 0, 0);
+    pushHistory();
+    artCtx.save(); artCtx.setTransform(1, 0, 0, 1, 0, 0); artCtx.globalCompositeOperation = 'destination-over';
+    artCtx.drawImage(tmp, 0, 0); artCtx.restore();
+    haptic('light');
+  }
 
-        window.addEventListener('resize', resize);
-        setTimeout(resize, 50);
+  // ================= Текст =================
+  let textPos = null;
+  const textFontSize = () => 18 + S.size * 2.4;
+  function drawText(c, pos, str) {
+    c.save(); c.font = `700 ${textFontSize()}px ui-rounded, "SF Pro Rounded", system-ui, sans-serif`;
+    c.fillStyle = S.color; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(str, pos.x, pos.y); c.restore();
+  }
+  function openText(pt) {
+    textPos = pt; $('textInput').value = '';
+    const m = $('textMark'); m.style.left = pt.x + 'px'; m.style.top = pt.y + 'px'; m.style.display = 'block';
+    $('textSheet').classList.add('open');
+    setTimeout(() => $('textInput').focus(), 60);
+  }
+  function closeText() {
+    $('textSheet').classList.remove('open'); $('textMark').style.display = 'none';
+    $('textInput').blur(); clearLive(); textPos = null;
+  }
+  $('textInput').addEventListener('input', () => { clearLive(); if (textPos) drawText(liveCtx, textPos, $('textInput').value); });
+  $('textCancel').onclick = closeText;
+  $('textDone').onclick = () => {
+    const v = $('textInput').value.trim();
+    if (v && textPos) { const pos = textPos; clearLive(); pushHistory(); drawText(artCtx, pos, v); haptic('light'); }
+    closeText();
+  };
+  $('textInput').addEventListener('keydown', e => { if (e.key === 'Enter') $('textDone').click(); });
 
-        function updateContextStyles() {
-            if (currentTool === 'eraser') {
-                ctx.strokeStyle = currentBgColor;
-                ctx.lineWidth = currentLineWidth * 2; // Ластик чуть толще
-            } else {
-                ctx.strokeStyle = currentColor;
-                ctx.lineWidth = currentLineWidth;
-            }
-            ctx.lineCap = 'round';
-            ctx.lineJoin = 'round';
-        }
+  // ================= Интерфейс =================
+  const dock = { tools: $('tools'), colors: $('colors'), context: $('context') };
 
-        function setTool(tool) {
-            currentTool = tool;
-            document.querySelectorAll('.tool-btn').forEach(btn => btn.classList.remove('active'));
-            if (tool === 'pen') document.getElementById('btnPen').classList.add('active');
-            if (tool === 'eraser') document.getElementById('btnEraser').classList.add('active');
-            if (tool === 'fill') document.getElementById('btnFill').classList.add('active');
-            updateContextStyles();
-        }
+  function renderTools() {
+    dock.tools.innerHTML = TOOLS.map(([id, label, icon]) =>
+      `<button class="tool ${S.tool === id ? 'on' : ''}" data-tool="${id}" aria-label="${label}">
+         <svg viewBox="0 0 24 24">${icon}</svg><span>${label}</span></button>`).join('');
+  }
+  dock.tools.addEventListener('click', e => { const b = e.target.closest('.tool'); if (b) { setTool(b.dataset.tool); haptic('tick'); } });
 
-        function setColor(color, element) {
-            currentColor = color;
-            setTool('pen'); // При выборе цвета автоматически переключаемся на кисть
-            document.querySelectorAll('.color-btn').forEach(btn => btn.classList.remove('active'));
-            element.classList.add('active');
-        }
+  function setTool(t) {
+    if (t === 'pick' && S.tool !== 'pick') S.prevTool = S.tool;
+    S.tool = t; renderTools(); renderContext(); renderColors();
+  }
 
-        function setBgColor(color) {
-            // Заменяем пиксели старого фона на новый (рисунок остаётся на месте)
-            const oldRgb = hexToRgb(currentBgColor);
-            const newRgb = hexToRgb(color);
-            currentBgColor = color;
+  function renderColors() {
+    const off = S.tool === 'eraser' || S.tool === 'pick';
+    dock.colors.classList.toggle('off', off);
+    dock.colors.innerHTML =
+      `<div class="sw custom ${COLORS.includes(S.color) ? '' : 'on'}" title="Свой цвет"><input type="color" id="customColor" value="${S.color}"></div>` +
+      COLORS.map(c => `<button class="sw ${S.color === c ? 'on' : ''}" data-c="${c}" style="background:${c}" aria-label="Цвет ${c}"></button>`).join('') +
+      `<i class="sep"></i><button class="bg-btn" id="bgBtn" aria-label="Фон листа">
+         <svg viewBox="0 0 24 24"><rect x="4.500" y="4.500" width="15" height="15" rx="3"/><path d="M4.500 10h15M10 4.500v15"/></svg></button>`;
+  }
+  dock.colors.addEventListener('click', e => {
+    const b = e.target.closest('.sw[data-c]'); if (b) { setColor(b.dataset.c); haptic('tick'); return; }
+    if (e.target.closest('#bgBtn')) openBg();
+  });
+  dock.colors.addEventListener('input', e => { if (e.target.id === 'customColor') setColor(e.target.value, true); });
+  function setColor(c, keepPicker) {
+    S.color = c; renderContext();
+    dock.colors.querySelectorAll('.sw[data-c]').forEach(el => el.classList.toggle('on', el.dataset.c === c));
+    const cu = dock.colors.querySelector('.sw.custom'); if (cu) cu.classList.toggle('on', !COLORS.includes(c));
+    if (!keepPicker) { const p = $('customColor'); if (p) p.value = c; }
+  }
 
-            const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            const d = imgData.data;
-            for (let i = 0; i < d.length; i += 4) {
-                if (d[i] === oldRgb.r && d[i + 1] === oldRgb.g && d[i + 2] === oldRgb.b) {
-                    d[i] = newRgb.r;
-                    d[i + 1] = newRgb.g;
-                    d[i + 2] = newRgb.b;
-                }
-            }
-            ctx.putImageData(imgData, 0, 0);
-            updateContextStyles();
-        }
+  function renderContext() {
+    const t = S.tool, c = dock.context;
+    const dotSize = () => Math.max(3, Math.min(34, S.size * (KIND[t] || 1) * (t === 'text' ? 1.6 : 1)));
+    const slider = () => `<div class="dot-preview" style="color:${t === 'eraser' ? 'var(--muted)' : S.color}"><i id="dotPrev" style="width:${dotSize()}px;height:${dotSize()}px"></i></div>
+       <input type="range" id="sizeRange" min="2" max="40" value="${S.size}" aria-label="Размер">`;
+    if (t === 'fill') c.innerHTML = '<span class="hint">Выбери цвет и нажми на область, которую нужно закрасить.</span>';
+    else if (t === 'pick') c.innerHTML = '<span class="hint">Нажми на рисунок, чтобы взять оттуда цвет.</span>';
+    else if (t === 'shape') c.innerHTML = slider().replace('<input', '<input style="max-width:90px"') +
+      `<div class="chips">${SHAPES.map(([id, n, svg]) => `<button class="chip ${S.shape === id ? 'on' : ''}" data-shape="${id}" aria-label="${n}"><svg viewBox="0 0 24 24">${svg}</svg></button>`).join('')}
+       <button class="chip text ${S.shapeFill ? 'on' : ''}" id="fillToggle">Залить</button></div>`;
+    else if (t === 'stamp') c.innerHTML = slider().replace('<input', '<input style="max-width:90px"') +
+      `<div class="chips">${STAMPS.map(s => `<button class="chip ${S.stamp === s ? 'on' : ''}" data-stamp="${s}">${s}</button>`).join('')}</div>`;
+    else c.innerHTML = slider();
+    const r = $('sizeRange');
+    if (r) r.addEventListener('input', () => { S.size = +r.value; const d = $('dotPrev'); if (d) { const v = dotSize(); d.style.width = d.style.height = v + 'px'; } });
+  }
+  dock.context.addEventListener('click', e => {
+    const sh = e.target.closest('[data-shape]'); if (sh) { S.shape = sh.dataset.shape; renderContext(); haptic('tick'); return; }
+    const st = e.target.closest('[data-stamp]'); if (st) { S.stamp = st.dataset.stamp; renderContext(); haptic('tick'); return; }
+    if (e.target.closest('#fillToggle')) { S.shapeFill = !S.shapeFill; renderContext(); haptic('tick'); }
+  });
 
-        let painting = false;
+  // фон листа
+  function openBg() { renderBg(); $('bgSheet').classList.add('open'); }
+  function renderBg() {
+    $('paperColors').innerHTML = PAPERS.map(c => `<button class="paper-sw ${S.paper.color === c ? 'on' : ''}" data-paper="${c}" style="background:${c}" aria-label="Фон ${c}"></button>`).join('') +
+      `<div class="paper-sw custom ${PAPERS.includes(S.paper.color) ? '' : 'on'}"><input type="color" id="customPaper" value="${S.paper.color}"></div>`;
+    $('paperPatterns').innerHTML = PATTERNS.map(([id, n]) => `<button class="pill ${S.paper.pattern === id ? 'on' : ''}" data-pattern="${id}">${n}</button>`).join('');
+  }
+  $('paperColors').addEventListener('click', e => { const b = e.target.closest('[data-paper]'); if (b) { S.paper.color = b.dataset.paper; drawBg(); renderBg(); haptic('tick'); setDirty(S.dirty); } });
+  $('paperColors').addEventListener('input', e => { if (e.target.id === 'customPaper') { S.paper.color = e.target.value; drawBg(); } });
+  $('paperPatterns').addEventListener('click', e => { const b = e.target.closest('[data-pattern]'); if (b) { S.paper.pattern = b.dataset.pattern; drawBg(); renderBg(); haptic('tick'); } });
+  $('bgDone').onclick = () => $('bgSheet').classList.remove('open');
+  $('bgSheet').addEventListener('click', e => { if (e.target.id === 'bgSheet') $('bgSheet').classList.remove('open'); });
 
-        function startAction(e) {
-            const rect = canvas.getBoundingClientRect();
-            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-            
-            const x = clientX - rect.left;
-            const y = clientY - rect.top;
+  $('undo').onclick = undo; $('redo').onclick = redo;
+  $('clear').onclick = () => {
+    if (!S.dirty && !history.length) return;
+    pushHistory(); artCtx.save(); artCtx.setTransform(1, 0, 0, 1, 0, 0); artCtx.clearRect(0, 0, artCanvas.width, artCanvas.height); artCtx.restore();
+    toast('Лист очищен. Вернуть можно кнопкой отмены.'); haptic('light');
+  };
 
-            if (currentTool === 'fill') {
-                floodFill(Math.floor(x), Math.floor(y), currentColor);
-                return;
-            }
+  let toastTimer;
+  function toast(msg) {
+    const t = $('toast'); t.textContent = msg; t.classList.add('show');
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 2600);
+  }
 
-            painting = true;
-            ctx.beginPath();
-            ctx.moveTo(x, y);
-            draw(e);
-        }
+  // ================= Экспорт и отправка =================
+  const blobToDataURL = (blob) => new Promise((res, rej) => {
+    const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = () => rej(new Error('чтение картинки')); fr.readAsDataURL(blob);
+  });
+  const canvasToBlob = (c, type, q) => new Promise((res, rej) => c.toBlob(b => b ? res(b) : rej(new Error('не удалось закодировать')), type, q));
 
-        function endPosition() {
-            painting = false;
-            ctx.beginPath();
-        }
+  function scaled(src, maxSide, viaPixels) {
+    const k = Math.min(1, maxSide / Math.max(src.width, src.height));
+    const out = document.createElement('canvas');
+    out.width = Math.max(1, Math.round(src.width * k)); out.height = Math.max(1, Math.round(src.height * k));
+    const x = out.getContext('2d');
+    if (viaPixels && k === 1) x.putImageData(src.getContext('2d').getImageData(0, 0, src.width, src.height), 0, 0);
+    else { x.fillStyle = S.paper.color; x.fillRect(0, 0, out.width, out.height); x.drawImage(src, 0, 0, out.width, out.height); }
+    return out;
+  }
 
-        function draw(e) {
-            if (!painting || currentTool === 'fill') return;
-            e.preventDefault();
-            
-            const rect = canvas.getBoundingClientRect();
-            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-            
-            const x = clientX - rect.left;
-            const y = clientY - rect.top;
+  // Картинка после кодирования декодируется обратно и сверяется с листом:
+  // на некоторых iPhone кодирование canvas иногда портит часть изображения.
+  async function matchesSource(dataURL, src) {
+    const img = new Image(); img.src = dataURL; await img.decode();
+    const chk = document.createElement('canvas'); chk.width = img.naturalWidth; chk.height = img.naturalHeight;
+    const cc = chk.getContext('2d', { willReadFrequently: true }); cc.drawImage(img, 0, 0);
+    const sc = src.getContext('2d', { willReadFrequently: true });
+    let bad = 0;
+    for (const fy of [0.03, 0.12, 0.22, 0.32, 0.42, 0.52, 0.62, 0.72, 0.82, 0.92, 0.97])
+      for (const fx of [0.04, 0.5, 0.96]) {
+        const a = cc.getImageData(Math.floor(fx * (chk.width - 1)), Math.floor(fy * (chk.height - 1)), 1, 1).data;
+        const b = sc.getImageData(Math.floor(fx * (src.width - 1)), Math.floor(fy * (src.height - 1)), 1, 1).data;
+        if (Math.abs(a[0] - b[0]) > 60 || Math.abs(a[1] - b[1]) > 60 || Math.abs(a[2] - b[2]) > 60) bad++;
+      }
+    return bad <= 2;
+  }
 
-            ctx.lineTo(x, y);
-            ctx.stroke();
-            ctx.beginPath();
-            ctx.moveTo(x, y);
-        }
+  async function exportImage(type) {
+    const src = flatten(true);
+    const strategies = [
+      { note: 'full', max: 1280, px: false }, { note: 'pixels', max: 4096, px: true },
+      { note: 'small', max: 800, px: false }, { note: 'tiny', max: 480, px: false },
+    ];
+    const ext = type === 'image/png' ? 'png' : 'jpg';
+    for (const s of strategies) {
+      try {
+        const blob = await canvasToBlob(scaled(src, s.max, s.px), type, 0.92);
+        if (blob.size > 3 * 1024 * 1024) continue;   // сервер принимает до 4 МБ
+        const dataURL = await blobToDataURL(blob);
+        if (await matchesSource(dataURL, src)) return { image: dataURL, note: ext + '-' + s.note };
+      } catch (e) { /* пробуем следующий способ */ }
+    }
+    throw new Error('не удалось подготовить картинку');
+  }
 
-        // Алгоритм заливки (Flood Fill)
-        function floodFill(startX, startY, fillColor) {
-            const dpr = window.devicePixelRatio || 1;
-            const width = canvas.width;
-            const height = canvas.height;
-            const imgData = ctx.getImageData(0, 0, width, height);
-            const data = imgData.data;
+  function setSending(v) {
+    S.sending = v; const b = $('send'); b.disabled = v; b.classList.toggle('busy', v);
+    b.querySelector('span').textContent = v ? 'Отправляю' : 'Отправить';
+  }
 
-            const fx = Math.floor(startX * dpr);
-            const fy = Math.floor(startY * dpr);
+  async function sendDrawing() {
+    if (S.sending) return;
+    if (!S.dirty) { toast('Сначала нарисуй что-нибудь.'); haptic('err'); return; }
+    setSending(true);
+    try {
+      if (!tg.initData) {
+        // Холст открыт кнопкой из инлайн-режима: загружаем рисунок и возвращаемся в чат,
+        // где бот предложит готовый рисунок.
+        const res = await exportImage('image/png');
+        const r = await fetch('/api/upload', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ stash: true, image: res.image, note: res.note }) });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const data = await r.json();
+        if (!data.token) throw new Error('нет метки');
+        $('send').classList.add('done'); haptic('ok'); call(tg.disableClosingConfirmation);
+        setTimeout(() => call(tg.switchInlineQuery, 'draw ' + data.token), 180);
+      } else {
+        // Обычный режим (/draw в личке с ботом): данные пользователя подписаны Telegram
+        const user = tg.initDataUnsafe && tg.initDataUnsafe.user;
+        const chat = tg.initDataUnsafe && tg.initDataUnsafe.chat;
+        const inline = !!(tg.initDataUnsafe && tg.initDataUnsafe.query_id);
+        const res = await exportImage(inline ? 'image/jpeg' : 'image/png');
+        const r = await fetch('/api/upload', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chat_id: (chat && chat.id) || (user && user.id),
+            name: (user && (user.first_name || user.username)) || 'Друг', image: res.image,
+            init_data: tg.initData, note: res.note }) });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        $('send').classList.add('done'); haptic('ok'); call(tg.disableClosingConfirmation);
+        setTimeout(() => call(tg.close), 220);
+      }
+    } catch (err) {
+      setSending(false); haptic('err');
+      toast('Не удалось отправить. Попробуй ещё раз.');
+      console.error(err);
+    }
+  }
+  $('send').onclick = sendDrawing;
 
-            if (fx < 0 || fx >= width || fy < 0 || fy >= height) return;
+  // ================= Старт =================
+  let resizeTimer;
+  const relayout = () => { if ($('textSheet').classList.contains('open')) return; clearTimeout(resizeTimer); resizeTimer = setTimeout(() => layout(false), 120); };
+  window.addEventListener('resize', relayout);
+  call(tg.onEvent, 'viewportChanged', relayout);
 
-            const targetIdx = (fy * width + fx) * 4;
-            const startR = data[targetIdx];
-            const startG = data[targetIdx + 1];
-            const startB = data[targetIdx + 2];
-            const startA = data[targetIdx + 3];
+  renderTools(); renderColors(); renderContext();
+  layout(true);
+  requestAnimationFrame(() => layout(false));
+  setTimeout(() => layout(false), 250);
 
-            const fillRgb = hexToRgb(fillColor);
-            if (!fillRgb) return;
-
-            if (startR === fillRgb.r && startG === fillRgb.g && startB === fillRgb.b && startA === 255) return;
-
-            const queue = [[fx, fy]];
-            const visited = new Uint8Array(width * height);
-
-            while (queue.length > 0) {
-                const [cx, cy] = queue.pop();
-                const idx = (cy * width + cx) * 4;
-                const vIdx = cy * width + cx;
-
-                if (visited[vIdx]) continue;
-
-                if (
-                    data[idx] === startR &&
-                    data[idx + 1] === startG &&
-                    data[idx + 2] === startB &&
-                    data[idx + 3] === startA
-                ) {
-                    visited[vIdx] = 1;
-                    data[idx] = fillRgb.r;
-                    data[idx + 1] = fillRgb.g;
-                    data[idx + 2] = fillRgb.b;
-                    data[idx + 3] = 255;
-
-                    if (cx > 0) queue.push([cx - 1, cy]);
-                    if (cx < width - 1) queue.push([cx + 1, cy]);
-                    if (cy > 0) queue.push([cx, cy - 1]);
-                    if (cy < height - 1) queue.push([cx, cy + 1]);
-                }
-            }
-
-            ctx.putImageData(imgData, 0, 0);
-        }
-
-        function hexToRgb(hex) {
-            const bigint = parseInt(hex.replace('#', ''), 16);
-            const r = (bigint >> 16) & 255;
-            const g = (bigint >> 8) & 255;
-            const b = bigint & 255;
-            return { r, g, b };
-        }
-
-        canvas.addEventListener('mousedown', startAction);
-        canvas.addEventListener('mouseup', endPosition);
-        canvas.addEventListener('mousemove', draw);
-
-        canvas.addEventListener('touchstart', startAction);
-        canvas.addEventListener('touchend', endPosition);
-        canvas.addEventListener('touchmove', draw);
-
-        function clearCanvas() {
-            const displayWidth = canvas.clientWidth;
-            const displayHeight = canvas.clientHeight;
-            ctx.fillStyle = currentBgColor;
-            ctx.fillRect(0, 0, displayWidth, displayHeight);
-        }
-
-        let sending = false;
-
-        // Картинка не больше 1280 px по длинной стороне: меньше вес, быстрее отправка
-        function exportImage(type, quality, maxSide) {
-            const scale = Math.min(1, maxSide / Math.max(canvas.width, canvas.height));
-            const out = document.createElement('canvas');
-            out.width = Math.round(canvas.width * scale);
-            out.height = Math.round(canvas.height * scale);
-            out.getContext('2d').drawImage(canvas, 0, 0, out.width, out.height);
-            return out.toDataURL(type, quality);
-        }
-
-        // ---- Экспорт JPEG с самопроверкой ----
-        // На некоторых iPhone кодирование JPEG из canvas иногда портит нижнюю часть
-        // (серая заливка). Поэтому каждый результат декодируется обратно и сверяется
-        // с исходным холстом; при расхождении пробуем другой способ.
-        function blobToDataURL(blob) {
-            return new Promise((resolve, reject) => {
-                const fr = new FileReader();
-                fr.onload = () => resolve(fr.result);
-                fr.onerror = () => reject(new Error('чтение картинки'));
-                fr.readAsDataURL(blob);
-            });
-        }
-
-        function canvasToBlob(c, type, quality) {
-            return new Promise((resolve, reject) =>
-                c.toBlob(b => b ? resolve(b) : reject(new Error('не удалось закодировать')), type, quality));
-        }
-
-        function scaledCanvas(maxSide, viaPixels) {
-            const scale = Math.min(1, maxSide / Math.max(canvas.width, canvas.height));
-            const out = document.createElement('canvas');
-            out.width = Math.max(1, Math.round(canvas.width * scale));
-            out.height = Math.max(1, Math.round(canvas.height * scale));
-            const octx = out.getContext('2d');
-            if (viaPixels && scale === 1) {
-                // без drawImage: переносим пиксели напрямую
-                octx.putImageData(ctx.getImageData(0, 0, canvas.width, canvas.height), 0, 0);
-            } else {
-                octx.fillStyle = currentBgColor;
-                octx.fillRect(0, 0, out.width, out.height);
-                octx.drawImage(canvas, 0, 0, out.width, out.height);
-            }
-            return out;
-        }
-
-        // Сравниваем точки декодированного JPEG с точками исходного холста
-        async function imageMatchesCanvas(dataURL) {
-            const img = new Image();
-            img.src = dataURL;
-            await img.decode();
-            const chk = document.createElement('canvas');
-            chk.width = img.naturalWidth; chk.height = img.naturalHeight;
-            const cctx = chk.getContext('2d', { willReadFrequently: true });
-            cctx.drawImage(img, 0, 0);
-            let bad = 0, total = 0;
-            for (const fy of [0.03, 0.12, 0.22, 0.32, 0.42, 0.52, 0.62, 0.72, 0.82, 0.92, 0.97]) {
-                for (const fx of [0.04, 0.5, 0.96]) {
-                    const a = cctx.getImageData(Math.floor(fx * (chk.width - 1)), Math.floor(fy * (chk.height - 1)), 1, 1).data;
-                    const b = ctx.getImageData(Math.floor(fx * (canvas.width - 1)), Math.floor(fy * (canvas.height - 1)), 1, 1).data;
-                    total++;
-                    if (Math.abs(a[0] - b[0]) > 60 || Math.abs(a[1] - b[1]) > 60 || Math.abs(a[2] - b[2]) > 60) bad++;
-                }
-            }
-            return bad <= 2;   // допускаем пару точек на линиях рисунка
-        }
-
-        async function exportVerifiedImage() {
-            // PNG без потерь: Telegram сам перекодирует его при загрузке
-            const strategies = [
-                { note: 'png-full',   max: 1280, pixels: false },
-                { note: 'png-pixels', max: 4096, pixels: true  },
-                { note: 'png-small',  max: 800,  pixels: false },
-                { note: 'png-tiny',   max: 480,  pixels: false },
-            ];
-            for (const s of strategies) {
-                try {
-                    const blob = await canvasToBlob(scaledCanvas(s.max, s.pixels), 'image/png');
-                    if (blob.size > 3 * 1024 * 1024) continue;   // сервер принимает до 4 МБ
-                    const dataURL = await blobToDataURL(blob);
-                    if (await imageMatchesCanvas(dataURL)) return { image: dataURL, note: s.note };
-                } catch (e) { /* пробуем следующий способ */ }
-            }
-            throw new Error('не удалось подготовить картинку на этом устройстве');
-        }
-
-        function showPreview(res) {
-            return new Promise(resolve => {
-                const box = document.getElementById('preview');
-                document.getElementById('previewImg').src = res.image;
-                box.style.display = 'flex';
-                document.getElementById('previewOk').onclick = () => { box.style.display = 'none'; resolve(true); };
-                document.getElementById('previewBack').onclick = () => { box.style.display = 'none'; resolve(false); };
-            });
-        }
-
-        function sendDrawing() {
-            if (sending) return;
-            const user = tg.initDataUnsafe?.user;
-            const userName = user?.first_name || user?.username || "Друг";
-
-            // Холст открыт кнопкой из инлайн-режима: Telegram не передаёт данные
-            // пользователя. Загружаем рисунок и возвращаемся в строку ввода чата,
-            // где бот предложит готовый рисунок для отправки.
-            if (!tg.initData) {
-                sending = true;
-                exportVerifiedImage().then(res => showPreview(res).then(ok => {
-                    if (!ok) { sending = false; return null; }
-                    return fetch('/api/upload', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ stash: true, image: res.image, note: res.note })
-                    }).then(r => r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)));
-                })).then(data => {
-                      if (!data) return;
-                      if (!data.token) throw new Error('нет метки');
-                      tg.switchInlineQuery('draw ' + data.token);
-                  })
-                  .catch(err => {
-                      sending = false;
-                      alert('Не удалось отправить рисунок: ' + err.message);
-                  });
-                return;
-            }
-
-            // Обычный режим (/draw в личке с ботом): данные пользователя подписаны
-            const chat = tg.initDataUnsafe?.chat;
-            const chatId = chat?.id || user?.id;
-            const inline = !!tg.initDataUnsafe?.query_id;
-            // если есть query_id, Telegram принимает только JPEG
-            const dataURL = inline ? exportImage('image/jpeg', 0.92, 1920) : canvas.toDataURL('image/png');
-
-            sending = true;
-            fetch('/api/upload', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    chat_id: chatId,
-                    name: userName,
-                    image: dataURL,
-                    init_data: tg.initData   // подпись Telegram: по ней бот проверяет, что это ты
-                })
-            }).then(response => {
-                if (response.ok) {
-                    tg.close();
-                } else {
-                    sending = false;
-                    alert('Ошибка при отправке рисунка');
-                }
-            }).catch(err => {
-                sending = false;
-                alert('Ошибка сети: ' + err);
-            });
-        }
-    </script>
+  // для отладки и тестов
+  window.__draw = { S, history, redoStack, view, flatten, get size() { return { W, H, DPR }; } };
+})();
+</script>
 </body>
 </html>
