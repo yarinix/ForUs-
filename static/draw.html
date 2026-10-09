@@ -399,9 +399,9 @@
             });
         }
 
-        function canvasToJpegBlob(c, quality) {
+        function canvasToBlob(c, type, quality) {
             return new Promise((resolve, reject) =>
-                c.toBlob(b => b ? resolve(b) : reject(new Error('не удалось закодировать')), 'image/jpeg', quality));
+                c.toBlob(b => b ? resolve(b) : reject(new Error('не удалось закодировать')), type, quality));
         }
 
         function scaledCanvas(maxSide, viaPixels) {
@@ -422,7 +422,7 @@
         }
 
         // Сравниваем точки декодированного JPEG с точками исходного холста
-        async function jpegMatchesCanvas(dataURL) {
+        async function imageMatchesCanvas(dataURL) {
             const img = new Image();
             img.src = dataURL;
             await img.decode();
@@ -442,18 +442,20 @@
             return bad <= 2;   // допускаем пару точек на линиях рисунка
         }
 
-        async function exportVerifiedJpeg() {
+        async function exportVerifiedImage() {
+            // PNG без потерь: Telegram сам перекодирует его при загрузке
             const strategies = [
-                { note: 'full-blob',   max: 1280, pixels: false, q: 0.9 },
-                { note: 'pixels-blob', max: 4096, pixels: true,  q: 0.9 },
-                { note: 'small-blob',  max: 800,  pixels: false, q: 0.85 },
-                { note: 'tiny-blob',   max: 480,  pixels: false, q: 0.85 },
+                { note: 'png-full',   max: 1280, pixels: false },
+                { note: 'png-pixels', max: 4096, pixels: true  },
+                { note: 'png-small',  max: 800,  pixels: false },
+                { note: 'png-tiny',   max: 480,  pixels: false },
             ];
             for (const s of strategies) {
                 try {
-                    const blob = await canvasToJpegBlob(scaledCanvas(s.max, s.pixels), s.q);
+                    const blob = await canvasToBlob(scaledCanvas(s.max, s.pixels), 'image/png');
+                    if (blob.size > 3 * 1024 * 1024) continue;   // сервер принимает до 4 МБ
                     const dataURL = await blobToDataURL(blob);
-                    if (await jpegMatchesCanvas(dataURL)) return { image: dataURL, note: s.note };
+                    if (await imageMatchesCanvas(dataURL)) return { image: dataURL, note: s.note };
                 } catch (e) { /* пробуем следующий способ */ }
             }
             throw new Error('не удалось подготовить картинку на этом устройстве');
@@ -479,7 +481,7 @@
             // где бот предложит готовый рисунок для отправки.
             if (!tg.initData) {
                 sending = true;
-                exportVerifiedJpeg().then(res => showPreview(res).then(ok => {
+                exportVerifiedImage().then(res => showPreview(res).then(ok => {
                     if (!ok) { sending = false; return null; }
                     return fetch('/api/upload', {
                         method: 'POST',
