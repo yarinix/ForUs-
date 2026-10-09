@@ -362,15 +362,25 @@
 
         function sendDrawing() {
             if (sending) return;
-            const dataURL = canvas.toDataURL('image/png');
+            // из инлайн-режима Telegram принимает только JPEG (холст непрозрачный, потерь нет)
+            const inline = !!tg.initDataUnsafe?.query_id;
+            const dataURL = inline ? canvas.toDataURL('image/jpeg', 0.92) : canvas.toDataURL('image/png');
             const user = tg.initDataUnsafe?.user;
             const chat = tg.initDataUnsafe?.chat;
             const chatId = chat?.id || user?.id;
 
             const userName = user?.first_name || user?.username || "Друг";
 
-            if (!chatId || !tg.initData) {
-                alert('Не удалось определить пользователя. Открой холст через Telegram.');
+            // chat_id клиенту не нужен: при подписанном initData сервер берёт пользователя из подписи
+            if (!tg.initData) {
+                const info = [
+                    'initData: ' + (tg.initData ? 'есть' : 'пусто'),
+                    'user: ' + (user ? 'есть' : 'нет'),
+                    'query_id: ' + (tg.initDataUnsafe?.query_id ? 'есть' : 'нет'),
+                    'платформа: ' + (tg.platform || '?'),
+                    'версия: ' + (tg.version || '?')
+                ].join('\n');
+                alert('Telegram не передал данные пользователя.\n\n' + info);
                 return;
             }
 
