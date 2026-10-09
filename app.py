@@ -118,6 +118,7 @@ def validate_webapp_init_data(init_data: str, max_age: int = 86400):
         user = json.loads(pairs.get("user", "{}"))
         if not isinstance(user.get("id"), int):
             return None
+        user["_query_id"] = pairs.get("query_id")  # есть, если холст открыт из инлайна
         return user
     except Exception:
         return None
@@ -153,6 +154,58 @@ def send_photo_to_telegram(chat_id: int, caption: str, image: bytes, mime: str):
         pass
 
 
+# Рисунки, ожидающие отправки через инлайн-режим (Telegram скачивает их по ссылке)
+_drawings = {}  # token -> (created_ts, bytes, mime)
+_drawings_lock = threading.Lock()
+DRAWING_TTL = 6 * 3600
+DRAWINGS_MAX = 100
+
+
+def store_drawing(image: bytes, mime: str) -> str:
+    token = secrets.token_hex(16)
+    now = time.time()
+    with _drawings_lock:
+        for t in [t for t, v in _drawings.items() if now - v[0] > DRAWING_TTL]:
+            del _drawings[t]
+        while len(_drawings) >= DRAWINGS_MAX:
+            del _drawings[min(_drawings, key=lambda t: _drawings[t][0])]
+        _drawings[token] = (now, image, mime)
+    return token
+
+
+def public_base_url() -> str:
+    base = os.getenv("RENDER_EXTERNAL_URL", "").strip().rstrip("/")
+    if base.startswith("http://"):
+        base = base.replace("http://", "https://", 1)
+    return base
+
+
+def answer_web_app_query(query_id: str, image: bytes, mime: str, caption: str):
+    """Отправляет рисунок в чат, откуда открыт холст (инлайн-режим)."""
+    base = public_base_url()
+    if not base:
+        raise RuntimeError("не задан RENDER_EXTERNAL_URL")
+    ext = "png" if mime == "image/png" else "jpg"
+    url = f"{base}/img/{store_drawing(image, mime)}.{ext}"
+    payload = {
+        "web_app_query_id": query_id,
+        "result": {
+            "type": "photo",
+            "id": secrets.token_hex(8),
+            "photo_url": url,
+            "thumbnail_url": url,
+            "caption": caption,
+        },
+    }
+    req = urllib.request.Request(
+        f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/answerWebAppQuery",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(req, timeout=20):
+        pass
+
+
 class WebAppHandler(BaseHTTPRequestHandler):
 
     def _reply(self, code: int, body: bytes = b"", content_type: str = None):
@@ -178,6 +231,14 @@ class WebAppHandler(BaseHTTPRequestHandler):
                 self._reply(200, content, "text/html; charset=utf-8")
             except Exception:
                 self._reply(404, b"Drawing page not found")
+        elif path.startswith("/img/"):
+            token = path[5:].split(".")[0]
+            with _drawings_lock:
+                item = _drawings.get(token)
+            if item and re.fullmatch(r"[0-9a-f]{32}", token):
+                self._reply(200, item[1], item[2])
+            else:
+                self._reply(404)
         else:
             self._reply(404)
 
@@ -241,7 +302,17 @@ class WebAppHandler(BaseHTTPRequestHandler):
                 self._reply(400, b"Not an image")
                 return
 
-            send_photo_to_telegram(chat_id, f"От {name} ♥️", image_bytes, mime)
+            caption = f"От {name} ♥️"
+            query_id = tg_user.get("_query_id") if tg_user else None
+            if query_id:
+                # холст открыт из инлайна — рисунок уходит в тот чат, где его вызвали.
+                # Telegram принимает для такой отправки только JPEG.
+                if mime != "image/jpeg":
+                    self._reply(400, b"Inline mode needs JPEG")
+                    return
+                answer_web_app_query(query_id, image_bytes, mime, caption)
+            else:
+                send_photo_to_telegram(chat_id, caption, image_bytes, mime)
             self._reply(
                 200,
                 json.dumps({"status": "ok"}).encode("utf-8"),
@@ -1198,13 +1269,25 @@ async def handle_media_or_text(message: types.Message):
 # --- ИНЛАЙН-РЕЖИМ ---
 
 
+def draw_inline_button():
+    base = public_base_url()
+    if not base:
+        return None
+    return types.InlineQueryResultsButton(
+        text="🎨 Нарисовать", web_app=WebAppInfo(url=f"{base}/draw")
+    )
+
+
 @dp.inline_query()
 async def inline_query_handler(query: types.InlineQuery):
     if not is_allowed(query.from_user):
         return
 
+    button = draw_inline_button()
     query_text = query.query.strip()[:1000]
     if not query_text:
+        # пустой запрос: показываем только кнопку «Нарисовать»
+        await query.answer([], button=button, cache_time=0, is_personal=True)
         return
 
     if query_text.lower().startswith(("погода", "weather")):
@@ -1221,7 +1304,7 @@ async def inline_query_handler(query: types.InlineQuery):
                 description=weather_text,
             )
         ]
-        await query.answer(articles, cache_time=60)
+        await query.answer(articles, button=button, cache_time=60, is_personal=True)
         return
 
     system_prompt = (
@@ -1240,7 +1323,7 @@ async def inline_query_handler(query: types.InlineQuery):
                 description=response_text[:100] + "...",
             )
         ]
-        await query.answer(articles, cache_time=1)
+        await query.answer(articles, button=button, cache_time=1, is_personal=True)
     except Exception as e:
         logging.error(f"Ошибка в инлайн-режиме: {e}")
 
