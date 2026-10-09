@@ -109,6 +109,13 @@
         button.clear {
             background: #ff4757;
         }
+        #preview {
+            position: fixed; inset: 0; z-index: 10; display: none;
+            flex-direction: column; background: #000; padding: 12px; box-sizing: border-box; gap: 10px;
+        }
+        #preview .note { text-align: center; font-size: 13px; color: #aaa; }
+        #previewImg { flex: 1; min-height: 0; width: 100%; object-fit: contain; background: #333; }
+        #preview .row button { flex: 1; }
     </style>
 </head>
 <body>
@@ -144,6 +151,15 @@
         <div class="actions">
             <button class="action-btn clear" onclick="clearCanvas()">Очистить</button>
             <button class="action-btn" onclick="sendDrawing()">Отправить</button>
+        </div>
+    </div>
+
+    <div id="preview">
+        <div class="note">Так рисунок будет отправлен. Всё верно?</div>
+        <img id="previewImg" alt="Предпросмотр">
+        <div class="row">
+            <button class="action-btn clear" id="previewBack">Назад</button>
+            <button class="action-btn" id="previewOk">Отправить</button>
         </div>
     </div>
 
@@ -443,6 +459,16 @@
             throw new Error('не удалось подготовить картинку на этом устройстве');
         }
 
+        function showPreview(res) {
+            return new Promise(resolve => {
+                const box = document.getElementById('preview');
+                document.getElementById('previewImg').src = res.image;
+                box.style.display = 'flex';
+                document.getElementById('previewOk').onclick = () => { box.style.display = 'none'; resolve(true); };
+                document.getElementById('previewBack').onclick = () => { box.style.display = 'none'; resolve(false); };
+            });
+        }
+
         function sendDrawing() {
             if (sending) return;
             const user = tg.initDataUnsafe?.user;
@@ -453,12 +479,15 @@
             // где бот предложит готовый рисунок для отправки.
             if (!tg.initData) {
                 sending = true;
-                exportVerifiedJpeg().then(res => fetch('/api/upload', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ stash: true, image: res.image, note: res.note })
-                })).then(r => r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)))
-                  .then(data => {
+                exportVerifiedJpeg().then(res => showPreview(res).then(ok => {
+                    if (!ok) { sending = false; return null; }
+                    return fetch('/api/upload', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ stash: true, image: res.image, note: res.note })
+                    }).then(r => r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)));
+                })).then(data => {
+                      if (!data) return;
                       if (!data.token) throw new Error('нет метки');
                       tg.switchInlineQuery('draw ' + data.token);
                   })
