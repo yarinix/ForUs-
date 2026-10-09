@@ -24,7 +24,8 @@ from aiogram.types import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     InlineQueryResultArticle,
-    InlineQueryResultPhoto,
+    InlineQueryResultCachedPhoto,
+    BufferedInputFile,
     InputTextMessageContent,
     WebAppInfo,
 )
@@ -300,15 +301,19 @@ class WebAppHandler(BaseHTTPRequestHandler):
                     return
                 raw = (data.get("image") or "").split(",", 1)[-1]
                 image_bytes = base64.b64decode(raw, validate=False)
-                if not image_bytes.startswith(b"\xff\xd8\xff"):
-                    self._reply(400, b"JPEG only")
+                is_png = image_bytes.startswith(b"\x89PNG\r\n\x1a\n")
+                is_jpg = image_bytes.startswith(b"\xff\xd8\xff")
+                if not (is_png or is_jpg):
+                    self._reply(400, b"PNG or JPEG only")
                     return
-                # у целого JPEG в конце маркер FF D9; без него файл оборван
-                if not image_bytes.rstrip(b"\x00").endswith(b"\xff\xd9"):
-                    logging.warning(f"stash: JPEG оборван, {len(image_bytes)} байт")
-                    self._reply(400, b"Truncated JPEG")
+                # целый PNG заканчивается блоком IEND, целый JPEG — маркером FF D9
+                tail = image_bytes.rstrip(b"\x00")
+                complete = tail.endswith(b"IEND\xaeB`\x82") if is_png else tail.endswith(b"\xff\xd9")
+                if not complete:
+                    logging.warning(f"stash: файл оборван, {len(image_bytes)} байт")
+                    self._reply(400, b"Truncated image")
                     return
-                token = store_drawing(image_bytes, "image/jpeg")
+                token = store_drawing(image_bytes, "image/png" if is_png else "image/jpeg")
                 note = re.sub(r"[^\w-]", "", str(data.get("note", "")))[:30]
                 logging.info(f"stash: принят рисунок {len(image_bytes)} байт ({note})")
                 self._reply(
@@ -1328,6 +1333,33 @@ async def handle_media_or_text(message: types.Message):
 # --- ИНЛАЙН-РЕЖИМ ---
 
 
+_drawing_file_ids = {}  # метка -> file_id уже загруженного в Telegram рисунка
+
+
+async def get_drawing_file_id(token: str, item, user_id: int) -> str:
+    """Загружает рисунок в Telegram обычной отправкой фото и возвращает file_id.
+
+    Фото попадает в личный чат пользователя с ботом (без звука) — это и есть
+    надёжный способ получить file_id для инлайн-результата. Telegram сам
+    перекодирует картинку, поэтому проблем с форматом не возникает.
+    """
+    if token in _drawing_file_ids:
+        return _drawing_file_ids[token]
+    _, data, mime = item
+    ext = "png" if mime == "image/png" else "jpg"
+    msg = await bot.send_photo(
+        chat_id=user_id,
+        photo=BufferedInputFile(data, filename=f"drawing.{ext}"),
+        caption="🎨 Твой рисунок — выбери его над строкой ввода, чтобы отправить",
+        disable_notification=True,
+    )
+    file_id = msg.photo[-1].file_id
+    _drawing_file_ids[token] = file_id
+    if len(_drawing_file_ids) > 200:
+        _drawing_file_ids.pop(next(iter(_drawing_file_ids)))
+    return file_id
+
+
 def draw_inline_button():
     base = public_base_url()
     if not base:
@@ -1355,18 +1387,29 @@ async def inline_query_handler(query: types.InlineQuery):
         token = m.group(1)
         with _drawings_lock:
             item = _drawings.get(token)
-        base = public_base_url()
-        if item and base:
-            url = f"{base}/img/{token}.jpg"
+        if item:
             name = clean_caption_name(query.from_user.first_name)
-            results = [
-                InlineQueryResultPhoto(
-                    id=token,
-                    photo_url=url,
-                    thumbnail_url=url,
-                    caption=f"От {name} ♥️",
-                )
-            ]
+            try:
+                file_id = await get_drawing_file_id(token, item, query.from_user.id)
+                results = [
+                    InlineQueryResultCachedPhoto(
+                        id=token,
+                        photo_file_id=file_id,
+                        caption=f"От {name} ♥️",
+                    )
+                ]
+            except Exception:
+                logging.exception("Не удалось подготовить рисунок для инлайн-режима")
+                results = [
+                    InlineQueryResultArticle(
+                        id="drawing_error",
+                        title="Не удалось подготовить рисунок",
+                        description="Нарисуй заново",
+                        input_message_content=InputTextMessageContent(
+                            message_text="🎨 Не удалось подготовить рисунок."
+                        ),
+                    )
+                ]
         else:
             results = [
                 InlineQueryResultArticle(
