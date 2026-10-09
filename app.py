@@ -727,7 +727,10 @@ async def handle_media_or_text(message: types.Message):
       contents = user_text
 
     bot_response_text = await process_with_cascade(
-        recent_history, contents, system_prompt
+        recent_history,
+        contents,
+        system_prompt,
+        user_id=user_id,
     )
 
     save_message(chat_id, user_id, chat_type, "model", bot_response_text)
