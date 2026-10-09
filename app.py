@@ -160,21 +160,21 @@ def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
       """)
-      cursor.execute(
+            cursor.execute(
           "ALTER TABLE messages ADD COLUMN IF NOT EXISTS chat_id BIGINT;"
       )
-      cursor.execute(
+            cursor.execute(
           "ALTER TABLE messages ADD COLUMN IF NOT EXISTS chat_type TEXT;"
       )
 
-      cursor.execute("""
+            cursor.execute("""
                 CREATE TABLE IF NOT EXISTS user_memory (
                     user_id BIGINT PRIMARY KEY,
                     memory_text TEXT
                 );
             """)
 
-      cursor.execute("""
+            cursor.execute("""
                 CREATE TABLE IF NOT EXISTS couple_memory (
                     id INT PRIMARY KEY,
                     memory_text TEXT
