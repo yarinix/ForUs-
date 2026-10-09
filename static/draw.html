@@ -370,6 +370,27 @@
             return out.toDataURL(type, quality);
         }
 
+        // toBlob надёжнее toDataURL на iPhone: файл кодируется целиком
+        function exportJpegAsync(quality, maxSide) {
+            const scale = Math.min(1, maxSide / Math.max(canvas.width, canvas.height));
+            const out = document.createElement('canvas');
+            out.width = Math.round(canvas.width * scale);
+            out.height = Math.round(canvas.height * scale);
+            const octx = out.getContext('2d');
+            octx.fillStyle = currentBgColor;           // страховка: нет прозрачных пикселей
+            octx.fillRect(0, 0, out.width, out.height);
+            octx.drawImage(canvas, 0, 0, out.width, out.height);
+            return new Promise((resolve, reject) => {
+                out.toBlob(blob => {
+                    if (!blob) return reject(new Error('не удалось закодировать'));
+                    const fr = new FileReader();
+                    fr.onload = () => resolve(fr.result);
+                    fr.onerror = () => reject(new Error('чтение картинки'));
+                    fr.readAsDataURL(blob);
+                }, 'image/jpeg', quality);
+            });
+        }
+
         function sendDrawing() {
             if (sending) return;
             const user = tg.initDataUnsafe?.user;
@@ -380,11 +401,11 @@
             // где бот предложит готовый рисунок для отправки.
             if (!tg.initData) {
                 sending = true;
-                fetch('/api/upload', {
+                exportJpegAsync(0.9, 1280).then(image => fetch('/api/upload', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ stash: true, image: exportImage('image/jpeg', 0.9, 1280) })
-                }).then(r => r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)))
+                    body: JSON.stringify({ stash: true, image })
+                })).then(r => r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)))
                   .then(data => {
                       if (!data.token) throw new Error('нет метки');
                       tg.switchInlineQuery('draw ' + data.token);
