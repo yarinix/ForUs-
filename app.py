@@ -24,6 +24,7 @@ from aiogram.types import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     InlineQueryResultArticle,
+    InlineQueryResultPhoto,
     InputTextMessageContent,
     WebAppInfo,
 )
@@ -59,6 +60,8 @@ BOT_TIMEZONE = os.getenv("BOT_TIMEZONE", "Asia/Omsk")
 REQUIRE_WEBAPP_AUTH = os.getenv("REQUIRE_WEBAPP_AUTH", "0") == "1"
 
 MAX_UPLOAD_BYTES = 12 * 1024 * 1024  # лимит тела запроса /api/upload
+MAX_STASH_BYTES = 4 * 1024 * 1024  # лимит для рисунков из инлайн-режима
+STASH_PER_HOUR = 30  # сколько рисунков в час принимаем с одного IP
 TELEGRAM_TEXT_LIMIT = 4000  # у Telegram лимит 4096, оставляем запас
 
 # Инициализация бота и клиента Gemini
@@ -158,7 +161,23 @@ def send_photo_to_telegram(chat_id: int, caption: str, image: bytes, mime: str):
 _drawings = {}  # token -> (created_ts, bytes, mime)
 _drawings_lock = threading.Lock()
 DRAWING_TTL = 6 * 3600
-DRAWINGS_MAX = 100
+DRAWINGS_MAX = 30
+_stash_hits = {}  # ip -> [время загрузок]
+
+
+def stash_rate_ok(ip: str) -> bool:
+    now = time.time()
+    with _drawings_lock:
+        hits = [t for t in _stash_hits.get(ip, []) if now - t < 3600]
+        if len(hits) >= STASH_PER_HOUR:
+            _stash_hits[ip] = hits
+            return False
+        hits.append(now)
+        _stash_hits[ip] = hits
+        if len(_stash_hits) > 500:  # не даём словарю расти бесконечно
+            for k in [k for k, v in _stash_hits.items() if not v or now - v[-1] > 3600]:
+                del _stash_hits[k]
+    return True
 
 
 def store_drawing(image: bytes, mime: str) -> str:
@@ -258,6 +277,33 @@ class WebAppHandler(BaseHTTPRequestHandler):
 
         try:
             data = json.loads(self.rfile.read(length).decode("utf-8"))
+
+            # --- Рисунок из инлайн-режима: кладём на хранение и отдаём метку.
+            # В этом режиме Telegram не передаёт подпись пользователя, поэтому
+            # проверка личности происходит позже, в самом инлайн-запросе.
+            if data.get("stash"):
+                ip = (
+                    self.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+                    or self.client_address[0]
+                )
+                if length > MAX_STASH_BYTES:
+                    self._reply(413, b"Too big")
+                    return
+                if not stash_rate_ok(ip):
+                    self._reply(429, b"Too many")
+                    return
+                raw = (data.get("image") or "").split(",", 1)[-1]
+                image_bytes = base64.b64decode(raw, validate=False)
+                if not image_bytes.startswith(b"\xff\xd8\xff"):
+                    self._reply(400, b"JPEG only")
+                    return
+                token = store_drawing(image_bytes, "image/jpeg")
+                self._reply(
+                    200,
+                    json.dumps({"token": token}).encode("utf-8"),
+                    "application/json",
+                )
+                return
 
             # --- Кто отправляет? ---
             tg_user = None
@@ -1288,6 +1334,38 @@ async def inline_query_handler(query: types.InlineQuery):
     if not query_text:
         # пустой запрос: показываем только кнопку «Нарисовать»
         await query.answer([], button=button, cache_time=0, is_personal=True)
+        return
+
+    # Рисунок, присланный холстом: «draw <метка>» -> фото-результат
+    m = re.fullmatch(r"(?:draw|рисунок)\s+([0-9a-f]{32})", query_text.lower())
+    if m:
+        token = m.group(1)
+        with _drawings_lock:
+            item = _drawings.get(token)
+        base = public_base_url()
+        if item and base:
+            url = f"{base}/img/{token}.jpg"
+            name = clean_caption_name(query.from_user.first_name)
+            results = [
+                InlineQueryResultPhoto(
+                    id=token,
+                    photo_url=url,
+                    thumbnail_url=url,
+                    caption=f"От {name} ♥️",
+                )
+            ]
+        else:
+            results = [
+                InlineQueryResultArticle(
+                    id="drawing_missing",
+                    title="Рисунок не найден или устарел",
+                    description="Открой холст и нарисуй заново",
+                    input_message_content=InputTextMessageContent(
+                        message_text="🎨 Рисунок не найден, нарисуй заново."
+                    ),
+                )
+            ]
+        await query.answer(results, button=button, cache_time=0, is_personal=True)
         return
 
     if query_text.lower().startswith(("погода", "weather")):
