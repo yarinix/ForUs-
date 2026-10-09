@@ -150,17 +150,16 @@ def get_db():
 def init_db():
   with get_db() as conn:
     with conn.cursor() as cursor:
-      cursor.execute("""
-                CREATE TABLE IF NOT EXISTS messages (
-                    id SERIAL PRIMARY KEY,
-                    chat_id BIGINT,
-                    user_id BIGINT,
-                    chat_type TEXT,
-                    role TEXT,
-                    content TEXT,
-                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                );
-            """)
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS memories (
+                id SERIAL PRIMARY KEY,
+                user_id BIGINT,
+                memory_type TEXT NOT NULL,
+                content TEXT NOT NULL,
+                importance FLOAT DEFAULT 0.5,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+      """)
       cursor.execute(
           "ALTER TABLE messages ADD COLUMN IF NOT EXISTS chat_id BIGINT;"
       )
@@ -308,13 +307,59 @@ def update_couple_memory(new_fact: str):
       return
     updated = f"{current_memory}\n- {new_fact}"
 
-  with get_db() as conn:
-    with conn.cursor() as cursor:
-      cursor.execute(
-          "INSERT INTO couple_memory (id, memory_text) VALUES (1, %s) ON CONFLICT"
-          " (id) DO UPDATE SET memory_text = EXCLUDED.memory_text",
-          (updated,),
-      )
+  def save_memory(
+    user_id: int,
+    memory_type: str,
+    content: str,
+    importance: float = 0.5
+):
+    with get_db() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO memories
+                (user_id, memory_type, content, importance)
+                VALUES (%s,%s,%s,%s)
+                """,
+                (
+                    user_id,
+                    memory_type,
+                    content,
+                    importance
+                )
+            )
+
+
+def get_extended_memory(user_id:int):
+
+    with get_db() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT memory_type, content
+                FROM memories
+                WHERE user_id=%s OR user_id IS NULL
+                ORDER BY importance DESC
+                LIMIT 40
+                """,
+                (user_id,)
+            )
+
+            rows = cursor.fetchall()
+
+    memory = {
+        "personal": [],
+        "couple": [],
+        "event": [],
+        "emotion": [],
+        "inside_joke": []
+    }
+
+    for memory_type, content in rows:
+        if memory_type in memory:
+            memory[memory_type].append(content)
+
+    return memory
 
 
 def delete_memory_phrase(user_id: int, phrase: str):
@@ -401,47 +446,102 @@ async def process_with_cascade(history_contents, contents, system_prompt):
   raise Exception("Все модели из каскада временно недоступны.")
 
 
-async def extract_and_save_facts(user_id: int, chat_type: str, user_message: str):
-  speaker_name = USER_NAMES.get(user_id, "Пользователь")
-  
-  # Улучшенный промпт со строгим фильтром от сиюминутного мусора
-  prompt = (
-      f"Проанализируй реплику от '{speaker_name}' (ID: {user_id}).\n"
-      f"Определи, есть ли здесь **важная, долговременная информация** (предпочтения, черты характера, важные планы, цели, привычки, годовщины, значимые события).\n\n"
-      f"⚠️ КАТЕГОРИЧЕСКИ ИГНОРИРУЙ временные, сиюминутные состояния и бытовые действия (например: 'спит', 'устал сегодня', 'кушает', 'едет в транспорте', 'болит голова', 'смотрит фильм прямо сейчас'). Такие сиюминутные мелочи ЗАПРЕЩЕНО сохранять в память.\n\n"
-      f"Выдай ответ строго в формате:\n"
-      f"PERSONAL: [долговременный факт о пользователе или НЕТ]\n"
-      f"COUPLE: [долговременный факт об отношениях/паре или НЕТ]\n\n"
-      f"Реплика: {user_message}"
-  )
+async def extract_and_save_facts(
+    user_id:int,
+    chat_type:str,
+    user_message:str
+):
 
-  for model_name in MODELS_CASCADE:
-    try:
-      response = client.models.generate_content(
-          model=model_name, contents=prompt
-      )
-      text = response.text.strip()
+    speaker_name = USER_NAMES.get(
+        user_id,
+        "Пользователь"
+    )
 
-      lines = text.split("\n")
-      personal_fact, couple_fact = "НЕТ", "НЕТ"
-      for line in lines:
-        if line.startswith("PERSONAL:"):
-          personal_fact = line.replace("PERSONAL:", "").strip()
-        elif line.startswith("COUPLE:"):
-          couple_fact = line.replace("COUPLE:", "").strip()
+    prompt = f"""
+Ты анализируешь сообщение пользователя для долговременной памяти AI-компаньона пары.
 
-      if personal_fact and "НЕТ" not in personal_fact.upper():
-        update_user_memory(user_id, personal_fact)
+Пользователь:
+{speaker_name}
 
-      if couple_fact and "НЕТ" not in couple_fact.upper():
-        update_couple_memory(couple_fact)
+Сообщение:
+{user_message}
 
-      return
-    except Exception as e:
-      logging.warning(
-          f"Модель {model_name} не смогла выделить факты: {e}. Пробуем следующую..."
-      )
-      continue
+
+Сохраняй только действительно важное.
+
+Категории:
+
+personal:
+- характер
+- интересы
+- привычки
+- предпочтения
+
+
+couple:
+- отношения
+- общие особенности пары
+
+
+event:
+- важные события
+- поездки
+- даты
+
+
+emotion:
+- важные эмоциональные особенности
+
+
+inside_joke:
+- внутренние шутки пары
+
+
+Если сохранять нечего:
+save=false
+
+
+Ответ только JSON:
+
+{{
+"save":true,
+"type":"personal/couple/event/emotion/inside_joke",
+"importance":0.0,
+"memory":"короткое описание"
+}}
+"""
+
+    for model_name in MODELS_CASCADE:
+        try:
+
+            response = client.models.generate_content(
+                model=model_name,
+                contents=prompt
+            )
+
+            data=json.loads(response.text)
+
+            if not data.get("save"):
+                return
+
+
+            save_memory(
+                user_id
+                if data["type"]=="personal"
+                else None,
+                data["type"],
+                data["memory"],
+                float(data.get("importance",0.5))
+            )
+
+            return
+
+
+        except Exception as e:
+            logging.warning(
+                f"Ошибка анализа памяти: {e}"
+            )
+            continue
 
 
 
@@ -484,9 +584,26 @@ async def cmd_memory(message: types.Message):
   if user_id not in ALLOWED_USER_IDS:
     return
   await message.answer(
-      f"🧠 **Память бота:**\n\n"
-      f"💞 **Общая информация о паре:**\n{get_couple_memory()}\n\n"
-      f"👤 **Твоя личная память:**\n{get_user_memory(user_id)}"
+      f"""
+
+🧠 Расширенная память:
+
+👤 Личное:
+{extended_memory["personal"]}
+
+❤️ Пара:
+{extended_memory["couple"]}
+
+📅 События:
+{extended_memory["event"]}
+
+💭 Эмоции:
+{extended_memory["emotion"]}
+
+😂 Шутки:
+{extended_memory["inside_joke"]}
+
+"""
   )
 
 
@@ -598,18 +715,51 @@ async def handle_media_or_text(message: types.Message):
 
   # --- АКТИВНЫЙ РЕЖИМ (отправка ответа пользователю) ---
   couple_memory = get_couple_memory()
+extended_memory = get_extended_memory(user_id)
   recent_history = get_chat_history(chat_id, limit=10)
 
   if chat_type == "private":
     user_memory = get_user_memory(user_id)
     system_prompt = (
-        f"Ты — эмпатичный ИИ-помощник. ЛИЧНЫЙ чат с {speaker_name}.\n\n"
+        f"Ты — ваш личный AI-компаньон.
+
+Ты помогаешь вам, хранишь вашу историю и поддерживаешь ваши разговоры.
+
+Твоя роль:
+- друг;
+- компаньон;
+- помощник.
+
+Ты знаешь историю пары.
+Используй её аккуратно.
+
+Не говори как психолог.
+Не давай советы без запроса.
+Помни внутренние шутки и важные моменты.
+
+Будь естественным и живым. ЛИЧНЫЙ чат с {speaker_name}.\n\n"
         f"💞 Общая информация о паре:\n{couple_memory}\n\n"
         f"👤 Личная память:\n{user_memory}"
     )
   else:
     system_prompt = (
-        f"Ты — эмпатичный ИИ-помощник. ГРУППОВОЙ чат пары.\n"
+        f"Ты — ваш личный AI-компаньон.
+
+Ты помогаешь вам, хранишь вашу историю и поддерживаешь ваши разговоры.
+
+Твоя роль:
+- друг;
+- компаньон;
+- помощник.
+
+Ты знаешь историю пары.
+Используй её аккуратно.
+
+Не говори как психолог.
+Не давай советы без запроса.
+Помни внутренние шутки и важные моменты.
+
+Будь естественным и живым. ГРУППОВОЙ чат пары.\n"
         f"Сейчас обращается: {speaker_name}.\n\n"
         f"💞 Общая информация о паре:\n{couple_memory}"
     )
