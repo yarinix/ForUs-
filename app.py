@@ -232,6 +232,8 @@ class WebAppHandler(BaseHTTPRequestHandler):
         if content_type:
             self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Connection", "close")
         self.end_headers()
         if self.command != "HEAD":
             self.wfile.write(body)
@@ -255,6 +257,10 @@ class WebAppHandler(BaseHTTPRequestHandler):
             with _drawings_lock:
                 item = _drawings.get(token)
             if item and re.fullmatch(r"[0-9a-f]{32}", token):
+                logging.info(
+                    f"img: отдаю {len(item[1])} байт, "
+                    f"UA={self.headers.get('User-Agent', '?')[:60]}"
+                )
                 self._reply(200, item[1], item[2])
             else:
                 self._reply(404)
@@ -297,7 +303,13 @@ class WebAppHandler(BaseHTTPRequestHandler):
                 if not image_bytes.startswith(b"\xff\xd8\xff"):
                     self._reply(400, b"JPEG only")
                     return
+                # у целого JPEG в конце маркер FF D9; без него файл оборван
+                if not image_bytes.rstrip(b"\x00").endswith(b"\xff\xd9"):
+                    logging.warning(f"stash: JPEG оборван, {len(image_bytes)} байт")
+                    self._reply(400, b"Truncated JPEG")
+                    return
                 token = store_drawing(image_bytes, "image/jpeg")
+                logging.info(f"stash: принят рисунок {len(image_bytes)} байт")
                 self._reply(
                     200,
                     json.dumps({"token": token}).encode("utf-8"),
