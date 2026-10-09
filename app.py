@@ -271,6 +271,33 @@ def get_chat_history(chat_id: int, limit: int = 10):
   return history
 
 
+def save_memory(user_id: int, memory_type: str, content: str):
+    allowed_types = {
+        "personal",
+        "couple",
+        "event",
+        "emotion",
+        "inside_joke",
+    }
+
+    if memory_type not in allowed_types:
+        raise ValueError(f"Неизвестный тип воспоминания: {memory_type}")
+
+    content = content.strip()
+    if not content:
+        return
+
+    with get_db() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO memories (user_id, memory_type, content)
+                VALUES (%s, %s, %s)
+                """,
+                (user_id, memory_type, content),
+            )
+
+
 def get_user_memory(user_id: int) -> str:
   with get_db() as conn:
     with conn.cursor() as cursor:
