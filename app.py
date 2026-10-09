@@ -1335,6 +1335,23 @@ async def handle_media_or_text(message: types.Message):
 
 _drawing_file_ids = {}  # метка -> file_id уже загруженного в Telegram рисунка
 
+# Куда Telegram временно загружает рисунок, чтобы выдать file_id.
+# Лучше всего — закрытый канал, где бот администратор: тогда в личных чатах
+# ничего не появляется. Если не задан, используется личный чат с ботом, а
+# копия удаляется через DRAWING_COPY_TTL секунд (KEEP_DRAWING_COPY=1 — не удалять).
+_storage_raw = os.getenv("DRAWING_STORAGE_CHAT_ID", "").strip()
+DRAWING_STORAGE_CHAT_ID = int(_storage_raw) if _storage_raw.lstrip("-").isdigit() else None
+KEEP_DRAWING_COPY = os.getenv("KEEP_DRAWING_COPY", "0") == "1"
+DRAWING_COPY_TTL = int(os.getenv("DRAWING_COPY_TTL", "120"))
+
+
+async def delete_message_later(chat_id: int, message_id: int, delay: float):
+    await asyncio.sleep(delay)
+    try:
+        await bot.delete_message(chat_id=chat_id, message_id=message_id)
+    except Exception as e:
+        logging.warning(f"Не удалось удалить служебную копию рисунка: {e}")
+
 
 async def get_drawing_file_id(token: str, item, user_id: int) -> str:
     """Загружает рисунок в Telegram обычной отправкой фото и возвращает file_id.
@@ -1347,13 +1364,18 @@ async def get_drawing_file_id(token: str, item, user_id: int) -> str:
         return _drawing_file_ids[token]
     _, data, mime = item
     ext = "png" if mime == "image/png" else "jpg"
+    target_chat = DRAWING_STORAGE_CHAT_ID or user_id
     msg = await bot.send_photo(
-        chat_id=user_id,
+        chat_id=target_chat,
         photo=BufferedInputFile(data, filename=f"drawing.{ext}"),
-        caption="🎨 Твой рисунок — выбери его над строкой ввода, чтобы отправить",
+        caption="🎨 Служебная копия рисунка (удалится сама)",
         disable_notification=True,
     )
     file_id = msg.photo[-1].file_id
+    if DRAWING_STORAGE_CHAT_ID is None and not KEEP_DRAWING_COPY:
+        run_in_background(
+            delete_message_later(target_chat, msg.message_id, DRAWING_COPY_TTL)
+        )
     _drawing_file_ids[token] = file_id
     if len(_drawing_file_ids) > 200:
         _drawing_file_ids.pop(next(iter(_drawing_file_ids)))
