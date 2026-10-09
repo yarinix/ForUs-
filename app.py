@@ -125,8 +125,8 @@ client = genai.Client(api_key=GEMINI_API_KEY)
 
 # Каскад моделей Gemini
 MODELS_CASCADE = [
-    "gemini-2.5-flash",
-    "gemini-2.5-pro",
+    "gemini-3.5-flash-lite",
+    "gemini-3.1-flash-lite",
 ]
 
 
