@@ -360,29 +360,48 @@
 
         let sending = false;
 
+        // Картинка не больше 1280 px по длинной стороне: меньше вес, быстрее отправка
+        function exportImage(type, quality, maxSide) {
+            const scale = Math.min(1, maxSide / Math.max(canvas.width, canvas.height));
+            const out = document.createElement('canvas');
+            out.width = Math.round(canvas.width * scale);
+            out.height = Math.round(canvas.height * scale);
+            out.getContext('2d').drawImage(canvas, 0, 0, out.width, out.height);
+            return out.toDataURL(type, quality);
+        }
+
         function sendDrawing() {
             if (sending) return;
-            // из инлайн-режима Telegram принимает только JPEG (холст непрозрачный, потерь нет)
-            const inline = !!tg.initDataUnsafe?.query_id;
-            const dataURL = inline ? canvas.toDataURL('image/jpeg', 0.92) : canvas.toDataURL('image/png');
             const user = tg.initDataUnsafe?.user;
-            const chat = tg.initDataUnsafe?.chat;
-            const chatId = chat?.id || user?.id;
-
             const userName = user?.first_name || user?.username || "Друг";
 
-            // chat_id клиенту не нужен: при подписанном initData сервер берёт пользователя из подписи
+            // Холст открыт кнопкой из инлайн-режима: Telegram не передаёт данные
+            // пользователя. Загружаем рисунок и возвращаемся в строку ввода чата,
+            // где бот предложит готовый рисунок для отправки.
             if (!tg.initData) {
-                const info = [
-                    'initData: ' + (tg.initData ? 'есть' : 'пусто'),
-                    'user: ' + (user ? 'есть' : 'нет'),
-                    'query_id: ' + (tg.initDataUnsafe?.query_id ? 'есть' : 'нет'),
-                    'платформа: ' + (tg.platform || '?'),
-                    'версия: ' + (tg.version || '?')
-                ].join('\n');
-                alert('Telegram не передал данные пользователя.\n\n' + info);
+                sending = true;
+                fetch('/api/upload', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ stash: true, image: exportImage('image/jpeg', 0.9, 1280) })
+                }).then(r => r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)))
+                  .then(data => {
+                      if (!data.token) throw new Error('нет метки');
+                      tg.switchInlineQuery('draw ' + data.token);
+                  })
+                  .catch(err => {
+                      sending = false;
+                      alert('Не удалось отправить рисунок: ' + err.message);
+                  });
                 return;
             }
+
+            // Обычный режим (/draw в личке с ботом): данные пользователя подписаны
+            const chat = tg.initDataUnsafe?.chat;
+            const chatId = chat?.id || user?.id;
+            const inline = !!tg.initDataUnsafe?.query_id;
+            // если есть query_id, Telegram принимает только JPEG
+            const dataURL = inline ? exportImage('image/jpeg', 0.92, 1920) : canvas.toDataURL('image/png');
 
             sending = true;
             fetch('/api/upload', {
