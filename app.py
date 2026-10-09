@@ -309,7 +309,8 @@ class WebAppHandler(BaseHTTPRequestHandler):
                     self._reply(400, b"Truncated JPEG")
                     return
                 token = store_drawing(image_bytes, "image/jpeg")
-                logging.info(f"stash: принят рисунок {len(image_bytes)} байт")
+                note = re.sub(r"[^\w-]", "", str(data.get("note", "")))[:30]
+                logging.info(f"stash: принят рисунок {len(image_bytes)} байт ({note})")
                 self._reply(
                     200,
                     json.dumps({"token": token}).encode("utf-8"),
