@@ -181,23 +181,26 @@
             const displayHeight = canvas.clientHeight;
 
             if (displayWidth === 0 || displayHeight === 0) return;
+            if (canvas.width === displayWidth * dpr && canvas.height === displayHeight * dpr) return;
 
             const tempCanvas = document.createElement('canvas');
-            const tempCtx = tempCanvas.getContext('2d');
             tempCanvas.width = canvas.width;
             tempCanvas.height = canvas.height;
-            tempCtx.drawImage(canvas, 0, 0);
+            tempCanvas.getContext('2d').drawImage(canvas, 0, 0);
 
             canvas.width = displayWidth * dpr;
             canvas.height = displayHeight * dpr;
-
             ctx.scale(dpr, dpr);
 
-            // Первоначальная заливка фона, если холст пустой
+            // Возвращаем старый рисунок на масштабированный холст
+            ctx.drawImage(tempCanvas, 0, 0, tempCanvas.width / dpr, tempCanvas.height / dpr);
+
+            // Если холст увеличился, заполняем пустое пространство текущим цветом фона ПОД рисунком
+            const oldOp = ctx.globalCompositeOperation;
+            ctx.globalCompositeOperation = 'destination-over';
             ctx.fillStyle = currentBgColor;
             ctx.fillRect(0, 0, displayWidth, displayHeight);
-
-            ctx.drawImage(tempCanvas, 0, 0, tempCanvas.width / dpr, tempCanvas.height / dpr);
+            ctx.globalCompositeOperation = oldOp;
 
             updateContextStyles();
         }
@@ -234,23 +237,16 @@
         }
 
         function setBgColor(color) {
-            // Заменяем пиксели старого фона на новый (рисунок остаётся на месте)
-            const oldRgb = hexToRgb(currentBgColor);
-            const newRgb = hexToRgb(color);
             currentBgColor = color;
-
-            const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            const d = imgData.data;
-            for (let i = 0; i < d.length; i += 4) {
-                if (d[i] === oldRgb.r && d[i + 1] === oldRgb.g && d[i + 2] === oldRgb.b) {
-                    d[i] = newRgb.r;
-                    d[i + 1] = newRgb.g;
-                    d[i + 2] = newRgb.b;
-                }
-            }
-            ctx.putImageData(imgData, 0, 0);
+            // Быстро и без багов меняем фон через слой под рисунком
+            const oldOp = ctx.globalCompositeOperation;
+            ctx.globalCompositeOperation = 'destination-over';
+            ctx.fillStyle = color;
+            ctx.fillRect(0, 0, canvas.clientWidth, canvas.clientHeight);
+            ctx.globalCompositeOperation = oldOp;
             updateContextStyles();
         }
+
 
         let painting = false;
 
