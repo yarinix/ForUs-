@@ -1129,6 +1129,127 @@ async def send_long(message: types.Message, text: str, **kwargs):
         await message.answer(chunk, **kwargs)
 
 
+# --- ФОРМАТИРОВАНИЕ ОТВЕТОВ (Markdown от модели -> HTML Telegram) ---
+
+FORMAT_HINT = (
+    "\n\n✍️ Оформление ответа (Telegram): обычный разговор пиши живым текстом, без"
+    " лишнего оформления. Если нужно выделить, используй **жирный** для главного,"
+    " *курсив* для оттенков, `код` для команд и значений, списки через «- » и"
+    " короткие заголовки через «# ». Не используй таблицы и не злоупотребляй"
+    " выделением."
+)
+
+_TAG_RE = re.compile(r"<(/?)(b|i|s|u|code|pre|a|blockquote)(?:\s[^>]*)?>")
+
+
+def html_is_balanced(text: str) -> bool:
+    """Все ли теги закрыты в правильном порядке (иначе Telegram отклонит)."""
+    stack = []
+    for m in _TAG_RE.finditer(text):
+        if m[1]:
+            if not stack or stack.pop() != m[2]:
+                return False
+        else:
+            stack.append(m[2])
+    return not stack
+
+
+def markdown_to_html(text: str) -> str:
+    """Превращает Markdown (как его пишет Gemini) в HTML, понятный Telegram."""
+    stash = []
+
+    def keep(markup: str) -> str:
+        stash.append(markup)
+        return f"\x00{len(stash) - 1}\x00"
+
+    esc = lambda s: html.escape(s, quote=False)
+    text = str(text or "").replace("\x00", "")
+
+    # 1. Код и таблицы прячем, чтобы внутри них ничего не форматировалось
+    text = re.sub(
+        r"```[ \t]*[\w+#-]*\n?(.*?)```",
+        lambda m: keep(f"<pre>{esc(m[1].rstrip())}</pre>"),
+        text, flags=re.S,
+    )
+    text = re.sub(
+        r"`([^`\n]+)`", lambda m: keep(f"<code>{esc(m[1])}</code>"), text
+    )
+
+    def table(m):
+        rows = [r.strip() for r in m[0].strip("\n").split("\n")]
+        rows = [r for r in rows if not re.fullmatch(r"\|?[\s:|-]+\|?", r)]
+        cells = [[c.strip() for c in r.strip("|").split("|")] for r in rows]
+        return keep("<pre>" + esc("\n".join("  ".join(r) for r in cells)) + "</pre>")
+
+    text = re.sub(r"(?:^[ \t]*\|.*\|[ \t]*(?:\n|$)){2,}", lambda m: table(m) + "\n", text, flags=re.M)
+
+    text = esc(text)
+
+    # 2. Блочные элементы
+    text = re.sub(r"^[ \t]{0,3}#{1,6}[ \t]+(.+?)[ \t]*#*[ \t]*$", r"<b>\1</b>", text, flags=re.M)
+    text = re.sub(r"^[ \t]*([-*_])(?:[ \t]*\1){2,}[ \t]*$", "──────────", text, flags=re.M)
+    text = re.sub(
+        r"^([ \t]*)[-*+•][ \t]+",
+        lambda m: m[1].replace("\t", "  ") + "• ", text, flags=re.M,
+    )
+    text = re.sub(
+        r"(?:^&gt;[ \t]?.*(?:\n|$))+",
+        lambda m: "<blockquote>"
+        + re.sub(r"^&gt;[ \t]?", "", m[0].rstrip("\n"), flags=re.M)
+        + "</blockquote>\n",
+        text, flags=re.M,
+    )
+
+    # 3. Выделения внутри строки
+    text = re.sub(r"\*\*(?=\S)(.+?)(?<=\S)\*\*", r"<b>\1</b>", text)
+    text = re.sub(r"(?<![\w_])__(?=\S)(.+?)(?<=\S)__(?![\w_])", r"<b>\1</b>", text)
+    text = re.sub(r"(?<![\w*])\*(?=[^\s*])(.+?)(?<=[^\s*])\*(?![\w*])", r"<i>\1</i>", text)
+    text = re.sub(r"(?<![\w_])_(?=[^\s_])(.+?)(?<=[^\s_])_(?![\w_])", r"<i>\1</i>", text)
+    text = re.sub(r"~~(?=\S)(.+?)(?<=\S)~~", r"<s>\1</s>", text)
+    text = re.sub(
+        r"\[([^\]\n]+)\]\((https?://[^\s)]+)\)",
+        lambda m: f'<a href="{m[2].replace(chr(34), "%22")}">{m[1]}</a>', text,
+    )
+
+    # 4. Возвращаем спрятанное
+    for _ in range(2):
+        text = re.sub(r"\x00(\d+)\x00", lambda m: stash[int(m[1])], text)
+    return text.strip()
+
+
+def strip_markdown(text: str) -> str:
+    """Запасной вариант: убирает разметку, оставляя чистый текст."""
+    text = re.sub(r"```[ \t]*[\w+#-]*\n?(.*?)```", r"\1", str(text or ""), flags=re.S)
+    text = re.sub(r"^[ \t]{0,3}#{1,6}[ \t]+", "", text, flags=re.M)
+    text = re.sub(r"\*\*(.+?)\*\*|__(.+?)__", lambda m: m[1] or m[2], text)
+    text = re.sub(r"(?<![\w*])\*(?=[^\s*])(.+?)(?<=[^\s*])\*(?![\w*])", r"\1", text)
+    text = re.sub(r"`([^`\n]+)`", r"\1", text)
+    text = re.sub(r"^([ \t]*)[-*+][ \t]+", r"\1• ", text, flags=re.M)
+    return text.strip()
+
+
+async def send_markdown(message: types.Message, text: str, **kwargs):
+    """Отправляет ответ модели с красивым форматированием.
+
+    Если Telegram не принял HTML, шлёт чистый текст без разметки.
+    """
+    queue = split_text(text, 3500)
+    while queue:
+        chunk = queue.pop(0)
+        rendered = markdown_to_html(chunk)
+        if len(rendered) > TELEGRAM_TEXT_LIMIT and len(chunk) > 200:
+            # HTML-теги удлиняют текст: делим кусок пополам и пробуем снова
+            queue = split_text(chunk, len(chunk) // 2 + 1) + queue
+            continue
+        try:
+            if not html_is_balanced(rendered):
+                raise ValueError("теги не сбалансированы")
+            await message.answer(rendered, parse_mode="HTML", **kwargs)
+        except Exception as e:
+            logging.info(f"Форматирование не прошло ({e}), шлю простым текстом")
+            await message.answer(strip_markdown(chunk), **kwargs)
+
+
 # --- ФУНКЦИЯ ПОГОДЫ ---
 
 
@@ -1803,6 +1924,7 @@ async def handle_media_or_text(message: types.Message):
             f"{now_line}\n\n"
             f"💞 Общая информация о паре:\n{couple_memory}\n\n"
             f"👤 Личная память:\n{user_memory}"
+            f"{FORMAT_HINT}"
         )
     else:
         system_prompt = (
@@ -1810,6 +1932,7 @@ async def handle_media_or_text(message: types.Message):
             f"Сейчас обращается: {speaker_name}.\n"
             f"{now_line}\n\n"
             f"💞 Общая информация о паре:\n{couple_memory}"
+            f"{FORMAT_HINT}"
         )
 
     try:
@@ -1832,7 +1955,7 @@ async def handle_media_or_text(message: types.Message):
         await asyncio.to_thread(
             save_message, chat_id, user_id, chat_type, "model", bot_response_text
         )
-        await send_long(message, bot_response_text)
+        await send_markdown(message, bot_response_text)
 
     except Exception as e:
         logging.error(f"Ошибка при обработке запроса: {e}")
@@ -1978,16 +2101,25 @@ async def inline_query_handler(query: types.InlineQuery):
         "Ты — быстрый встроенный ИИ-ассистент в Telegram. Отвечай точно, кратко и по делу."
     )
     try:
-        response_text = await process_with_cascade([], query_text, system_prompt)
-        response_text = response_text[:TELEGRAM_TEXT_LIMIT]
+        response_text = await process_with_cascade(
+            [], query_text, system_prompt + FORMAT_HINT
+        )
+        response_text = response_text[:3500]
+        rendered = markdown_to_html(response_text)
+        if html_is_balanced(rendered) and len(rendered) <= TELEGRAM_TEXT_LIMIT:
+            content = InputTextMessageContent(
+                message_text=rendered, parse_mode="HTML"
+            )
+        else:
+            content = InputTextMessageContent(
+                message_text=strip_markdown(response_text)
+            )
         articles = [
             InlineQueryResultArticle(
                 id="ai_response",
                 title="Ответ от Gemini",
-                input_message_content=InputTextMessageContent(
-                    message_text=response_text
-                ),
-                description=response_text[:100] + "...",
+                input_message_content=content,
+                description=strip_markdown(response_text)[:100] + "...",
             )
         ]
         await query.answer(articles, button=button, cache_time=1, is_personal=True)
