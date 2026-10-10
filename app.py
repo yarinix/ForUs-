@@ -2141,15 +2141,17 @@ async def handle_media_or_text(message: types.Message):
         ):
             is_addressed_to_bot = True
 
-    # «Напомни завтра в 18:00 купить цветы» — ставим напоминание без Gemini
-    if (
-        is_addressed_to_bot
-        and not file_bytes
-        and re.match(r"^(?:пожалуйста[\s,]*)?напомни(?:ть)?\b", user_text, re.I)
-        and len(user_text.split()) >= 3
-    ):
-        await add_reminder_from_text(message, user_text)
-        return
+    # «Напомни завтра в 18:00 купить цветы», «через 5 минут напомни позвонить»,
+    # «поставь напоминание…» — ставим напоминание без Gemini
+    if is_addressed_to_bot and not file_bytes and not user_text.startswith("/"):
+        head = " ".join(user_text.split()[:8])
+        intent = INTENT_RE.search(head)
+        if intent:
+            strong = intent.start() == 0 and re.match(r"(?:пожалуйста[\s,]*)?напомни", head, re.I)
+            if strong or await asyncio.to_thread(parse_reminder_text, user_text):
+                logging.info(f"Напоминание из чата: {user_text[:120]!r}")
+                await add_reminder_from_text(message, user_text)
+                return
 
     # История берётся ДО сохранения текущего сообщения, иначе оно уйдёт в Gemini дважды
     recent_history = []
@@ -2240,7 +2242,19 @@ REPEAT_PATTERNS = (
     ("weekly", re.compile(r"\b(?:каждую неделю|еженедельно)\b", re.I)),
 )
 BOTH_RE = re.compile(r"^(?:нам|обоим|обоих|мне и [а-яё]+)\b[\s,:-]*", re.I)
-REMIND_PREFIX_RE = re.compile(r"^(?:пожалуйста[\s,]*)?напомни(?:ть)?(?:\s+(?:мне|нам))?[\s,:-]*", re.I)
+# «напомни», «поставь напоминание», «заведи будильник», «напомни нам, пожалуйста»
+INTENT_RE = re.compile(
+    r"(?:(?:поставь|создай|добавь|заведи|установи)\s+(?:мне\s+|нам\s+)?)?"
+    r"(?:пожалуйста[\s,]*)?"
+    r"(?:напомни(?:ть)?|напоминани[еяю]|будильник)"
+    r"(?:[\s,]+(?:мне|нам|обоим))?(?:[\s,]+пожалуйста)?[\s,:-]*",
+    re.I,
+)
+LEAD_JUNK_RE = re.compile(
+    r"^[\s,.:;-]*(?:(?:что|чтобы|нужно|надо|не\s+забыть|не\s+забудь|о\s+том,?\s+что)[\s,]+)*"
+    r"(?:на\s+(?=\d))?",
+    re.I,
+)
 REPEAT_LABELS = {"daily": "каждый день", "weekly": "каждую неделю"}
 
 
@@ -2283,8 +2297,13 @@ def parse_reminder_text(raw: str):
     так надёжнее всего. Без него время ищется в начале фразы автоматически.
     Возвращает None, если время не нашлось.
     """
-    text = REMIND_PREFIX_RE.sub("", " ".join(str(raw or "").split())).strip()
+    text = " ".join(str(raw or "").split())
     both = False
+    m = INTENT_RE.search(text)
+    if m:
+        both = bool(re.search(r"\b(?:нам|обоим)\b", m[0], re.I))
+        text = (text[:m.start()] + " " + text[m.end():]).strip()
+    text = LEAD_JUNK_RE.sub("", text).strip()
     m = BOTH_RE.match(text)
     if m:
         both, text = True, text[m.end():].strip()
@@ -2355,6 +2374,8 @@ def parse_reminder_text(raw: str):
             if h < 24 and m_ < 60:
                 hour, minute = h, m_
         when = when.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    if not task and re.search(r"будильник", str(raw), re.I):
+        task = "Будильник"
     when_utc = to_utc_naive(when)
     return when_utc, task[:MAX_FACT_LENGTH * 2], repeat, both
 
@@ -2518,6 +2539,7 @@ REMIND_USAGE = (
 
 async def add_reminder_from_text(message: types.Message, raw: str):
     parsed = await asyncio.to_thread(parse_reminder_text, raw)
+    logging.info(f"Напоминание: разбор {raw[:120]!r} -> {parsed}")
     if not parsed:
         await message.answer(
             "🤔 Не получилось понять, когда напомнить. Напиши время и дело, например:\n"
@@ -2542,6 +2564,7 @@ async def add_reminder_from_text(message: types.Message, raw: str):
         create_reminder, message.from_user.id, message.chat.id, task, when, repeat, both
     )
     schedule_reminder(rem_id, when)
+    logging.info(f"Напоминание #{rem_id} поставлено на {format_local(when)}: {task!r}")
     extra = f", {REPEAT_LABELS[repeat]}" if repeat else ""
     who = " (получите оба)" if both else ""
     await message.answer(
