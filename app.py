@@ -14,7 +14,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import psycopg2
@@ -48,10 +48,20 @@ ALLOWED_USER_IDS = [
     int(uid.strip()) for uid in ALLOWED_USERS_RAW.split(",") if uid.strip().isdigit()
 ]
 
-USER_NAMES = {
+DEFAULT_USER_NAMES = {
     5084782149: "Основной пользователь",
     1253880871: "Полина",
 }
+# Имена можно задать переменной USER_NAMES="5084782149:Ярослав,1253880871:Полина".
+# Если не задана, бот берёт имя из профиля Telegram (first_name), когда человек
+# хоть раз ему написал; запасной вариант — DEFAULT_USER_NAMES.
+USER_NAMES = dict(DEFAULT_USER_NAMES)
+_names_cache = {}  # id -> имя из профиля Telegram
+_names_env = {}
+for _pair in os.getenv("USER_NAMES", "").split(","):
+    _uid, _, _nm = _pair.partition(":")
+    if _uid.strip().isdigit() and _nm.strip():
+        _names_env[int(_uid.strip())] = _nm.strip()[:40]
 
 # Часовой пояс для «сегодня/завтра» в ответах бота и в извлечении фактов
 BOT_TIMEZONE = os.getenv("BOT_TIMEZONE", "Asia/Omsk")
@@ -94,6 +104,46 @@ MEMORY_LABELS = {
 }
 MAX_FACT_LENGTH = 300
 TEST_MEMORY_TEXT = "Тестовая запись памяти"  # осталась от /memorytest
+
+# Важность: 5 — критично (здоровье, границы, главные даты и события),
+# 4 — сильно характеризует человека или пару, 3 — полезно помнить,
+# 2 — мелочь, 1 — не стоит хранить.
+DEFAULT_IMPORTANCE = {
+    "personal": 3, "couple": 4, "event": 3, "emotion": 3, "inside_joke": 3,
+}
+MIN_SAVE_IMPORTANCE = int(os.getenv("MEMORY_MIN_IMPORTANCE", "3"))
+# «Период полураспада» актуальности в днях: чувства забываются быстрее всего,
+# шутки и отношения — медленнее. Повторное упоминание обновляет запись.
+HALF_LIFE_DAYS = {
+    "emotion": 30, "event": 120, "personal": 240, "couple": 400, "inside_joke": 400,
+}
+MEMORY_PROMPT_LIMIT = 16  # сколько воспоминаний кладём в промпт
+MEMORY_CORE_LIMIT = 6  # из них — самые важные (4–5), берутся всегда
+# Кому принадлежит факт: о ком он.
+SUBJECTS = {"self", "partner", "couple"}
+
+
+def user_name(uid) -> str:
+    """Имя человека: переменная USER_NAMES > профиль Telegram > запасное."""
+    return (
+        _names_env.get(uid)
+        or _names_cache.get(uid)
+        or USER_NAMES.get(uid)
+        or "Пользователь"
+    )
+
+
+def remember_name(user) -> None:
+    """Запоминает имя из профиля Telegram (если не задано переменной)."""
+    first = clean_caption_name(getattr(user, "first_name", "") or "")
+    if first and getattr(user, "id", None) is not None:
+        _names_cache[user.id] = first[:40]
+
+
+def partner_of(uid):
+    """Второй участник пары (если разрешённых ровно двое)."""
+    others = [u for u in ALLOWED_USER_IDS if u != uid]
+    return others[0] if len(ALLOWED_USER_IDS) == 2 and others else None
 
 
 # ---------------------------------------------------------------------------
@@ -346,7 +396,7 @@ class WebAppHandler(BaseHTTPRequestHandler):
                     self._reply(400, b"Bad chat_id")
                     return
                 name = clean_caption_name(
-                    data.get("name") or USER_NAMES.get(chat_id)
+                    data.get("name") or user_name(chat_id)
                 )
 
             if chat_id not in ALLOWED_USER_IDS:
@@ -460,6 +510,23 @@ def init_db():
                 "CREATE INDEX IF NOT EXISTS idx_memories_user"
                 " ON memories (user_id, id DESC);"
             )
+            # Продвинутая память: важность, о ком факт, кто сказал, сколько раз
+            # подтверждался, когда устаревает.
+            for ddl in (
+                "importance SMALLINT DEFAULT 3",
+                "subject_id BIGINT",          # о ком факт (NULL = о паре)
+                "author_id BIGINT",           # кто это рассказал
+                "mentions INT DEFAULT 1",
+                "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+                "expires_at TIMESTAMP",
+            ):
+                cursor.execute(f"ALTER TABLE memories ADD COLUMN IF NOT EXISTS {ddl};")
+            # Старые записи: личные — о владельце, общие — о паре
+            cursor.execute(
+                "UPDATE memories SET subject_id = user_id, author_id = user_id"
+                " WHERE subject_id IS NULL AND author_id IS NULL"
+                " AND user_id IS NOT NULL"
+            )
             # Чистим тестовую запись, оставшуюся от /memorytest
             cursor.execute(
                 "DELETE FROM memories WHERE content = %s", (TEST_MEMORY_TEXT,)
@@ -511,11 +578,84 @@ def _norm(text: str) -> str:
     return " ".join(str(text).casefold().split()).strip(" .!?…")
 
 
-def save_memory(user_id, memory_type: str, content: str, shared=None) -> bool:
-    """Сохраняет воспоминание. Возвращает False, если это пустая запись или точный дубль.
+def _to_dt(value):
+    """Время из БД (datetime или строка) -> naive datetime (UTC)."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.replace(tzinfo=None)
+    s = str(value).replace("T", " ")
+    for fmt, n in (("%Y-%m-%d %H:%M:%S", 19), ("%Y-%m-%d", 10)):
+        try:
+            return datetime.strptime(s[:n], fmt)
+        except ValueError:
+            continue
+    return None
 
-    Типы couple / event / inside_joke по умолчанию общие (user_id = NULL),
-    personal / emotion — личные.
+
+def _utcnow():
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def parse_until(value):
+    """'2026-12-31' -> datetime конца этого дня; всё остальное -> None."""
+    m = re.match(r"\s*(\d{4})-(\d{2})-(\d{2})", str(value or ""))
+    if not m:
+        return None
+    try:
+        return datetime(int(m[1]), int(m[2]), int(m[3]), 23, 59, 59)
+    except ValueError:
+        return None
+
+
+def clamp_importance(value, default=3) -> int:
+    try:
+        return max(1, min(5, int(value)))
+    except (TypeError, ValueError):
+        return default
+
+
+def _similar(a: str, b: str) -> bool:
+    """Одно и то же, сказанное чуть иначе: совпадение ключевых слов >= 75%."""
+    if _norm(a) == _norm(b):
+        return True
+    ka, kb = _keywords(a), _keywords(b)
+    if min(len(ka), len(kb)) < 3:
+        return False
+    return len(ka & kb) / len(ka | kb) >= 0.75
+
+
+def resolve_scope(user_id, memory_type: str, subject: str = None, shared=None):
+    """Возвращает (owner, subject_id): кому принадлежит запись и о ком она.
+
+    Общие записи (couple / event / inside_joke) принадлежат паре (owner = None),
+    остальные — тому, кто их рассказал. subject: self | partner | couple.
+    """
+    if shared is None:
+        shared = memory_type in SHARED_MEMORY_TYPES
+    owner = None if shared else user_id
+    if subject not in SUBJECTS:
+        subject = "couple" if memory_type in ("couple", "inside_joke") else "self"
+    partner = partner_of(user_id)
+    if subject == "partner" and partner is None:
+        subject = "self"
+    subject_id = {"self": user_id, "partner": partner, "couple": None}[subject]
+    return owner, subject_id
+
+
+def save_memory(
+    user_id,
+    memory_type: str,
+    content: str,
+    shared=None,
+    importance=None,
+    subject: str = None,
+    expires_at=None,
+) -> bool:
+    """Сохраняет воспоминание.
+
+    Возвращает False, если запись пустая или это дубль (тогда у дубля
+    повышается счётчик подтверждений и, при необходимости, важность).
     """
     if memory_type not in MEMORY_TYPES:
         raise ValueError(f"Неизвестный тип воспоминания: {memory_type}")
@@ -524,33 +664,79 @@ def save_memory(user_id, memory_type: str, content: str, shared=None) -> bool:
     if not content or content == TEST_MEMORY_TEXT:
         return False
 
-    if shared is None:
-        shared = memory_type in SHARED_MEMORY_TYPES
-    owner = None if shared else user_id
-    norm = _norm(content)
+    owner, subject_id = resolve_scope(user_id, memory_type, subject, shared)
+    importance = clamp_importance(
+        importance, DEFAULT_IMPORTANCE.get(memory_type, 3)
+    )
+    now = _utcnow()
 
     with get_db() as conn:
         with conn.cursor() as cursor:
             if owner is None:
                 cursor.execute(
-                    "SELECT content FROM memories WHERE memory_type = %s"
-                    " AND user_id IS NULL ORDER BY id DESC LIMIT 500",
-                    (memory_type,),
+                    "SELECT id, content, importance FROM memories"
+                    " WHERE user_id IS NULL ORDER BY id DESC LIMIT 500"
                 )
             else:
                 cursor.execute(
-                    "SELECT content FROM memories WHERE memory_type = %s"
-                    " AND user_id = %s ORDER BY id DESC LIMIT 500",
-                    (memory_type, owner),
+                    "SELECT id, content, importance FROM memories"
+                    " WHERE user_id = %s ORDER BY id DESC LIMIT 500",
+                    (owner,),
                 )
-            if any(_norm(row[0]) == norm for row in cursor.fetchall()):
-                return False
+            for mem_id, old_content, old_imp in cursor.fetchall():
+                if _similar(old_content, content):
+                    cursor.execute(
+                        "UPDATE memories SET mentions = COALESCE(mentions, 1) + 1,"
+                        " importance = %s, updated_at = %s WHERE id = %s",
+                        (max(clamp_importance(old_imp), importance), now, mem_id),
+                    )
+                    return False
 
             cursor.execute(
-                "INSERT INTO memories (user_id, memory_type, content)"
-                " VALUES (%s, %s, %s)",
-                (owner, memory_type, content),
+                "INSERT INTO memories (user_id, memory_type, content, importance,"
+                " subject_id, author_id, mentions, updated_at, expires_at)"
+                " VALUES (%s, %s, %s, %s, %s, %s, 1, %s, %s)",
+                (owner, memory_type, content, importance, subject_id, user_id,
+                 now, expires_at),
             )
+    return True
+
+
+def update_memory(user_id, mem_id: int, content: str = None, importance=None) -> bool:
+    """Уточняет существующую запись (её текст и/или важность).
+
+    Менять можно только свою или общую запись пары.
+    """
+    content = clean_fact(content) if content else None
+    now = _utcnow()
+    with get_db() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "SELECT importance FROM memories WHERE id = %s"
+                " AND (user_id = %s OR user_id IS NULL)",
+                (mem_id, user_id),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return False
+            new_imp = (
+                clamp_importance(importance, row[0] or 3)
+                if importance is not None else (row[0] or 3)
+            )
+            if content:
+                cursor.execute(
+                    "UPDATE memories SET content = %s, importance = %s,"
+                    " mentions = COALESCE(mentions, 1) + 1, updated_at = %s"
+                    " WHERE id = %s",
+                    (content, new_imp, now, mem_id),
+                )
+            else:
+                cursor.execute(
+                    "UPDATE memories SET importance = %s,"
+                    " mentions = COALESCE(mentions, 1) + 1, updated_at = %s"
+                    " WHERE id = %s",
+                    (new_imp, now, mem_id),
+                )
     return True
 
 
@@ -558,63 +744,200 @@ def _keywords(text: str) -> set:
     return {w[:5] for w in re.findall(r"\w+", str(text).casefold()) if len(w) > 3}
 
 
+def _memory_score(m: dict, kw: set, now: datetime) -> float:
+    """Насколько воспоминание нужно прямо сейчас: важность + уместность + свежесть."""
+    relevance = min(len(kw & _keywords(m["content"])), 3) if kw else 0
+    half_life = HALF_LIFE_DAYS.get(m["type"], 240)
+    stamp = m["updated_at"] or m["created_at"] or now
+    age_days = max((now - stamp).total_seconds() / 86400, 0)
+    freshness = 0.5 ** (age_days / half_life)
+    # Важные записи (5) почти не стареют
+    freshness = max(freshness, 0.6 if m["importance"] >= 5 else 0)
+    return (
+        m["importance"] * 2
+        + min(m["mentions"], 5) * 0.5
+        + relevance * 3
+        + freshness * 2
+    )
+
+
+def _row_to_memory(r) -> dict:
+    return {
+        "id": r[0], "type": r[1], "content": r[2],
+        "owner": r[3], "shared": r[3] is None,
+        "importance": clamp_importance(r[4]),
+        "subject_id": r[5], "author_id": r[6],
+        "mentions": r[7] or 1,
+        "created_at": _to_dt(r[8]), "updated_at": _to_dt(r[9]),
+        "expires_at": _to_dt(r[10]),
+    }
+
+
+_MEM_COLUMNS = (
+    "id, memory_type, content, user_id, importance, subject_id, author_id,"
+    " mentions, created_at, updated_at, expires_at"
+)
+
+
 def get_memories(
     user_id: int,
     limit: int = 20,
     query: str = None,
     include_personal: bool = True,
+    ranked: bool = True,
 ):
-    """Воспоминания для пользователя: его личные + общие пары.
+    """Воспоминания, которые ВИДИТ этот человек: его личные + общие пары.
 
-    include_personal=False — только общие (для группового чата).
-    Если передан query, сначала идут записи, пересекающиеся с ним по словам.
+    include_personal=False — только общие (групповой чат).
+    ranked=True — отбор по важности, свежести и совпадению с query;
+    ranked=False — просто последние записи (для /memory).
+    Просроченные записи (expires_at в прошлом) не возвращаются.
     """
-    fetch_limit = limit * 5 if query else limit
+    fetch_limit = max(limit * 8, 300) if ranked else limit
     with get_db() as conn:
         with conn.cursor() as cursor:
             if include_personal:
                 cursor.execute(
-                    "SELECT id, memory_type, content, user_id FROM memories"
+                    f"SELECT {_MEM_COLUMNS} FROM memories"
                     " WHERE (user_id = %s OR user_id IS NULL) AND content <> %s"
                     " ORDER BY id DESC LIMIT %s",
                     (user_id, TEST_MEMORY_TEXT, fetch_limit),
                 )
             else:
                 cursor.execute(
-                    "SELECT id, memory_type, content, user_id FROM memories"
+                    f"SELECT {_MEM_COLUMNS} FROM memories"
                     " WHERE user_id IS NULL AND content <> %s"
                     " ORDER BY id DESC LIMIT %s",
                     (TEST_MEMORY_TEXT, fetch_limit),
                 )
             rows = cursor.fetchall()
 
-    items = [
-        {"id": r[0], "type": r[1], "content": r[2], "shared": r[3] is None}
-        for r in rows
-    ]
-    if query:
-        kw = _keywords(query)
-        items.sort(key=lambda m: (-len(kw & _keywords(m["content"])), -m["id"]))
-    items = items[:limit]
+    now = _utcnow()
+    items = [_row_to_memory(r) for r in rows]
+    items = [m for m in items if not (m["expires_at"] and m["expires_at"] < now)]
+
+    if ranked:
+        kw = _keywords(query) if query else set()
+        for m in items:
+            m["score"] = _memory_score(m, kw, now)
+        items.sort(key=lambda m: -m["score"])
+        # Ядро: самое важное берём всегда, остальное — по релевантности
+        core = [m for m in items if m["importance"] >= 4][:MEMORY_CORE_LIMIT]
+        taken = {m["id"] for m in core}
+        rest = [m for m in items if m["id"] not in taken]
+        items = (core + rest)[:limit]
+    else:
+        items = items[:limit]
     items.sort(key=lambda m: m["id"])  # хронологически
     return items
 
 
-def build_memory_block(memories, existing_prompt: str) -> str:
-    """Текст с воспоминаниями для системного промпта (без дублей старой памяти)."""
+def format_memory_line(m: dict, speaker_id=None) -> str:
+    """Одна строка памяти с понятной пометкой, о ком она."""
+    tag = MEMORY_LABELS.get(m["type"], m["type"])
+    stars = "⭐" * m.get("importance", 3) if m.get("importance", 3) >= 4 else ""
+    return f"[{tag}] {m['content']}{(' ' + stars) if stars else ''}"
+
+
+def build_memory_block(memories, existing_prompt: str, speaker_id=None, group=False) -> str:
+    """Блок воспоминаний для системного промпта.
+
+    Записи разложены по «чьё это»: о собеседнике, о его партнёре (со слов
+    собеседника), общее у пары. Так модель не путает людей между собой.
+    """
     existing = existing_prompt.casefold()
-    lines = []
+    about_me, about_partner, shared = [], [], []
     for m in memories:
         if m["content"].casefold() in existing:
             continue
-        label = MEMORY_LABELS.get(m["type"], m["type"])
-        lines.append(f"- [{label}] {m['content']}")
-    if not lines:
+        if m.get("shared", True):
+            shared.append(m)
+        elif m.get("subject_id") is not None and m["subject_id"] != speaker_id:
+            about_partner.append(m)
+        else:
+            about_me.append(m)
+    if not (about_me or about_partner or shared):
         return ""
-    return (
-        "\n\n🗂 Дополнительные воспоминания (используй естественно, не"
-        " перечисляй без повода):\n" + "\n".join(lines)
-    )
+
+    me = user_name(speaker_id) if speaker_id is not None else "собеседник"
+    pid = partner_of(speaker_id) if speaker_id is not None else None
+    partner = user_name(pid) if pid is not None else "партнёр"
+
+    parts = [
+        "\n\n🗂 ПАМЯТЬ. Не путай людей: каждая запись относится только к тому,"
+        " кого указывает заголовок раздела. Факт про одного человека никогда не"
+        " приписывай другому. Используй память естественно, к месту, не"
+        " перечисляй её без повода. Внутренние шутки можно изредка"
+        " обыгрывать; чувствами делись бережно, не давя и не цитируя дословно."
+    ]
+    if shared:
+        parts.append(
+            f"\n💞 Общее у пары ({me} и {partner}):\n"
+            + "\n".join("- " + format_memory_line(m) for m in shared)
+        )
+    if about_me:
+        parts.append(
+            f"\n👤 Про {me} (твой собеседник сейчас, в личном разговоре):\n"
+            + "\n".join("- " + format_memory_line(m) for m in about_me)
+        )
+    if about_partner:
+        parts.append(
+            f"\n🫶 Про {partner} (это рассказал(а) {me}; {partner} этого мог не"
+            " говорить сам(а), не выдавай как чужие слова и не раскрывай"
+            " секреты/сюрпризы):\n"
+            + "\n".join("- " + format_memory_line(m) for m in about_partner)
+        )
+    return "\n".join(parts)
+
+
+def memory_maintenance() -> dict:
+    """Уборка: сливает почти-дубли, убирает просроченное и неважное старое."""
+    now = _utcnow()
+    stats = {"merged": 0, "expired": 0, "faded": 0}
+    with get_db() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(f"SELECT {_MEM_COLUMNS} FROM memories ORDER BY id")
+            items = [_row_to_memory(r) for r in cursor.fetchall()]
+
+            dead = set()
+            for m in items:
+                if m["expires_at"] and m["expires_at"] < now - timedelta(days=7):
+                    dead.add(m["id"]); stats["expired"] += 1
+                    continue
+                age = (now - (m["updated_at"] or m["created_at"] or now)).days
+                if m["mentions"] <= 1 and (
+                    (m["importance"] <= 2 and age > 60)
+                    or (m["type"] == "emotion" and m["importance"] <= 3 and age > 120)
+                ):
+                    dead.add(m["id"]); stats["faded"] += 1
+
+            # Слияние почти-дублей внутри одного владельца: остаётся более важная
+            keep = [m for m in items if m["id"] not in dead]
+            for i, a in enumerate(keep):
+                if a["id"] in dead:
+                    continue
+                for b in keep[i + 1:]:
+                    if b["id"] in dead or a["owner"] != b["owner"]:
+                        continue
+                    if _similar(a["content"], b["content"]):
+                        winner, loser = (
+                            (a, b) if (a["importance"], a["mentions"])
+                            >= (b["importance"], b["mentions"]) else (b, a)
+                        )
+                        cursor.execute(
+                            "UPDATE memories SET mentions = %s, importance = %s"
+                            " WHERE id = %s",
+                            (winner["mentions"] + loser["mentions"],
+                             max(winner["importance"], loser["importance"]),
+                             winner["id"]),
+                        )
+                        winner["mentions"] += loser["mentions"]
+                        dead.add(loser["id"]); stats["merged"] += 1
+                        if loser is a:
+                            break
+            for mem_id in dead:
+                cursor.execute("DELETE FROM memories WHERE id = %s", (mem_id,))
+    return stats
 
 
 # --- СТАРАЯ ПАМЯТЬ (user_memory / couple_memory) ---
@@ -739,6 +1062,21 @@ def delete_memory_phrase(user_id: int, phrase: str):
     return deleted_from
 
 
+def delete_memory_id(user_id: int, mem_id: int) -> bool:
+    """Удаляет запись по номеру: свою или общую (чужую личную — нельзя)."""
+    with get_db() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "SELECT id FROM memories WHERE id = %s"
+                " AND (user_id = %s OR user_id IS NULL)",
+                (mem_id, user_id),
+            )
+            if not cursor.fetchone():
+                return False
+            cursor.execute("DELETE FROM memories WHERE id = %s", (mem_id,))
+    return True
+
+
 def clear_memory(user_id: int, include_shared: bool = False):
     """Очищает личную память пользователя. Общую память пары — только если include_shared."""
     with get_db() as conn:
@@ -841,9 +1179,15 @@ async def process_with_cascade(
                 else next((c for c in contents if isinstance(c, str)), None)
             )
             memories = await asyncio.to_thread(
-                get_memories, user_id, 20, query, chat_type == "private"
+                get_memories,
+                user_id,
+                MEMORY_PROMPT_LIMIT,
+                query,
+                chat_type == "private",
             )
-            system_prompt += build_memory_block(memories, system_prompt)
+            system_prompt += build_memory_block(
+                memories, system_prompt, speaker_id=user_id, group=chat_type != "private"
+            )
         except Exception as e:
             logging.warning(f"Новая память недоступна, отвечаю по старой: {e}")
 
@@ -879,31 +1223,67 @@ def upload_to_gemini(file_bytes, mime_type: str):
     return uploaded
 
 
-def parse_extracted_facts(text: str):
-    """Разбирает JSON-ответ модели в список (type, fact). Бросает исключение при мусоре."""
+def parse_memory_ops(text: str, valid_ids=None):
+    """Разбирает JSON-ответ модели в список операций с памятью.
+
+    Операции: add (новый факт), update (уточнить существующий по id),
+    reinforce (факт снова подтвердился). Принимает и старый формат —
+    список {"type", "fact"}. Бросает исключение при мусоре.
+    """
     text = (text or "").strip()
     text = re.sub(r"^```(?:json)?|```$", "", text, flags=re.MULTILINE).strip()
     data = json.loads(text)
     if isinstance(data, dict):
-        data = data.get("facts", [data])
+        data = data.get("ops") or data.get("facts") or [data]
     if not isinstance(data, list):
         raise ValueError("ожидался список")
+    valid_ids = set(valid_ids) if valid_ids is not None else None
 
-    facts = []
+    ops = []
     for item in data:
         if not isinstance(item, dict):
             continue
-        mem_type = str(item.get("type", "")).strip().lower()
+        op = str(item.get("op", "add")).strip().lower()
         fact = clean_fact(item.get("fact", ""))
-        if mem_type not in MEMORY_TYPES or not fact:
-            continue
         if fact.strip(" .").upper() in {"НЕТ", "NONE", "N/A", "NULL"}:
             continue
-        facts.append((mem_type, fact))
-    return facts[:3]
+
+        if op == "add":
+            mem_type = str(item.get("type", "")).strip().lower()
+            if mem_type not in MEMORY_TYPES or not fact:
+                continue
+            importance = clamp_importance(
+                item.get("importance"), DEFAULT_IMPORTANCE[mem_type]
+            )
+            if importance < MIN_SAVE_IMPORTANCE:
+                continue  # мелочь — не запоминаем
+            about = str(item.get("about", "")).strip().lower()
+            ops.append({
+                "op": "add", "type": mem_type, "fact": fact,
+                "importance": importance,
+                "about": about if about in SUBJECTS else None,
+                "until": parse_until(item.get("until")),
+            })
+        elif op in ("update", "reinforce"):
+            try:
+                mem_id = int(item.get("id"))
+            except (TypeError, ValueError):
+                continue
+            if valid_ids is not None and mem_id not in valid_ids:
+                continue
+            if op == "update" and not fact:
+                continue
+            ops.append({
+                "op": op, "id": mem_id, "fact": fact or None,
+                "importance": (
+                    clamp_importance(item.get("importance"))
+                    if item.get("importance") is not None else None
+                ),
+            })
+    return ops[:4]
 
 
-def _extract_facts_sync(prompt: str):
+def _extract_ops_sync(prompt: str, valid_ids):
     for model_name in MODELS_CASCADE:
         try:
             response = client.models.generate_content(
@@ -913,7 +1293,7 @@ def _extract_facts_sync(prompt: str):
                     response_mime_type="application/json"
                 ),
             )
-            return parse_extracted_facts(response.text)
+            return parse_memory_ops(response.text, valid_ids)
         except Exception as e:
             logging.warning(
                 f"Модель {model_name} не смогла выделить факты: {e}."
@@ -922,40 +1302,121 @@ def _extract_facts_sync(prompt: str):
     return []
 
 
-async def extract_and_save_facts(user_id: int, chat_type: str, user_message: str):
-    speaker_name = USER_NAMES.get(user_id, "Пользователь")
+def get_recent_context(chat_id: int, limit: int = 6, skip_last_user: bool = True):
+    """Последние реплики чата (для понимания шуток и чувств в контексте)."""
+    with get_db() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "SELECT role, content FROM messages WHERE chat_id = %s"
+                " ORDER BY id DESC LIMIT %s",
+                (chat_id, limit + 1),
+            )
+            rows = cursor.fetchall()
+    if skip_last_user and rows and rows[0][0] == "user":
+        rows = rows[1:]  # само анализируемое сообщение
+    lines = []
+    for role, content in reversed(rows[:limit]):
+        if content:
+            lines.append(("Бот: " if role != "user" else "") + content[:300])
+    return lines
 
-    prompt = (
+
+def build_extraction_prompt(
+    user_id: int, user_message: str, existing, context_lines
+) -> str:
+    me = user_name(user_id)
+    pid = partner_of(user_id)
+    partner = user_name(pid) if pid is not None else "партнёр"
+
+    def about_label(m):
+        if m["shared"] and m["subject_id"] is None:
+            return "пара"
+        return f"о {me}" if m["subject_id"] == user_id else f"о {partner}"
+
+    existing_text = "\n".join(
+        f"[id {m['id']}] ({MEMORY_LABELS.get(m['type'], m['type'])}, "
+        f"{about_label(m)}, важность {m['importance']}) {m['content']}"
+        for m in existing
+    ) or "(пока ничего)"
+    context_text = "\n".join(context_lines) or "(нет)"
+
+    return (
         f"Сегодня: {current_time_str()}.\n"
-        f"Проанализируй реплику от '{speaker_name}'. Найди в ней только"
-        f" ВАЖНУЮ ДОЛГОВРЕМЕННУЮ информацию и классифицируй её:\n"
-        f"- personal — предпочтения, привычки, цели, планы, черты характера"
-        f" конкретного человека;\n"
-        f"- couple — важные сведения об отношениях и паре;\n"
-        f"- event — значимые события и даты (годовщины, дни рождения, поездки,"
-        f" договорённости). Относительные даты ('завтра') переведи в"
-        f" конкретные;\n"
-        f"- emotion — устойчивые эмоциональные закономерности (а не настроение"
-        f" одного дня);\n"
-        f"- inside_joke — внутренние шутки и особые выражения пары.\n\n"
-        f"⚠️ КАТЕГОРИЧЕСКИ ИГНОРИРУЙ временные состояния и бытовые действия"
-        f" ('спит', 'устал сегодня', 'кушает', 'едет в транспорте', 'болит"
-        f" голова', 'смотрит фильм сейчас'). Не сохраняй каждое сообщение подряд."
-        f" Большинство реплик не содержат ничего важного.\n\n"
-        f"Каждый факт пиши коротко (до 150 символов), самодостаточно и с именем"
-        f" человека (например: '{speaker_name} любит горы').\n"
-        f"Ответ — строго JSON-массив (максимум 3 элемента), без пояснений:\n"
-        f'[{{"type": "personal", "fact": "..."}}]\n'
-        f"Если сохранять нечего — верни [].\n\n"
-        f"Реплика: {user_message}"
+        f"Ты ведёшь память чат-бота пары: {me} и {partner}. Сейчас пишет {me}.\n"
+        f"Реши, что из НОВОЙ реплики стоит запомнить надолго.\n\n"
+        f"ВАЖНОСТЬ (поле importance):\n"
+        f"5 — критично: здоровье, аллергии, страхи и границы, главные даты и"
+        f" события отношений, важные обещания;\n"
+        f"4 — сильно описывает человека или пару: ценности, цели, устойчивые"
+        f" предпочтения, важные планы, повторяющиеся переживания;\n"
+        f"3 — полезно помнить: вкусы, привычки, договорённости;\n"
+        f"2 и ниже — мелочи и сиюминутное: НЕ сохраняй (просто не добавляй).\n"
+        f"Большинство реплик не содержат ничего достойного памяти — тогда верни [].\n\n"
+        f"ТИПЫ (type) и ОТНОСИТЕЛЬНО КОГО (about: self — {me}, partner —"
+        f" {partner}, couple — пара):\n"
+        f"- personal — предпочтения, привычки, цели, черты характера. about:"
+        f" self, или partner, если {me} рассказал это про {partner};\n"
+        f"- couple — важное об отношениях пары (about: couple);\n"
+        f"- event — значимые события и даты. Относительные даты ('завтра')"
+        f" переведи в конкретные. Если событие разовое и после даты"
+        f" теряет смысл, укажи until (YYYY-MM-DD);\n"
+        f"- emotion — чувства: устойчивые закономерности ('{me} тревожится"
+        f" перед выступлениями') или по-настоящему значимый эмоциональный момент"
+        f" (с коротким поводом и датой). Обычное настроение ('устал', 'бесит"
+        f" пробка') не сохраняй. Это всегда чувства самого {me} (about: self),"
+        f" даже если они о {partner};\n"
+        f"- inside_joke — внутренние шутки, прозвища, словечки пары. Пиши ФРАЗУ и"
+        f" её смысл/происхождение, чтобы потом можно было обыграть"
+        f" (например: «Шутка пары: «пельмени-ниндзя» — про тот случай с кухней»).\n\n"
+        f"КАК ПИСАТЬ ФАКТ: коротко (до 150 символов), самодостаточно, с именем"
+        f" человека ('{me} любит горы', '{partner} боится глубины'). Не путай"
+        f" людей: если {me} говорит о {partner}, подлежащим должно быть имя"
+        f" {partner}, а не {me}.\n\n"
+        f"УЖЕ В ПАМЯТИ (не дублируй!):\n{existing_text}\n\n"
+        f"Если новая информация уточняет или меняет существующую запись —"
+        f' верни {{"op": "update", "id": N, "fact": "новая формулировка"}}.'
+        f' Если она просто повторяет запись — {{"op": "reinforce", "id": N}}.\n\n'
+        f"Ответ — строго JSON-массив (максимум 3 операции), без пояснений:\n"
+        f'[{{"op": "add", "type": "personal", "about": "self",'
+        f' "importance": 3, "fact": "...", "until": null}}]\n\n'
+        f"КОНТЕКСТ (предыдущие реплики, только для понимания):\n{context_text}\n\n"
+        f"НОВАЯ РЕПЛИКА от {me}: {user_message}"
     )
 
+
+async def extract_and_save_facts(
+    user_id: int, chat_type: str, user_message: str, chat_id=None
+):
     try:
-        facts = await asyncio.to_thread(_extract_facts_sync, prompt)
-        for mem_type, fact in facts:
-            saved = await asyncio.to_thread(save_memory, user_id, mem_type, fact)
-            if saved:
-                logging.info(f"Новая память [{mem_type}]: {fact}")
+        existing = await asyncio.to_thread(
+            get_memories, user_id, 12, user_message, chat_type == "private"
+        )
+        context_lines = (
+            await asyncio.to_thread(get_recent_context, chat_id)
+            if chat_id is not None else []
+        )
+        prompt = build_extraction_prompt(
+            user_id, user_message, existing, context_lines
+        )
+        ops = await asyncio.to_thread(
+            _extract_ops_sync, prompt, {m["id"] for m in existing}
+        )
+        for op in ops:
+            if op["op"] == "add":
+                saved = await asyncio.to_thread(
+                    save_memory, user_id, op["type"], op["fact"],
+                    None, op["importance"], op["about"], op["until"],
+                )
+                if saved:
+                    logging.info(
+                        f"Новая память [{op['type']}, важн. {op['importance']}]:"
+                        f" {op['fact']}"
+                    )
+            else:
+                await asyncio.to_thread(
+                    update_memory, user_id, op["id"], op["fact"], op["importance"]
+                )
+                logging.info(f"Память #{op['id']}: {op['op']} {op['fact'] or ''}")
     except Exception:
         logging.exception("Не удалось сохранить факты в память")
 
@@ -1050,9 +1511,9 @@ COMMANDS_HELP = (
     "• /command — список команд\n"
     "• /draw — холст для рисования\n"
     "• /memory — посмотреть общую и личную память\n"
-    "• /remember [тип] &lt;текст&gt; — запомнить вручную (типы: personal, couple,"
-    " event, emotion, inside_joke; по умолчанию personal)\n"
-    "• /memorydelete &lt;фраза&gt; — удалить факты по ключевой фразе\n"
+    "• /remember [тип] &lt;текст&gt; — запомнить вручную как важное (типы: personal,"
+    " partner — про партнёра, couple, event, emotion, inside_joke)\n"
+    "• /memorydelete &lt;номер или фраза&gt; — удалить запись\n"
     "• /memoryclear — очистить память (с подтверждением)\n\n"
     "🌤 <b>Инлайн-режим (@имя_бота):</b>\n"
     "• погода &lt;город&gt; — узнать погоду\n"
@@ -1067,32 +1528,62 @@ async def cmd_command_list(message: types.Message):
     await message.answer(COMMANDS_HELP, parse_mode="HTML")
 
 
+def _memory_section(title: str, items) -> str:
+    if not items:
+        return ""
+    lines = []
+    for m in items:
+        stars = "⭐" * m["importance"] if m["importance"] >= 4 else ""
+        tag = MEMORY_LABELS.get(m["type"], m["type"])
+        lines.append(
+            f"• <code>{m['id']}</code> [{html.escape(tag)}]"
+            f" {html.escape(m['content'])}{(' ' + stars) if stars else ''}"
+        )
+    return f"\n<b>{title}</b>\n" + "\n".join(lines) + "\n"
+
+
 @dp.message(Command("memory"))
 async def cmd_memory(message: types.Message):
     if not is_allowed(message.from_user):
         return
     user_id = message.from_user.id
+    remember_name(message.from_user)
+    me = user_name(user_id)
+    pid = partner_of(user_id)
+    partner = user_name(pid) if pid is not None else "партнёр"
 
     couple = await asyncio.to_thread(get_couple_memory)
     personal = await asyncio.to_thread(get_user_memory, user_id)
-    extra = await asyncio.to_thread(get_memories, user_id, 50)
+    items = await asyncio.to_thread(get_memories, user_id, 80, None, True, False)
 
-    if extra:
-        extra_text = "\n".join(
-            f"• [{html.escape(MEMORY_LABELS.get(m['type'], m['type']))}]"
-            f" {html.escape(m['content'])}"
-            for m in extra
-        )
-    else:
-        extra_text = "Пока пусто."
+    shared = [m for m in items if m["shared"]]
+    mine = [m for m in items if not m["shared"] and m["subject_id"] in (user_id, None)]
+    about_partner = [
+        m for m in items
+        if not m["shared"] and m["subject_id"] not in (user_id, None)
+    ]
+    # сначала важное
+    for group in (shared, mine, about_partner):
+        group.sort(key=lambda m: (-m["importance"], -m["id"]))
 
-    text = (
-        "🧠 <b>Память бота</b>\n\n"
-        f"💞 <b>Общая информация о паре:</b>\n{html.escape(couple)}\n\n"
-        f"👤 <b>Твоя личная память:</b>\n{html.escape(personal)}\n\n"
-        f"🗂 <b>Дополнительные воспоминания:</b>\n{extra_text}"
+    text = "🧠 <b>Память бота</b>\n(число — номер записи, ⭐ — важное)\n"
+    text += _memory_section("💞 Общее у вас двоих", shared)
+    text += _memory_section(f"👤 Про тебя ({html.escape(me)}) — видишь только ты", mine)
+    text += _memory_section(
+        f"🫶 Что ты рассказал(а) про {html.escape(partner)} — видишь только ты",
+        about_partner,
     )
+    if not items:
+        text += "\nНовых воспоминаний пока нет.\n"
+    if couple != EMPTY_COUPLE_MEMORY:
+        text += f"\n💞 <b>Старая общая заметка:</b>\n{html.escape(couple)}\n"
+    if personal != EMPTY_USER_MEMORY:
+        text += f"\n👤 <b>Старая личная заметка:</b>\n{html.escape(personal)}\n"
+    text += "\nУдалить: /memorydelete &lt;номер или фраза&gt;"
     await send_long(message, text, parse_mode="HTML")
+
+
+REMEMBER_ALIASES = {"partner": ("personal", "partner"), "партнёр": ("personal", "partner")}
 
 
 @dp.message(Command("remember"))
@@ -1100,24 +1591,33 @@ async def cmd_remember(message: types.Message, command: CommandObject):
     if not is_allowed(message.from_user):
         return
     args = (command.args or "").strip()
-    mem_type = "personal"
+    mem_type, subject = "personal", None
     first, _, rest = args.partition(" ")
-    if first.lower() in MEMORY_TYPES and rest.strip():
-        mem_type, args = first.lower(), rest.strip()
+    key = first.lower()
+    if key in REMEMBER_ALIASES and rest.strip():
+        (mem_type, subject), args = REMEMBER_ALIASES[key], rest.strip()
+    elif key in MEMORY_TYPES and rest.strip():
+        mem_type, args = key, rest.strip()
 
     if not args:
         await message.answer(
-            "⚠️ Напиши, что запомнить. Пример: /remember couple Мы познакомились"
-            " в апреле"
+            "⚠️ Напиши, что запомнить. Примеры:\n"
+            "/remember couple Мы познакомились в апреле\n"
+            "/remember partner Любит ромашки (факт про партнёра, видишь только ты)\n"
+            "/remember inside_joke «Пельмени-ниндзя» — про тот случай на кухне\n"
+            "Типы: personal, partner, couple, event, emotion, inside_joke."
         )
         return
 
-    saved = await asyncio.to_thread(save_memory, message.from_user.id, mem_type, args)
-    label = MEMORY_LABELS[mem_type]
+    # Вручную сохранённое считаем важным
+    saved = await asyncio.to_thread(
+        save_memory, message.from_user.id, mem_type, args, None, 5, subject
+    )
+    label = MEMORY_LABELS[mem_type] + (" · про партнёра" if subject == "partner" else "")
     if saved:
-        await message.answer(f"✅ Запомнил ({label}).")
+        await message.answer(f"✅ Запомнил ({label}) как важное.")
     else:
-        await message.answer("ℹ️ Такая запись уже есть (или текст пустой).")
+        await message.answer("ℹ️ Такая запись уже есть (я отметил её как подтверждённую).")
 
 
 @dp.message(Command("memorydelete"))
@@ -1127,7 +1627,15 @@ async def cmd_memory_delete(message: types.Message, command: CommandObject):
     phrase = (command.args or "").strip()
     if not phrase:
         await message.answer(
-            "⚠️ Укажи текст для удаления. Пример: /memorydelete горы"
+            "⚠️ Укажи номер или текст. Примеры: /memorydelete 12 или /memorydelete горы"
+        )
+        return
+    if phrase.isdigit():
+        ok = await asyncio.to_thread(
+            delete_memory_id, message.from_user.id, int(phrase)
+        )
+        await message.answer(
+            "🗑 Запись удалена." if ok else "❌ Нет такой записи среди доступных тебе."
         )
         return
     deleted = await asyncio.to_thread(
@@ -1206,7 +1714,8 @@ async def handle_media_or_text(message: types.Message):
     user_id = message.from_user.id
     chat_id = message.chat.id
     chat_type = "private" if message.chat.type == "private" else "group"
-    speaker_name = USER_NAMES.get(user_id, "Пользователь")
+    remember_name(message.from_user)
+    speaker_name = user_name(user_id)
 
     user_text = ""
     file_bytes = None
@@ -1274,7 +1783,9 @@ async def handle_media_or_text(message: types.Message):
     )
     if worth_analyzing:
         run_in_background(
-            extract_and_save_facts(user_id, chat_type, f"{speaker_name}: {user_text}")
+            extract_and_save_facts(
+                user_id, chat_type, f"{speaker_name}: {user_text}", chat_id
+            )
         )
 
     # 3. Если к боту не обращались (пассивный режим в группе) — просто выходим
@@ -1495,10 +2006,32 @@ def run_http_server():
     server.serve_forever()
 
 
+async def memory_maintenance_loop():
+    """Раз в сутки сливает дубли и убирает устаревшее."""
+    while True:
+        try:
+            stats = await asyncio.to_thread(memory_maintenance)
+            if any(stats.values()):
+                logging.info(f"Уборка памяти: {stats}")
+        except Exception:
+            logging.exception("Уборка памяти не удалась")
+        await asyncio.sleep(24 * 3600)
+
+
 async def main():
     logging.info("Инициализация базы данных...")
     await asyncio.to_thread(init_db)
     logging.info("База данных готова.")
+
+    # Имена из профилей Telegram (работает, если человек уже писал боту)
+    for uid in ALLOWED_USER_IDS:
+        try:
+            chat = await bot.get_chat(uid)
+            remember_name(chat)
+        except Exception as e:
+            logging.info(f"Имя {uid} пока не определено: {e}")
+
+    run_in_background(memory_maintenance_loop())
 
     try:
         await bot.set_my_commands([
