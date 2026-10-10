@@ -1327,13 +1327,7 @@ def weather_icon(description: str) -> str:
 def format_weather(data: dict, city: str) -> str:
     """Красивая сводка из JSON wttr.in (формат j1)."""
     cur = data["current_condition"][0]
-    try:
-        area = data["nearest_area"][0]
-        place = area["areaName"][0]["value"]
-        country = area["country"][0]["value"]
-        title = f"{place}, {country}" if country else place
-    except (KeyError, IndexError, TypeError):
-        title = city
+    title = city
     desc = _ru(cur)
     pressure = ""
     try:
@@ -1392,23 +1386,92 @@ def format_weather(data: dict, city: str) -> str:
     return "\n".join(lines)
 
 
-def get_weather(city: str) -> str:
-    """Погода с wttr.in через httpx: подробная сводка и прогноз на 3 дня."""
-    city = " ".join(str(city or "").split())[:60] or "Омск"
-    headers = {"User-Agent": "curl/8.0", "Accept-Language": "ru"}
+DEFAULT_CITY = os.getenv("DEFAULT_CITY", "Омск")
+_geo_cache = {}   # запрос -> (время, список мест)
+_wx_cache = {}    # (lat, lon) -> (время, текст)
+CACHE_TTL = 600
+
+
+def _http() -> "httpx.Client":
+    return httpx.Client(
+        timeout=8.0, follow_redirects=True,
+        headers={"User-Agent": "curl/8.0", "Accept-Language": "ru"},
+    )
+
+
+def geocode(name: str, count: int = 3):
+    """Находит места по названию (Open-Meteo): точные названия и координаты.
+
+    Возвращает список {"title", "lat", "lon"}; пусто, если ничего не нашлось
+    или сервис недоступен.
+    """
+    name = " ".join(str(name or "").split())[:60]
+    if len(name) < 2:
+        return []
+    key = (name.casefold(), count)
+    cached = _geo_cache.get(key)
+    if cached and time.time() - cached[0] < CACHE_TTL:
+        return cached[1]
     try:
-        with httpx.Client(timeout=8.0, follow_redirects=True, headers=headers) as http:
+        with _http() as http:
             response = http.get(
-                f"https://wttr.in/{urllib.parse.quote(city)}",
+                "https://geocoding-api.open-meteo.com/v1/search",
+                params={"name": name, "count": count, "language": "ru", "format": "json"},
+            )
+            response.raise_for_status()
+            results = response.json().get("results") or []
+    except Exception as e:
+        logging.warning(f"Геокодинг не сработал для «{name}»: {e}")
+        return []
+
+    places = []
+    for r in results:
+        try:
+            lat, lon = float(r["latitude"]), float(r["longitude"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        parts = []
+        for part in (r.get("name"), r.get("admin1"), r.get("country")):
+            if part and part not in parts:
+                parts.append(part)
+        places.append({"title": ", ".join(parts), "lat": lat, "lon": lon})
+    if len(_geo_cache) > 200:
+        _geo_cache.clear()
+    _geo_cache[key] = (time.time(), places)
+    return places
+
+
+def get_weather(city: str, place: dict = None) -> str:
+    """Погода через wttr.in (httpx): подробная сводка и прогноз на 3 дня.
+
+    Если место известно (из геокодинга), запрос идёт по координатам, поэтому
+    город всегда тот, что нужен. Иначе название сначала уточняется геокодером.
+    """
+    city = " ".join(str(city or "").split())[:60] or DEFAULT_CITY
+    if place is None:
+        found = geocode(city, 1)
+        place = found[0] if found else None
+    if place:
+        query, title = f"{place['lat']:.3f},{place['lon']:.3f}", place["title"]
+    else:
+        query, title = city, city
+
+    cached = _wx_cache.get(query)
+    if cached and time.time() - cached[0] < CACHE_TTL:
+        return cached[1]
+    try:
+        with _http() as http:
+            response = http.get(
+                f"https://wttr.in/{urllib.parse.quote(query)}",
                 params={"format": "j1", "lang": "ru"},
             )
             response.raise_for_status()
             try:
-                return format_weather(response.json(), city)
+                text = format_weather(response.json(), title)
             except (ValueError, KeyError, IndexError, TypeError) as e:
                 logging.warning(f"Погода: нестандартный ответ ({e}), беру краткий формат")
                 short = http.get(
-                    f"https://wttr.in/{urllib.parse.quote(city)}",
+                    f"https://wttr.in/{urllib.parse.quote(query)}",
                     params={"format": "3", "lang": "ru"},
                 )
                 short.raise_for_status()
@@ -1416,6 +1479,10 @@ def get_weather(city: str) -> str:
     except Exception as e:
         logging.error(f"Ошибка получения погоды: {e}")
         return f"Не удалось получить погоду для города: {city}"
+    if len(_wx_cache) > 200:
+        _wx_cache.clear()
+    _wx_cache[query] = (time.time(), text)
+    return text
 
 
 # ---------------------------------------------------------------------------
@@ -2199,13 +2266,14 @@ def format_local(dt_utc: datetime) -> str:
 
 
 def _dateparser_settings():
-    now_local = datetime.now(local_tz()).replace(tzinfo=None)
-    return {
-        "TIMEZONE": BOT_TIMEZONE,
-        "RETURN_AS_TIMEZONE_AWARE": True,
-        "PREFER_DATES_FROM": "future",
-        "RELATIVE_BASE": now_local,
-    }
+    """Настройки dateparser. Время считаем «настенным» (по часам BOT_TIMEZONE).
+
+    Пояс в настройки НЕ передаём: с TIMEZONE dateparser по-разному сдвигает
+    относительные фразы («в 18:00», «через 2 минуты»). Вместо этого даём ему
+    местное «сейчас» без пояса, а пояс добавляем сами в to_utc_naive().
+    """
+    now_local = datetime.now(local_tz()).replace(tzinfo=None, microsecond=0)
+    return {"PREFER_DATES_FROM": "future", "RELATIVE_BASE": now_local}
 
 
 def parse_reminder_text(raw: str):
@@ -2257,12 +2325,36 @@ def parse_reminder_text(raw: str):
     task = " ".join(task.split()).strip(" ,.:;-—|")
     if when is None:
         return None
-    # «завтра» или «в пятницу» без часа — ставим на 9 утра, а не на «сейчас»
+    # «завтра» или «в пятницу» без часа: ищем время дальше во фразе
+    # («завтра купить цветы в 18:00», «завтра в 6 вечера»), иначе ставим на
+    # 9 утра, а не на «сейчас»
     if not re.search(
-        r"\d{1,2}[:.]\d{2}|\b[вк]\s+\d{1,2}\b|через|утр|вечер|дн[её]м|ноч|полд|час|мин",
-        phrase, re.I,
+        r"\d{1,2}[:.]\d{2}|через|утр|вечер|дн[её]м|ноч|полд|час|мин", phrase, re.I
     ):
-        when = when.replace(hour=9, minute=0, second=0, microsecond=0)
+        time_re = re.compile(
+            r"(?:\b[вк]\s+)?\b(\d{1,2})[:.](\d{2})\b"
+            r"|\b[вк]\s+(\d{1,2})\b(?:\s*(утра|вечера|дня|ночи)\b)?",
+            re.I,
+        )
+        hour, minute = 9, 0
+        in_task = time_re.search(task)
+        tm = in_task or time_re.search(phrase)
+        if tm:
+            h = int(tm[1] if tm[1] else tm[3])
+            m_ = int(tm[2]) if tm[2] else 0
+            part = (tm[4] or "").lower()
+            if in_task:
+                task = (task[:tm.start()] + " " + task[tm.end():]).strip(" ,.:;-—")
+            else:  # время было в самой фразе; «вечера» могло остаться в деле
+                lead = re.match(r"\s*(утра|вечера|дня|ночи)\b", task, re.I)
+                if lead:
+                    part = lead[1].lower()
+                    task = task[lead.end():].strip(" ,.:;-—")
+            if part in ("вечера", "дня") and h < 12:
+                h += 12
+            if h < 24 and m_ < 60:
+                hour, minute = h, m_
+        when = when.replace(hour=hour, minute=minute, second=0, microsecond=0)
     when_utc = to_utc_naive(when)
     return when_utc, task[:MAX_FACT_LENGTH * 2], repeat, both
 
@@ -2511,7 +2603,7 @@ async def cmd_remind_delete(message: types.Message, command: CommandObject):
 async def cmd_weather(message: types.Message, command: CommandObject):
     if not is_allowed(message.from_user):
         return
-    city = (command.args or "").strip() or "Омск"
+    city = (command.args or "").strip() or DEFAULT_CITY
     text = await asyncio.to_thread(get_weather, city)
     await message.answer(text)
 
@@ -2634,19 +2726,53 @@ async def inline_query_handler(query: types.InlineQuery):
 
     if query_text.lower().startswith(("погода", "weather")):
         parts = query_text.split(maxsplit=1)
-        city = parts[1].strip() if len(parts) > 1 else "Москва"
-        weather_text = await asyncio.to_thread(get_weather, city)
-        articles = [
-            InlineQueryResultArticle(
-                id="weather_res",
-                title=f"Погода в городе: {city}",
-                input_message_content=InputTextMessageContent(
-                    message_text=weather_text
-                ),
-                description=weather_text,
+        city = parts[1].strip() if len(parts) > 1 else ""
+
+        def hint(title, description):
+            return [
+                InlineQueryResultArticle(
+                    id="weather_hint",
+                    title=title,
+                    description=description,
+                    input_message_content=InputTextMessageContent(
+                        message_text=f"{title}. {description}"
+                    ),
+                )
+            ]
+
+        # Пока человек печатает, приходят неполные названия («Ом», «Омс»)
+        if len(city) < 3:
+            await query.answer(
+                hint("🌤 Погода", "Допиши название города, например: погода Омск"),
+                button=button, cache_time=0, is_personal=True,
             )
-        ]
-        await query.answer(articles, button=button, cache_time=60, is_personal=True)
+            return
+
+        places = await asyncio.to_thread(geocode, city, 3)
+        if not places:
+            await query.answer(
+                hint(f"Не нашёл город «{city[:40]}»", "Проверь написание или допиши название"),
+                button=button, cache_time=0, is_personal=True,
+            )
+            return
+
+        texts = await asyncio.gather(
+            *(asyncio.to_thread(get_weather, city, p) for p in places)
+        )
+        articles = []
+        for i, (place, text) in enumerate(zip(places, texts)):
+            lines = text.splitlines()
+            summary = lines[1] if len(lines) > 1 else text
+            articles.append(
+                InlineQueryResultArticle(
+                    id=f"weather_{i}",
+                    title=f"{lines[0] if lines else place['title']}",
+                    description=summary[:120],
+                    input_message_content=InputTextMessageContent(message_text=text),
+                )
+            )
+        # Результаты с неполным вводом не кэшируем надолго
+        await query.answer(articles, button=button, cache_time=30, is_personal=True)
         return
 
     system_prompt = (
@@ -2690,6 +2816,26 @@ def run_http_server():
     server.serve_forever()
 
 
+async def keep_alive_loop():
+    """Не даёт бесплатному Render усыпить сервис (иначе бот и напоминания спят).
+
+    Каждые 10 минут бот сам открывает свой публичный адрес. Работает, пока
+    процесс жив; на случай сна можно добавить внешний пинг (UptimeRobot).
+    """
+    base = public_base_url()
+    if not base:
+        logging.info("RENDER_EXTERNAL_URL не задан — самопинг отключён")
+        return
+    await asyncio.sleep(60)
+    async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as http:
+        while True:
+            try:
+                await http.get(f"{base}/health")
+            except Exception as e:
+                logging.warning(f"Самопинг не удался: {e}")
+            await asyncio.sleep(600)
+
+
 async def memory_maintenance_loop():
     """Раз в сутки сливает дубли и убирает устаревшее."""
     while True:
@@ -2716,6 +2862,7 @@ async def main():
             logging.info(f"Имя {uid} пока не определено: {e}")
 
     run_in_background(memory_maintenance_loop())
+    run_in_background(keep_alive_loop())
 
     scheduler.start()
     try:
