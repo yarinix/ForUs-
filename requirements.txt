@@ -1,4 +1,8 @@
 aiogram
 google-genai
 psycopg2-binary
+apscheduler>=3.10,<4
+dateparser>=1.2
+tenacity>=8.2
+httpx>=0.27
 
