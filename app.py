@@ -17,7 +17,12 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+import dateparser
+import httpx
 import psycopg2
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.date import DateTrigger
+from dateparser.search import search_dates
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import Command, CommandObject
 from aiogram.types import (
@@ -31,6 +36,7 @@ from aiogram.types import (
 )
 from google import genai
 from google.genai import types as genai_types
+from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -526,6 +532,23 @@ def init_db():
                 "UPDATE memories SET subject_id = user_id, author_id = user_id"
                 " WHERE subject_id IS NULL AND author_id IS NULL"
                 " AND user_id IS NOT NULL"
+            )
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS reminders (
+                    id SERIAL PRIMARY KEY,
+                    user_id BIGINT NOT NULL,
+                    chat_id BIGINT NOT NULL,
+                    text TEXT NOT NULL,
+                    remind_at TIMESTAMP NOT NULL,
+                    repeat_rule TEXT,
+                    both_users BOOLEAN DEFAULT FALSE,
+                    done BOOLEAN DEFAULT FALSE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_reminders_pending"
+                " ON reminders (done, remind_at);"
             )
             # Чистим тестовую запись, оставшуюся от /memorytest
             cursor.execute(
@@ -1253,13 +1276,143 @@ async def send_markdown(message: types.Message, text: str, **kwargs):
 # --- ФУНКЦИЯ ПОГОДЫ ---
 
 
-def get_weather(city: str) -> str:
+WIND_DIRS = {
+    "N": "С", "NNE": "С-СВ", "NE": "СВ", "ENE": "В-СВ", "E": "В", "ESE": "В-ЮВ",
+    "SE": "ЮВ", "SSE": "Ю-ЮВ", "S": "Ю", "SSW": "Ю-ЮЗ", "SW": "ЮЗ", "WSW": "З-ЮЗ",
+    "W": "З", "WNW": "З-СЗ", "NW": "СЗ", "NNW": "С-СЗ",
+}
+WEATHER_ICONS = (
+    (("гроза", "thunder"), "⛈"), (("снег", "snow", "метел", "sleet"), "🌨"),
+    (("дожд", "ливень", "морос", "rain", "drizzle", "shower"), "🌧"),
+    (("туман", "дымка", "fog", "mist"), "🌫"), (("пасмурно", "overcast"), "☁️"),
+    (("облачно", "cloud"), "⛅"), (("ясно", "солнечно", "sunny", "clear"), "☀️"),
+)
+
+
+def _t(value) -> str:
+    """Температура со знаком: +5°, −3°."""
     try:
-        encoded_city = urllib.parse.quote(city)
-        url = f"https://wttr.in/{encoded_city}?format=3&lang=ru"
-        req = urllib.request.Request(url, headers={"User-Agent": "curl/7.68.0"})
-        with urllib.request.urlopen(req, timeout=5) as response:
-            return response.read().decode("utf-8").strip()
+        n = int(float(value))
+    except (TypeError, ValueError):
+        return "?"
+    return "0°" if n == 0 else f"{n:+d}°".replace("-", "−")
+
+
+def _clock24(value) -> str:
+    """'06:20 PM' -> '18:20' (wttr.in отдаёт восход и закат в 12-часовом формате)."""
+    try:
+        return datetime.strptime(str(value).strip(), "%I:%M %p").strftime("%H:%M")
+    except ValueError:
+        return str(value).strip()[:5]
+
+
+def _ru(item) -> str:
+    """Описание погоды: русское, если есть, иначе английское."""
+    for key in ("lang_ru", "weatherDesc"):
+        try:
+            return item[key][0]["value"].strip()
+        except (KeyError, IndexError, TypeError):
+            continue
+    return ""
+
+
+def weather_icon(description: str) -> str:
+    d = description.casefold()
+    for words, icon in WEATHER_ICONS:
+        if any(w in d for w in words):
+            return icon
+    return "🌡"
+
+
+def format_weather(data: dict, city: str) -> str:
+    """Красивая сводка из JSON wttr.in (формат j1)."""
+    cur = data["current_condition"][0]
+    try:
+        area = data["nearest_area"][0]
+        place = area["areaName"][0]["value"]
+        country = area["country"][0]["value"]
+        title = f"{place}, {country}" if country else place
+    except (KeyError, IndexError, TypeError):
+        title = city
+    desc = _ru(cur)
+    pressure = ""
+    try:
+        pressure = f" · 🧭 {round(float(cur['pressure']) * 0.750062)} мм рт. ст."
+    except (KeyError, TypeError, ValueError):
+        pass
+    wind_dir = WIND_DIRS.get(cur.get("winddir16Point", ""), cur.get("winddir16Point", ""))
+    try:
+        wind = round(float(cur["windspeedKmph"]) / 3.6)
+        wind_text = f"💨 ветер {wind} м/с {wind_dir}".strip()
+    except (KeyError, TypeError, ValueError):
+        wind_text = ""
+
+    lines = [
+        f"{weather_icon(desc)} {title}",
+        f"Сейчас {_t(cur.get('temp_C'))}, ощущается как {_t(cur.get('FeelsLikeC'))}"
+        + (f", {desc.lower()}" if desc else ""),
+        " · ".join(
+            x for x in (f"💧 влажность {cur.get('humidity', '?')}%", wind_text) if x
+        ) + pressure,
+    ]
+    try:
+        uv = int(cur.get("uvIndex", 0))
+        if uv >= 6:
+            lines.append(f"🕶 высокий UV-индекс: {uv}")
+    except (TypeError, ValueError):
+        pass
+
+    days = data.get("weather") or []
+    try:
+        astro = days[0]["astronomy"][0]
+        lines.append(f"🌅 восход {_clock24(astro['sunrise'])} · закат {_clock24(astro['sunset'])}")
+    except (KeyError, IndexError, TypeError):
+        pass
+
+    names = ["Сегодня", "Завтра", "Послезавтра"]
+    forecast = []
+    for name, day in zip(names, days[:3]):
+        try:
+            hourly = day.get("hourly") or []
+            chance = max(
+                [int(h.get("chanceofrain", 0)) for h in hourly]
+                + [int(h.get("chanceofsnow", 0)) for h in hourly] + [0]
+            )
+            noon = hourly[len(hourly) // 2] if hourly else {}
+            icon = weather_icon(_ru(noon)) if noon else "•"
+            rain = f", осадки до {chance}%" if chance >= 30 else ""
+            forecast.append(
+                f"{icon} {name}: {_t(day['mintempC'])}…{_t(day['maxtempC'])}{rain}"
+            )
+        except (KeyError, TypeError, ValueError):
+            continue
+    if forecast:
+        lines.append("")
+        lines.extend(forecast)
+    return "\n".join(lines)
+
+
+def get_weather(city: str) -> str:
+    """Погода с wttr.in через httpx: подробная сводка и прогноз на 3 дня."""
+    city = " ".join(str(city or "").split())[:60] or "Омск"
+    headers = {"User-Agent": "curl/8.0", "Accept-Language": "ru"}
+    try:
+        with httpx.Client(timeout=8.0, follow_redirects=True, headers=headers) as http:
+            response = http.get(
+                f"https://wttr.in/{urllib.parse.quote(city)}",
+                params={"format": "j1", "lang": "ru"},
+            )
+            response.raise_for_status()
+            try:
+                return format_weather(response.json(), city)
+            except (ValueError, KeyError, IndexError, TypeError) as e:
+                logging.warning(f"Погода: нестандартный ответ ({e}), беру краткий формат")
+                short = http.get(
+                    f"https://wttr.in/{urllib.parse.quote(city)}",
+                    params={"format": "3", "lang": "ru"},
+                )
+                short.raise_for_status()
+                return short.text.strip()
     except Exception as e:
         logging.error(f"Ошибка получения погоды: {e}")
         return f"Не удалось получить погоду для города: {city}"
@@ -1270,6 +1423,32 @@ def get_weather(city: str) -> str:
 # ---------------------------------------------------------------------------
 
 
+_TRANSIENT_MARKERS = (
+    "503", "502", "504", "500", "unavailable", "overloaded", "timeout",
+    "timed out", "deadline", "connection", "reset by peer", "temporarily",
+)
+
+
+def _is_transient(exc: BaseException) -> bool:
+    """Временный сбой (сеть, перегрузка), который стоит повторить.
+
+    Квоту (429) не повторяем: быстрее перейти к следующей модели каскада.
+    """
+    text = f"{type(exc).__name__} {exc}".casefold()
+    if "429" in text or "quota" in text or "resource_exhausted" in text:
+        return False
+    return any(marker in text for marker in _TRANSIENT_MARKERS)
+
+
+llm_retry = retry(
+    retry=retry_if_exception(_is_transient),
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=1, max=6),
+    reraise=True,
+)
+
+
+@llm_retry
 def _generate_reply_sync(model_name, history_contents, contents, system_prompt):
     chat = client.chats.create(
         model=model_name,
@@ -1332,6 +1511,7 @@ async def process_with_cascade(
     raise Exception("Все модели из каскада временно недоступны.")
 
 
+@llm_retry
 def upload_to_gemini(file_bytes, mime_type: str):
     """Загружает файл в Gemini и ждёт, пока он обработается (важно для видео)."""
     uploaded = client.files.upload(file=file_bytes, config={"mime_type": mime_type})
@@ -1404,16 +1584,21 @@ def parse_memory_ops(text: str, valid_ids=None):
     return ops[:4]
 
 
+@llm_retry
+def _generate_json_sync(model_name, prompt):
+    return client.models.generate_content(
+        model=model_name,
+        contents=prompt,
+        config=genai_types.GenerateContentConfig(
+            response_mime_type="application/json"
+        ),
+    )
+
+
 def _extract_ops_sync(prompt: str, valid_ids):
     for model_name in MODELS_CASCADE:
         try:
-            response = client.models.generate_content(
-                model=model_name,
-                contents=prompt,
-                config=genai_types.GenerateContentConfig(
-                    response_mime_type="application/json"
-                ),
-            )
+            response = _generate_json_sync(model_name, prompt)
             return parse_memory_ops(response.text, valid_ids)
         except Exception as e:
             logging.warning(
@@ -1631,6 +1816,9 @@ COMMANDS_HELP = (
     "• /start — приветствие и справка\n"
     "• /command — список команд\n"
     "• /draw — холст для рисования\n"
+    "• /remind &lt;когда и что&gt; — напоминание (например: завтра в 18:00 купить цветы)\n"
+    "• /reminders — список напоминаний, /reminddelete &lt;номер&gt; — удалить\n"
+    "• /weather &lt;город&gt; — погода и прогноз на 3 дня\n"
     "• /memory — посмотреть общую и личную память\n"
     "• /remember [тип] &lt;текст&gt; — запомнить вручную как важное (типы: personal,"
     " partner — про партнёра, couple, event, emotion, inside_joke)\n"
@@ -1886,6 +2074,16 @@ async def handle_media_or_text(message: types.Message):
         ):
             is_addressed_to_bot = True
 
+    # «Напомни завтра в 18:00 купить цветы» — ставим напоминание без Gemini
+    if (
+        is_addressed_to_bot
+        and not file_bytes
+        and re.match(r"^(?:пожалуйста[\s,]*)?напомни(?:ть)?\b", user_text, re.I)
+        and len(user_text.split()) >= 3
+    ):
+        await add_reminder_from_text(message, user_text)
+        return
+
     # История берётся ДО сохранения текущего сообщения, иначе оно уйдёт в Gemini дважды
     recent_history = []
     if is_addressed_to_bot:
@@ -1962,6 +2160,360 @@ async def handle_media_or_text(message: types.Message):
         await message.answer(
             "Произошла ошибка при обработке сообщения. Попробуйте еще раз."
         )
+
+
+# ---------------------------------------------------------------------------
+# НАПОМИНАНИЯ (APScheduler + dateparser)
+# ---------------------------------------------------------------------------
+
+scheduler = AsyncIOScheduler(timezone="UTC")
+
+REPEAT_PATTERNS = (
+    ("daily", re.compile(r"\b(?:каждый день|ежедневно|каждое утро|каждый вечер)\b", re.I)),
+    ("weekly", re.compile(r"\b(?:каждую неделю|еженедельно)\b", re.I)),
+)
+BOTH_RE = re.compile(r"^(?:нам|обоим|обоих|мне и [а-яё]+)\b[\s,:-]*", re.I)
+REMIND_PREFIX_RE = re.compile(r"^(?:пожалуйста[\s,]*)?напомни(?:ть)?(?:\s+(?:мне|нам))?[\s,:-]*", re.I)
+REPEAT_LABELS = {"daily": "каждый день", "weekly": "каждую неделю"}
+
+
+def local_tz():
+    try:
+        from zoneinfo import ZoneInfo
+
+        return ZoneInfo(BOT_TIMEZONE)
+    except Exception:
+        return timezone.utc
+
+
+def to_utc_naive(dt: datetime) -> datetime:
+    """Любое время -> naive UTC (так хранится в базе). Без пояса = местное."""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=local_tz())
+    return dt.astimezone(timezone.utc).replace(tzinfo=None)
+
+
+def format_local(dt_utc: datetime) -> str:
+    local = dt_utc.replace(tzinfo=timezone.utc).astimezone(local_tz())
+    return local.strftime("%d.%m.%Y %H:%M")
+
+
+def _dateparser_settings():
+    now_local = datetime.now(local_tz()).replace(tzinfo=None)
+    return {
+        "TIMEZONE": BOT_TIMEZONE,
+        "RETURN_AS_TIMEZONE_AWARE": True,
+        "PREFER_DATES_FROM": "future",
+        "RELATIVE_BASE": now_local,
+    }
+
+
+def parse_reminder_text(raw: str):
+    """Из «завтра в 18:00 купить цветы» делает (время_UTC, текст, повтор, обоим).
+
+    Время и дело можно разделить знаком «|»: «завтра в 18:00 | купить цветы» —
+    так надёжнее всего. Без него время ищется в начале фразы автоматически.
+    Возвращает None, если время не нашлось.
+    """
+    text = REMIND_PREFIX_RE.sub("", " ".join(str(raw or "").split())).strip()
+    both = False
+    m = BOTH_RE.match(text)
+    if m:
+        both, text = True, text[m.end():].strip()
+
+    repeat = None
+    for name, pattern in REPEAT_PATTERNS:
+        if pattern.search(text):
+            repeat = name
+            text = pattern.sub(" ", text)
+            break
+    text = " ".join(text.split())
+
+    when, task = None, ""
+    settings = _dateparser_settings()
+    parse = lambda s: dateparser.parse(s, languages=["ru", "en"], settings=settings)
+    phrase = ""
+    if "|" in text:
+        phrase, _, task = text.partition("|")
+        phrase = phrase.strip()
+        when = parse(phrase) if phrase else None
+    else:
+        # Самое длинное начало фразы, которое dateparser понимает как время
+        words = text.split()
+        for k in range(min(len(words), 7), 0, -1):
+            candidate = " ".join(words[:k])
+            when = parse(candidate)
+            if when:
+                phrase, task = candidate, " ".join(words[k:])
+                break
+        if when is None:  # время где-то в середине фразы
+            found = [
+                f for f in (search_dates(text, languages=["ru", "en"], settings=settings) or [])
+                if f[0].strip()
+            ]
+            if found:
+                phrase, when = max(found, key=lambda f: len(f[0]))
+                task = text.replace(phrase, " ", 1)
+    task = " ".join(task.split()).strip(" ,.:;-—|")
+    if when is None:
+        return None
+    # «завтра» или «в пятницу» без часа — ставим на 9 утра, а не на «сейчас»
+    if not re.search(
+        r"\d{1,2}[:.]\d{2}|\b[вк]\s+\d{1,2}\b|через|утр|вечер|дн[её]м|ноч|полд|час|мин",
+        phrase, re.I,
+    ):
+        when = when.replace(hour=9, minute=0, second=0, microsecond=0)
+    when_utc = to_utc_naive(when)
+    return when_utc, task[:MAX_FACT_LENGTH * 2], repeat, both
+
+
+def create_reminder(user_id, chat_id, text, remind_at, repeat=None, both=False) -> int:
+    with get_db() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "INSERT INTO reminders (user_id, chat_id, text, remind_at, repeat_rule,"
+                " both_users, done) VALUES (%s, %s, %s, %s, %s, %s, %s)"
+                " RETURNING id",
+                (user_id, chat_id, text, remind_at, repeat, bool(both), False),
+            )
+            return cursor.fetchone()[0]
+
+
+def get_reminder(rem_id: int):
+    with get_db() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "SELECT id, user_id, chat_id, text, remind_at, repeat_rule, both_users"
+                " FROM reminders WHERE id = %s AND done = %s",
+                (rem_id, False),
+            )
+            row = cursor.fetchone()
+    if not row:
+        return None
+    return {
+        "id": row[0], "user_id": row[1], "chat_id": row[2], "text": row[3],
+        "remind_at": _to_dt(row[4]), "repeat": row[5], "both": bool(row[6]),
+    }
+
+
+def list_reminders(user_id: int):
+    with get_db() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "SELECT id, text, remind_at, repeat_rule, both_users FROM reminders"
+                " WHERE user_id = %s AND done = %s ORDER BY remind_at, id",
+                (user_id, False),
+            )
+            rows = cursor.fetchall()
+    return [
+        {"id": r[0], "text": r[1], "remind_at": _to_dt(r[2]), "repeat": r[3],
+         "both": bool(r[4])}
+        for r in rows
+    ]
+
+
+def finish_reminder(rem_id: int, next_at=None):
+    """Одноразовое помечаем выполненным, повторяющееся переносим."""
+    with get_db() as conn:
+        with conn.cursor() as cursor:
+            if next_at:
+                cursor.execute(
+                    "UPDATE reminders SET remind_at = %s WHERE id = %s",
+                    (next_at, rem_id),
+                )
+            else:
+                cursor.execute(
+                    "UPDATE reminders SET done = %s WHERE id = %s", (True, rem_id)
+                )
+
+
+def delete_reminder(user_id: int, rem_id: int) -> bool:
+    with get_db() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "SELECT id FROM reminders WHERE id = %s AND user_id = %s AND done = %s",
+                (rem_id, user_id, False),
+            )
+            if not cursor.fetchone():
+                return False
+            cursor.execute("UPDATE reminders SET done = %s WHERE id = %s", (True, rem_id))
+    return True
+
+
+def schedule_reminder(rem_id: int, remind_at: datetime):
+    run_date = remind_at.replace(tzinfo=timezone.utc)
+    scheduler.add_job(
+        fire_reminder,
+        DateTrigger(run_date=run_date),
+        args=[rem_id],
+        id=f"rem{rem_id}",
+        replace_existing=True,
+        misfire_grace_time=None,  # после простоя всё равно напомнить
+    )
+
+
+def unschedule_reminder(rem_id: int):
+    try:
+        scheduler.remove_job(f"rem{rem_id}")
+    except Exception:
+        pass
+
+
+@llm_retry
+async def _send_with_retry(chat_id: int, text: str):
+    await bot.send_message(chat_id, text)
+
+
+async def fire_reminder(rem_id: int):
+    rem = await asyncio.to_thread(get_reminder, rem_id)
+    if not rem:
+        return
+    author = user_name(rem["user_id"])
+    targets = [rem["chat_id"]]
+    if rem["both"]:
+        partner = partner_of(rem["user_id"])
+        if partner is not None and partner not in targets:
+            targets.append(partner)
+    body = rem["text"] or "Время пришло!"
+    for chat in targets:
+        prefix = "⏰ Напоминание"
+        if chat != rem["chat_id"]:
+            prefix += f" от {author}"
+        try:
+            await _send_with_retry(chat, f"{prefix}:\n{body}")
+        except Exception as e:
+            logging.error(f"Не удалось отправить напоминание {rem_id} в {chat}: {e}")
+
+    step = {"daily": timedelta(days=1), "weekly": timedelta(days=7)}.get(rem["repeat"])
+    if step:
+        nxt = rem["remind_at"] + step
+        now = _utcnow()
+        while nxt <= now:
+            nxt += step
+        await asyncio.to_thread(finish_reminder, rem_id, nxt)
+        schedule_reminder(rem_id, nxt)
+    else:
+        await asyncio.to_thread(finish_reminder, rem_id)
+
+
+def load_pending_reminders() -> int:
+    """После перезапуска заново ставит в расписание всё невыполненное."""
+    with get_db() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "SELECT id, remind_at FROM reminders WHERE done = %s", (False,)
+            )
+            rows = cursor.fetchall()
+    for rem_id, remind_at in rows:
+        dt = _to_dt(remind_at)
+        if dt:
+            schedule_reminder(rem_id, dt)
+    return len(rows)
+
+
+REMIND_USAGE = (
+    "⏰ <b>Как поставить напоминание</b>\n"
+    "/remind завтра в 18:00 купить цветы\n"
+    "/remind через 2 часа позвонить маме\n"
+    "/remind в пятницу в 20:00 | сходить на ужин\n"
+    "/remind каждый день в 9:00 выпить витамины\n"
+    "/remind нам 14 февраля в 10:00 годовщина — придёт обоим\n\n"
+    "Знак «|» отделяет время от дела — так бот не ошибётся.\n"
+    "Можно и просто написать боту: «напомни завтра в 18:00 купить цветы».\n"
+    "Список: /reminders, удалить: /reminddelete &lt;номер&gt;"
+)
+
+
+async def add_reminder_from_text(message: types.Message, raw: str):
+    parsed = await asyncio.to_thread(parse_reminder_text, raw)
+    if not parsed:
+        await message.answer(
+            "🤔 Не получилось понять, когда напомнить. Напиши время и дело, например:\n"
+            "завтра в 18:00 | купить цветы",
+        )
+        return
+    when, task, repeat, both = parsed
+    if not task:
+        await message.answer(
+            "🤔 А о чём напомнить? Например: через 2 часа | позвонить маме"
+        )
+        return
+    if repeat is None and when <= _utcnow():
+        await message.answer(
+            "⌛ Это время уже прошло. Укажи будущее, например: завтра в 9:00 | ..."
+        )
+        return
+    if len(await asyncio.to_thread(list_reminders, message.from_user.id)) >= 50:
+        await message.answer("📋 Уже 50 активных напоминаний. Удали ненужные: /reminders")
+        return
+    rem_id = await asyncio.to_thread(
+        create_reminder, message.from_user.id, message.chat.id, task, when, repeat, both
+    )
+    schedule_reminder(rem_id, when)
+    extra = f", {REPEAT_LABELS[repeat]}" if repeat else ""
+    who = " (получите оба)" if both else ""
+    await message.answer(
+        f"✅ Напомню {format_local(when)}{extra}{who}:\n{task}\n"
+        f"Номер {rem_id} — отменить: /reminddelete {rem_id}"
+    )
+
+
+@dp.message(Command("remind"))
+async def cmd_remind(message: types.Message, command: CommandObject):
+    if not is_allowed(message.from_user):
+        return
+    args = (command.args or "").strip()
+    if not args:
+        await message.answer(REMIND_USAGE, parse_mode="HTML")
+        return
+    await add_reminder_from_text(message, args)
+
+
+@dp.message(Command("reminders"))
+async def cmd_reminders(message: types.Message):
+    if not is_allowed(message.from_user):
+        return
+    items = await asyncio.to_thread(list_reminders, message.from_user.id)
+    if not items:
+        await message.answer("Активных напоминаний нет. Создать: /remind")
+        return
+    lines = []
+    for r in items:
+        extra = f" · {REPEAT_LABELS[r['repeat']]}" if r["repeat"] else ""
+        both = " · обоим" if r["both"] else ""
+        lines.append(
+            f"• <code>{r['id']}</code> {format_local(r['remind_at'])}{extra}{both}\n"
+            f"   {html.escape(r['text'])}"
+        )
+    await send_long(
+        message,
+        "⏰ <b>Твои напоминания</b>\n" + "\n".join(lines)
+        + "\n\nУдалить: /reminddelete &lt;номер&gt;",
+        parse_mode="HTML",
+    )
+
+
+@dp.message(Command("reminddelete"))
+async def cmd_remind_delete(message: types.Message, command: CommandObject):
+    if not is_allowed(message.from_user):
+        return
+    arg = (command.args or "").strip()
+    if not arg.isdigit():
+        await message.answer("⚠️ Укажи номер: /reminddelete 3 (номера в /reminders)")
+        return
+    ok = await asyncio.to_thread(delete_reminder, message.from_user.id, int(arg))
+    if ok:
+        unschedule_reminder(int(arg))
+    await message.answer("🗑 Напоминание удалено." if ok else "❌ Нет такого напоминания.")
+
+
+@dp.message(Command("weather"))
+async def cmd_weather(message: types.Message, command: CommandObject):
+    if not is_allowed(message.from_user):
+        return
+    city = (command.args or "").strip() or "Омск"
+    text = await asyncio.to_thread(get_weather, city)
+    await message.answer(text)
 
 
 # --- ИНЛАЙН-РЕЖИМ ---
@@ -2165,12 +2717,22 @@ async def main():
 
     run_in_background(memory_maintenance_loop())
 
+    scheduler.start()
+    try:
+        count = await asyncio.to_thread(load_pending_reminders)
+        logging.info(f"Напоминаний в расписании: {count}")
+    except Exception:
+        logging.exception("Не удалось загрузить напоминания")
+
     try:
         await bot.set_my_commands([
             types.BotCommand(command="memory", description="Что бот помнит"),
             types.BotCommand(command="remember", description="Запомнить вручную"),
             types.BotCommand(command="memorydelete", description="Удалить факт"),
             types.BotCommand(command="memoryclear", description="Очистить память"),
+            types.BotCommand(command="remind", description="Поставить напоминание"),
+            types.BotCommand(command="reminders", description="Мои напоминания"),
+            types.BotCommand(command="weather", description="Погода и прогноз"),
             types.BotCommand(command="draw", description="Холст для рисования"),
             types.BotCommand(command="command", description="Список команд"),
         ])
