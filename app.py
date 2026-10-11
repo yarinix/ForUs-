@@ -469,10 +469,18 @@ class WebAppHandler(BaseHTTPRequestHandler):
             names = {uid: user_name(uid) for uid in ALLOWED_USER_IDS}
             if path == "/api/pet/state":
                 result = {"ok": True, "state": pet.get_state(get_db, names)}
+                if data.get("catalog"):       # каталог магазина нужен клиенту один раз при запуске
+                    result["catalog"] = pet.public_catalog()
             else:
                 action = str(data.get("action") or "")[:20]
                 to = str(data.get("to") or "")[:12]
-                result = pet.perform(get_db, action, tg_user["id"], names, to)
+                result = pet.perform(
+                    get_db, action, tg_user["id"], names, to,
+                    item=str(data.get("item") or "")[:32],
+                    name=str(data.get("name") or "")[:60],
+                    room=str(data.get("room") or "")[:12],
+                    x=data.get("x"), y=data.get("y"),
+                )
             result["you"] = tg_user["id"]
             self._reply(200, json.dumps(result).encode("utf-8"), "application/json")
         except Exception as e:
