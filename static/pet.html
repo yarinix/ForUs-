@@ -83,7 +83,7 @@
   .act:active, .act.press { transform: translateY(3px); box-shadow: 0 1px 0 rgba(4,10,30,.7); }
 
   /* нижняя навигация */
-  nav { display: grid; grid-template-columns: repeat(4, 1fr); background: rgba(8,16,40,.72); border: 1.5px solid var(--line); border-radius: 22px; padding: 5px; }
+  nav { display: grid; grid-template-columns: repeat(2, 1fr); background: rgba(8,16,40,.72); border: 1.5px solid var(--line); border-radius: 22px; padding: 5px; }
   nav button { font: inherit; font-size: 11.5px; font-weight: 800; color: var(--dim); background: none; border: 0; border-radius: 17px; padding: 7px 0 6px; display: flex; flex-direction: column; align-items: center; gap: 2px; }
   nav button span { font-size: 20px; line-height: 1; filter: grayscale(.5); }
   nav button.on { color: #fff; background: linear-gradient(180deg, #3b86ff, #2563d8); box-shadow: 0 3px 10px rgba(47,123,255,.45); }
@@ -92,6 +92,75 @@
   #veil { position: fixed; inset: 0; background: rgba(8,14,34,.94); color: #fff; display: none; align-items: center; justify-content: center; text-align: center; padding: 30px; font-weight: 700; line-height: 1.45; z-index: 9; }
 
   #pixcv { position: absolute; image-rendering: pixelated; image-rendering: crisp-edges; display: block; }
+
+  /* ---------- меню, магазин, гардероб, расстановка ---------- */
+  #pixcv { touch-action: none; }
+  .panel .top { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+  .panel .top h3 { margin: 0; flex: 1; }
+  .back { font: inherit; font-weight: 800; font-size: 13.5px; color: var(--blue2); background: rgba(47,123,255,.14); border: 1.5px solid rgba(90,160,255,.35); border-radius: 14px; padding: 6px 12px; }
+  .wal { font-weight: 800; font-size: 15px; background: rgba(8,16,40,.55); border: 1.5px solid var(--line); border-radius: 14px; padding: 5px 11px; }
+  #menugrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 11px; }
+  .mcard { font: inherit; color: var(--text); border: 1.5px solid var(--line); border-radius: 18px; padding: 16px 8px 13px; background: rgba(8,16,40,.38);
+    display: flex; flex-direction: column; align-items: center; gap: 8px; font-weight: 800; font-size: 15px; box-shadow: 0 4px 0 rgba(4,10,30,.6); transition: transform .08s, box-shadow .08s; }
+  .mcard small { font-size: 11px; color: var(--dim); font-weight: 700; }
+  .mcard:active { transform: translateY(3px); box-shadow: 0 1px 0 rgba(4,10,30,.6); }
+  .seg { display: flex; gap: 6px; margin-bottom: 12px; }
+  .seg button { flex: 1; font: inherit; font-weight: 800; font-size: 13px; color: var(--dim); background: rgba(8,16,40,.45); border: 1.5px solid var(--line); border-radius: 14px; padding: 9px 4px; }
+  .seg button.on { color: #fff; background: linear-gradient(180deg, #3b86ff, #2563d8); border-color: transparent; }
+  .items { display: grid; grid-template-columns: repeat(2, 1fr); gap: 9px; }
+  .it { background: rgba(8,16,40,.4); border: 1.5px solid var(--line); border-radius: 16px; padding: 9px 8px 10px; display: flex; flex-direction: column; align-items: center; gap: 5px; text-align: center; }
+  .it .pv { height: 92px; display: grid; place-items: center; }
+  .it .pv .emo { font-size: 44px; line-height: 1; }
+  .it b { font-size: 13.5px; line-height: 1.2; }
+  .it .ds { font-size: 11px; color: var(--dim); font-weight: 700; line-height: 1.25; min-height: 27px; }
+  .it .own { font-size: 11px; font-weight: 800; color: var(--ok); }
+  .buy { font: inherit; font-weight: 800; font-size: 13px; color: #fff; background: linear-gradient(180deg, #3b86ff, #2563d8); border: 0; border-radius: 13px; padding: 8px 10px; width: 100%; box-shadow: 0 3px 0 rgba(4,10,30,.6); }
+  .buy:active { transform: translateY(2px); box-shadow: 0 1px 0 rgba(4,10,30,.6); }
+  .buy.poor { background: rgba(255,255,255,.12); color: var(--dim); box-shadow: none; }
+  .buy.off { background: rgba(61,220,132,.18); color: var(--ok); box-shadow: none; }
+  .buy.alt { background: rgba(255,255,255,.14); }
+  .empty { grid-column: 1 / -1; color: var(--dim); font-size: 13.5px; font-weight: 700; text-align: center; padding: 14px 6px; line-height: 1.4; }
+  #wstage { display: grid; place-items: center; border-radius: 18px; margin-bottom: 10px; padding: 8px 0 4px; background: radial-gradient(90% 90% at 50% 30%, #2c4690, #14224a); border: 1.5px solid var(--line); }
+  #wprev { width: 168px; height: 184px; image-rendering: pixelated; image-rendering: crisp-edges; }
+  #wslots { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; margin-bottom: 12px; }
+  .slot { font-size: 12px; font-weight: 800; color: var(--dim); background: rgba(8,16,40,.45); border: 1.5px solid var(--line); border-radius: 12px; padding: 6px 9px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .slot.on { color: #fff; border-color: rgba(90,160,255,.55); }
+  .field { display: flex; gap: 8px; margin: 10px 0 8px; }
+  .field input { flex: 1; min-width: 0; font: inherit; font-weight: 800; font-size: 16px; color: var(--text); background: rgba(8,16,40,.55); border: 1.5px solid var(--line); border-radius: 14px; padding: 10px 12px; outline: none; user-select: text; -webkit-user-select: text; }
+  .field input:focus { border-color: var(--blue2); }
+
+  #editbar { display: none; flex-direction: column; gap: 7px; }
+  #editbar .eh { display: flex; align-items: center; justify-content: space-between; font-size: 14.5px; }
+  .chipbtn { font: inherit; font-weight: 800; font-size: 13px; color: #fff; background: linear-gradient(180deg, #3b86ff, #2563d8); border: 0; border-radius: 13px; padding: 7px 14px; box-shadow: 0 3px 0 rgba(4,10,30,.6); }
+  .chipbtn.alt { background: rgba(255,255,255,.14); }
+  .chipbtn:disabled { opacity: .4; }
+  #editlist { display: flex; gap: 8px; overflow-x: auto; padding: 2px 1px 4px; min-height: 84px; }
+  #editlist .empty { grid-column: auto; align-self: center; width: 100%; }
+  .chip { flex: 0 0 auto; width: 84px; font: inherit; color: var(--text); background: rgba(8,16,40,.5); border: 1.5px solid var(--line); border-radius: 14px; padding: 6px 4px 5px;
+    display: flex; flex-direction: column; align-items: center; gap: 2px; }
+  .chip canvas { max-height: 38px; max-width: 70px; width: auto !important; height: auto !important; object-fit: contain; }
+  .chip .cn { font-size: 11px; font-weight: 800; line-height: 1.15; max-width: 76px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .chip small { font-size: 10px; font-weight: 700; color: var(--dim); }
+  .chip.on { border-color: #ffe27a; background: rgba(255,226,122,.14); }
+  #editbar .erow { display: flex; align-items: center; gap: 8px; }
+  #edithint { flex: 1; font-size: 12px; font-weight: 700; color: var(--dim); line-height: 1.3; }
+
+  #sheet { position: fixed; inset: 0; background: rgba(4,8,22,.62); display: none; align-items: flex-end; justify-content: center; z-index: 8; }
+  #sheet.show { display: flex; }
+  #sheetbox { width: 100%; max-width: 480px; background: linear-gradient(180deg, var(--card2), var(--card)); border: 1.5px solid var(--line); border-radius: 22px 22px 0 0; padding: 16px 14px calc(env(safe-area-inset-bottom, 0px) + 14px); max-height: 80dvh; overflow: auto; }
+  #sheettitle { font-weight: 800; font-size: 17px; margin-bottom: 10px; }
+  .srow { width: 100%; font: inherit; color: var(--text); display: flex; align-items: center; gap: 12px; text-align: left; background: rgba(8,16,40,.45); border: 1.5px solid var(--line); border-radius: 15px; padding: 9px 12px; margin-bottom: 8px; }
+  .srow .e { font-size: 28px; }
+  .srow .m { flex: 1; min-width: 0; font-weight: 800; font-size: 14.5px; }
+  .srow .m small { display: block; font-size: 11px; font-weight: 700; color: var(--dim); margin-top: 1px; }
+  .srow .r { font-weight: 800; font-size: 13.5px; color: var(--coin); }
+  #sheetbtns { display: flex; gap: 8px; margin-top: 4px; }
+  #sheetbtns .chipbtn { flex: 1; }
+  #toast { position: fixed; left: 50%; top: calc(env(safe-area-inset-top, 0px) + 12px); transform: translate(-50%, -16px); opacity: 0; pointer-events: none; z-index: 10; max-width: min(92vw, 440px);
+    background: #fff; color: #2a2140; font-weight: 800; font-size: 13.5px; line-height: 1.3; border-radius: 15px; padding: 10px 14px; box-shadow: 0 6px 18px rgba(0,0,0,.35); transition: opacity .2s, transform .2s; text-align: center; }
+  #toast.show { opacity: 1; transform: translate(-50%, 0); }
+  #who { cursor: pointer; }
+
   @media (max-height: 640px) { #avatar { width: 42px; height: 42px; } .act .em { width: 36px; height: 36px; font-size: 22px; } }
   @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 </style>
@@ -123,37 +192,67 @@
     <div id="bubble"></div>
   </div>
 
-  <!-- заглушки будущих разделов -->
-  <section class="panel" id="panel-quests">
-    <h3>Задания</h3>
-    <p>Ежедневные дела для вас двоих. Например:</p>
-    <ul><li>Покормить Бублика утром</li><li>Поиграть вместе</li><li>Уложить спать до полуночи</li></ul>
-    <span class="soon">скоро</span>
+  <!-- разделы меню -->
+  <section class="panel" id="panel-menu">
+    <div class="top"><h3>Меню</h3></div>
+    <div id="menugrid">
+      <button class="mcard" data-go="shop"><span data-icon="bag" data-k="4"></span>Магазин<small>еда, одежда, мебель</small></button>
+      <button class="mcard" data-go="wardrobe"><span data-icon="shirt" data-k="4"></span>Гардероб<small>переодеть питомца</small></button>
+      <button class="mcard" data-go="edit"><span data-icon="house" data-k="4"></span>Дом<small>расставить мебель</small></button>
+      <button class="mcard" data-go="quests"><span data-icon="list" data-k="4"></span>Задания<small>скоро</small></button>
+      <button class="mcard" data-go="rewards"><span data-icon="trophy" data-k="4"></span>Достижения<small>скоро</small></button>
+      <button class="mcard" data-go="settings"><span data-icon="gear" data-k="4"></span>Настройки<small>имя питомца</small></button>
+    </div>
   </section>
-  <section class="panel" id="panel-house">
-    <h3>Дом</h3>
-    <p>Обустраивайте комнату: коврики, игрушки, лежанки, растения. Монетки уже копятся — скоро будет на что потратить.</p>
+  <section class="panel" id="panel-shop">
+    <div class="top"><button class="back" data-go="menu">‹ Меню</button><h3>Магазин</h3><div class="wal">🪙 <span id="shopcoins">0</span></div></div>
+    <div class="seg" id="shopseg"><button data-k="food">🍣 Еда</button><button data-k="wear">👕 Одежда</button><button data-k="furn">🛋 Мебель</button></div>
+    <div class="items" id="shoplist"></div>
+  </section>
+  <section class="panel" id="panel-wardrobe">
+    <div class="top"><button class="back" data-go="menu">‹ Меню</button><h3>Гардероб</h3></div>
+    <div id="wstage"><canvas id="wprev" width="84" height="92"></canvas></div>
+    <div id="wslots"></div>
+    <div class="items" id="wlist"></div>
+  </section>
+  <section class="panel" id="panel-settings">
+    <div class="top"><button class="back" data-go="menu">‹ Меню</button><h3>Настройки</h3></div>
+    <p>Как зовут вашего питомца? Имя увидите вы оба.</p>
+    <div class="field"><input id="nameinp" type="text" maxlength="16" placeholder="Имя питомца" autocomplete="off"><button class="chipbtn" id="namesave">Сохранить</button></div>
+    <p>До 16 символов.</p>
+  </section>
+  <section class="panel" id="panel-quests">
+    <div class="top"><button class="back" data-go="menu">‹ Меню</button><h3>Задания</h3></div>
+    <p>Ежедневные дела для вас двоих. Например:</p>
+    <ul><li>Покормить питомца утром</li><li>Поиграть вместе</li><li>Уложить спать до полуночи</li></ul>
     <span class="soon">скоро</span>
   </section>
   <section class="panel" id="panel-rewards">
-    <h3>Достижения</h3>
+    <div class="top"><button class="back" data-go="menu">‹ Меню</button><h3>Достижения</h3></div>
     <p>Награды за общую заботу и подарки за новые уровни.</p>
     <span class="soon">скоро</span>
   </section>
 
   <div id="actions">
     <button class="act main" id="mainact" data-a="play"><span class="em" data-icon="ball" data-k="4"></span><span class="txt"><b class="lbl">Играть</b><small>заработать монеты</small></span></button>
-    <div id="hint">Нажми на Бублика, чтобы погладить 💕</div>
+    <div id="hint">Нажми на питомца, чтобы погладить 💕</div>
+  </div>
+
+  <div id="editbar">
+    <div class="eh"><b>🛋 Расстановка мебели</b><button class="chipbtn" id="editdone">Готово</button></div>
+    <div id="editlist"></div>
+    <div class="erow"><div id="edithint"></div><button class="chipbtn alt" id="editstore">В кладовую</button></div>
   </div>
 
   <nav>
     <button data-tab="home" class="on"><span data-icon="paw" data-k="3"></span>Главная</button>
-    <button data-tab="quests"><span data-icon="list" data-k="3"></span>Задания</button>
-    <button data-tab="house"><span data-icon="house" data-k="3"></span>Дом</button>
-    <button data-tab="rewards"><span data-icon="trophy" data-k="3"></span>Достижения</button>
+    <button data-tab="menu"><span data-icon="list" data-k="3"></span>Меню</button>
   </nav>
 </div>
 <div id="veil"><div id="veiltxt"></div></div>
+<div id="sheet"><div id="sheetbox"><div id="sheettitle"></div><div id="sheetlist"></div>
+  <div id="sheetbtns"><button class="chipbtn alt" id="sheetshop">🛍 В магазин</button><button class="chipbtn alt" id="sheetclose">Закрыть</button></div></div></div>
+<div id="toast"></div>
 
 <script>
 (() => {
@@ -180,6 +279,7 @@
 
   // ---------- состояние ----------
   let S = null, busy = false, acting = false, bubbleTimer = null, lookTimer = null, seenTs = 0, myId = null;
+  let CAT = null, tab = 'home', wornKey = '', sel = null, drag = null, shopTab = 'food';
   const ACTIONS = { feed: 'покормил(а)', play: 'поиграл(а) с', sleep: 'уложил(а) спать', pet: 'погладил(а)' };
 
   function say(text, ms = 3300) {
@@ -217,16 +317,20 @@
     setPill('p-happy', 'happy', st.happy); setPill('p-hunger', 'hunger', st.hunger); setPill('p-energy', 'energy', st.energy);
     if (!acting) otter.dataset.look = moodLook();
     syncRoom(st.room, instant);
+    const wk = JSON.stringify(st.worn || {});
+    if (wk !== wornKey) { wornKey = wk; drawAvatar(); }
+    updatePanels();
   }
 
   async function refresh(first) {
     try {
-      const r = await api('/api/pet/state');
+      const r = await api('/api/pet/state', (first || !CAT) ? { catalog: 1 } : {});
       if (!r.ok) throw new Error('bad');
+      if (r.catalog) CAT = r.catalog;
       const st = r.state; myId = r.you;
       render(st, first);
       if (!first && st.last_ts && st.last_ts > seenTs && st.last_actor_id !== myId && st.last_action) {
-        say((st.last_actor || 'Партнёр') + ' ' + (ACTIONS[st.last_action] || 'играет с') + ' ' + (st.last_action === 'play' || !ACTIONS[st.last_action] ? 'Бубликом' : 'Бублика') + ' 💞');
+        say((st.last_actor || 'Партнёр') + ' ' + (ACTIONS[st.last_action] || 'играет с') + ' ' + (st.last_action === 'play' || !ACTIONS[st.last_action] ? 'питомцем' : 'питомца') + ' 💞');
       }
       seenTs = Math.max(seenTs, st.last_ts || 0);
       if (first) greet(st);
@@ -251,6 +355,7 @@
   }
   function onRoomShown() {
     applyRoomUI();
+    if (view.edit) renderEditList();
     const r = view.pendingRoom; view.pendingRoom = null;
     if (r && r !== view.cur) syncRoom(r);
   }
@@ -279,10 +384,10 @@
   $('arL').addEventListener('click', () => move($('arL').dataset.to));
   $('arR').addEventListener('click', () => move($('arR').dataset.to));
 
-  async function act(name, btn) {
+  async function act(name, btn, extra) {
     if (busy || (view && view.trans)) return; busy = true; if (btn) btn.classList.add('press'); haptic('light');
     try {
-      const r = await api('/api/pet/action', { action: name });
+      const r = await api('/api/pet/action', Object.assign({ action: name }, extra || {}));
       const before = S;
       if (r.state) {
         render(r.state); seenTs = Math.max(seenTs, r.state.last_ts || 0);
@@ -300,21 +405,16 @@
       else say('Связь с Бубликом потерялась, попробуй ещё раз 📡');
     } finally { if (btn) setTimeout(() => btn.classList.remove('press'), 90); busy = false; }
   }
-  document.querySelectorAll('.act').forEach(b => b.addEventListener('click', () => act(b.dataset.a, b)));
+  document.querySelectorAll('.act').forEach(b => b.addEventListener('click', () => { if (b.dataset.a === 'feed') openFeedSheet(); else act(b.dataset.a, b); }));
   // касание выдры = «погладить»
   $('pixcv').addEventListener('pointerdown', (e) => {
+    if (view.edit) { editDown(e); return; }
     if (busy || view.trans) return;
     const r = $('pixcv').getBoundingClientRect();
     if (otterHit((e.clientX - r.left) / view.K, (e.clientY - r.top) / view.K)) act('pet', null);
   });
 
-  document.querySelectorAll('nav button').forEach(b => b.addEventListener('click', () => {
-    const tab = b.dataset.tab;
-    document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x === b));
-    $('stage').style.display = $('actions').style.display = tab === 'home' ? '' : 'none';
-    ['quests', 'house', 'rewards'].forEach(t => $('panel-' + t).style.display = (t === tab) ? 'block' : 'none');
-    haptic('light');
-  }));
+  // навигация (Главная / Меню и разделы) — см. блок «ОДЕЖДА, МЕБЕЛЬ, МАГАЗИН, МЕНЮ» ниже
 
   // =====================================================================
   // ПИКСЕЛЬ-АРТ: всё нарисовано кодом, без картинок. Один «пиксель» игры = K пикселей экрана.
@@ -400,6 +500,9 @@
     arrR: { rows: ['yy...', '.yy..', '..yy.', '...yy', '..yy.', '.yy..', 'yy...'], map: { y: '#ffffff' } },
     arrL: { rows: ['...yy', '..yy.', '.yy..', 'yy...', '.yy..', '..yy.', '...yy'], map: { y: '#ffffff' } },
     trophy: { rows: ['yyyyyyy', 'yyyyyyy', '.yyyyy.', '..yyy..', '...y...', '..yyy..', '.yyyyy.'], map: { y: '#ffcf3d' } },
+    bag: { rows: ['..hhhh..', '.h....h.', '.h....h.', 'rrrrrrrr', 'rrrrrrrr', 'rrrYYrrr', 'rrrrrrrr', 'rrrrrrrr'], map: { r: '#ff7a59', h: '#ffffff', Y: '#ffe27a' } },
+    shirt: { rows: ['.ww...ww.', 'wwww.wwww', 'wwwwwwwww', '.wwwwwww.', '.wwwwwww.', '.wwwwwww.'], map: { w: '#8fc4ff' } },
+    gear: { rows: ['....g....', '.gg.g.gg.', '.ggggggg.', '..gg.gg..', 'ggg...ggg', '..gg.gg..', '.ggggggg.', '.gg.g.gg.', '....g....'], map: { g: '#cfe0ff' } },
     coin: { rows: ['..yyyy..', '.yhyyyy.', 'yhyyddyy', 'yhyydyyy', 'yyyydyyy', 'yyyddyyy', '.yyyyyy.', '..yyyy..'], map: { y: '#ffcf3d', h: '#fff3a8', d: '#d89a12' } },
   };
   function icon(name, k) {
@@ -457,9 +560,11 @@
     else if (look === 'sad' || look === 'no') { [[-2, 1], [-1, 0], [0, 0], [1, 0], [2, 1]].forEach(([a, b]) => od(L, hx + a, my + b, OTT_OUT)); }
     else if (look === 'pet') { [[-3, 0], [-2, 1], [-1, 1], [0, 1], [1, 1], [2, 1], [3, 0]].forEach(([a, b]) => od(L, hx + a, my + b, OTT_OUT)); of(L, hx, my + 3, 1.6, 1.1, '#ff8aa0'); }
     else { [[-3, 0], [-2, 1], [-1, 1], [0, 1], [1, 1], [2, 1], [3, 0]].forEach(([a, b]) => od(L, hx + a, my + b, OTT_OUT)); }
+    drawWear(L, hx, hy);
   }
 
-  function drawOtter(t, look, blink) {
+  function drawOtter(t, look, blink, ov) {
+    WEAR = ov || (S && S.worn) || {};
     const L = newLayer(OW, OH), fast = look === 'pet' || look === 'play' || look === 'walk';
     const wag = Math.floor(t / (fast ? 140 : 480)) % 2, step = Math.floor(t / 150) % 2;
     // хвост (короткий, плоский, торчит вправо)
@@ -469,8 +574,10 @@
       oe(L, x, y - (k > 1.5 ? wag * (k - 1.5) * 2.4 : 0), 5.4 - k * .6, 3.8 - k * .3, FURD, { d: .06 });
     }
     // тело и пузико
+    bodyBack(L, WEAR.body);
     oe(L, OX, 67, 18.5, 19.5, FUR, { d: .08 });
     oe(L, OX, 70, 11.8, 14.5, BELLY, { d: .08 });
+    bodyFront(L, WEAR.body);
     // ноги
     const lf = look === 'walk' && step ? 3 : 0, rf = look === 'walk' && !step ? 3 : 0;
     oe(L, OX - 9, 84 - lf, 6.8, 3.4, FURD, { d: .06 }); oe(L, OX + 9, 84 - rf, 6.8, 3.4, FURD, { d: .06 });
@@ -671,7 +778,7 @@
   const K_PREF = 3;
   const ROOMS = {
     home:    { title: 'Гостиная', act: 'play',  icon: 'ball', label: 'Играть',  sub: 'заработать монеты',   left: 'kitchen', right: 'bedroom' },
-    kitchen: { title: 'Кухня',    act: 'feed',  icon: 'fish', label: 'Кормить', sub: 'за 5 монет',          left: null,      right: 'home' },
+    kitchen: { title: 'Кухня',    act: 'feed',  icon: 'fish', label: 'Кормить', sub: 'выбрать еду',          left: null,      right: 'home' },
     bedroom: { title: 'Спальня',  act: 'sleep', icon: 'moon', label: 'Спать',   sub: 'набраться сил',       left: 'home',    right: null },
   };
   const view = { K: 3, W: 112, H: 150, rooms: {}, cur: 'home', trans: null, baseY: 0, ox: 0 };
@@ -684,7 +791,7 @@
     view.K = K; view.W = W; view.H = H; sc.width = W; sc.height = H;
     sc.style.width = (W * K) + 'px'; sc.style.height = (H * K) + 'px'; sc.style.left = Math.floor((r.width - W * K) / 2) + 'px'; sc.style.top = Math.floor((r.height - H * K) / 2) + 'px';
     const fy = Math.round(H * 0.5), baseY = fy + Math.round((H - fy) * 0.5);
-    view.baseY = baseY; view.ox = Math.round(W * 0.47);
+    view.baseY = baseY; view.fy = fy; view.ox = Math.round(W * 0.47);
     view.rooms = { home: buildHome(W, H, fy, baseY), kitchen: buildKitchen(W, H, fy, baseY), bedroom: buildBedroom(W, H, fy, baseY) };
   }
 
@@ -696,14 +803,17 @@
     if (tr) {
       const p = Math.min(1, (now - tr.t0) / tr.dur), e = ease(p), dx = Math.round(tr.dir * view.W * e);
       sx.drawImage(view.rooms[tr.from].c, dx, 0); sx.drawImage(view.rooms[tr.to].c, dx - tr.dir * view.W, 0);
+      view.fx = [[tr.from, dx], [tr.to, dx - tr.dir * view.W]];
       look = 'walk';
       if (p >= 1) { view.trans = null; view.cur = tr.to; onRoomShown(); }
-    } else sx.drawImage(view.rooms[view.cur].c, 0, 0);
+    } else { sx.drawImage(view.rooms[view.cur].c, 0, 0); view.fx = [[view.cur, 0]]; }
+    for (const [r, dx] of view.fx) drawItems(r, dx, false, now);
     const blink = (Math.floor(now / 160) % 31) === 0;
     const hop = look === 'play' ? -Math.round(Math.abs(Math.sin(now / 130)) * 7) : look === 'walk' ? -(Math.floor(now / 150) % 2) : (look === 'sleep' || look === 'sleepy' ? (Math.floor(now / 900) % 2) : (Math.floor(now / 650) % 2));
     sx.fillStyle = 'rgba(40,20,20,.28)'; for (let i = -19; i <= 19; i++) { const h = Math.round(Math.sqrt(1 - (i / 20) ** 2) * 3); sx.fillRect(view.ox + i, view.baseY - 1 - h + 3, 1, h * 2 - 1); }
     const O = drawOtter(now, look, blink);
     sx.drawImage(O.c, view.ox - OX, view.baseY - OB + 4 + hop);
+    for (const [r, dx] of view.fx) drawItems(r, dx, true, now);
     if (look === 'play' && view.cur === 'home') {
       const by = view.baseY - 4 - Math.round(Math.abs(Math.sin(now / 160)) * 26), bx = view.ox + 34;
       const B = newLayer(14, 14); ell(B, 7, 7, 5.5, 5.5, BLUE); for (let i = -4; i <= 4; i++) dot(B, 7 + i, 6 + Math.round(i * .35), '#fff'); outline(B);
@@ -718,14 +828,389 @@
 
   // аватарка: голова выдры
   function drawAvatar() {
-    const cv = $('avcv'), L = newLayer(60, 48), keep = otS; otS = 1; drawHead(L, 30, 26, 'idle', false); otS = keep; outline(L, OTT_OUT);
+    const cv = $('avcv'), L = newLayer(60, 48), keep = otS; otS = 1; WEAR = (S && S.worn) || {}; drawHead(L, 30, 26, 'idle', false); otS = keep; outline(L, OTT_OUT);
     cv.width = 60; cv.height = 48; cv.getContext('2d').drawImage(L.c, 0, 0);
   }
+
+  // =====================================================================
+  // ОДЕЖДА, МЕБЕЛЬ, МАГАЗИН, МЕНЮ
+  // =====================================================================
+  let WEAR = {};                                   // что надето прямо сейчас (слот → id)
+  const SLOT_RU = { hat: 'Шапка', face: 'Очки', neck: 'На шею', body: 'Одежда' };
+  const GRN = ['#7fd37e', '#4eaa56', '#2f7f3d'];
+
+  // спрайт по центру: cx — центр, by — нижняя строка (в координатах выдры, с учётом её масштаба)
+  function sprc(L, cx, by, rows, map) {
+    const w = Math.max(...rows.map(r => r.length)), rr = rows.map(r => r.padEnd(w, '.'));
+    spr(L, Math.round(oX(cx) - w / 2), Math.round(oY(by) - rows.length), rr, map);
+  }
+  function ring(L, cx, cy, rx, ry, col) { for (let a = 0; a < 6.3; a += 0.3) od(L, cx + Math.cos(a) * rx, cy + Math.sin(a) * ry, col); }
+  function stripesEll(L, cx, cy, rx, ry, every, col) {
+    const X = oX(cx), Y = oY(cy), RX = rx * otS, RY = ry * otS, y0 = Math.floor(Y - RY);
+    for (let y = y0; y <= Math.ceil(Y + RY); y++) {
+      if ((y - y0) % every !== 0) continue;
+      for (let x = Math.floor(X - RX); x <= Math.ceil(X + RX); x++) { const dx = (x + .5 - X) / RX, dy = (y + .5 - Y) / RY; if (dx * dx + dy * dy <= 1) dot(L, x, y, col); }
+    }
+  }
+
+  // шапки: by — нижний край относительно центра головы, dx — сдвиг по горизонтали
+  const HAT = {
+    cap: { by: -13, map: { r: '#e8505b', h: '#ff9aa2', d: '#a82c38' }, rows: [
+      '......rrrrrrrrr......', '....rrrrhhrrrrrrr....', '...rrrrhrrrrrrrrrr...', '..rrrrrrrrrrrrrrrrr..', '..rrrrrrrrrrrrrrrrr..', 'ddddddddddddddddddddd', '.ddddddddddddddddddd.'] },
+    party: { by: -13, map: { y: '#ffd93d', p: '#ff6aa5', w: '#ffffff' }, rows: [
+      '.....y.....', '....ppp....', '....pwp....', '...ppppp...', '...wwwww...', '..ppppppp..', '..ppwpwpp..', '.ppppppppp.', 'ppppppppppp'] },
+    crown: { by: -14, map: { y: '#ffcf3d', d: '#c98a10', r: '#ff4f6e', b: '#4fa8ff' }, rows: [
+      'y...y...y...y', 'yy.yyy.yyy.yy', 'yyyyyyyyyyyyy', 'yyryyybyyyryy', 'ddddddddddddd'] },
+    beanie: { by: -10, map: { b: '#4f83e8', h: '#9cc2ff', w: '#ffffff', L: '#cfe0ff' }, rows: [
+      '.........www.........', '........wwwww........', '.....bbbbbbbbbbb.....', '...bbbbbhbbbbbbbbb...', '..bbbbhbbbbbbbbbbbb..', '.bbbbbbbbbbbbbbbbbbb.', 'wwwwwwwwwwwwwwwwwwwww', 'wLwLwLwLwLwLwLwLwLwLw'] },
+    flower: { by: -12, dx: 16, map: { p: '#ff8ab8', y: '#ffe27a' }, rows: ['.pp.', 'pyyp', 'pyyp', '.pp.'] },
+  };
+  const HEARTG = { r: '#ff4f8b', h: '#ffd0e2' };
+  const HEARTG_ROWS = ['.rrr.rrr.', 'rrrrrrrrr', 'rhrrrrrrr', 'rrrrrrrrr', '.rrrrrrr.', '..rrrrr..', '...rrr...', '....r....'];
+
+  function drawFaceWear(L, hx, hy, id) {
+    const ey = hy + 2;
+    for (const sg of [-1, 1]) {
+      const ex = hx + sg * 12.5;
+      if (id === 'sunglasses') { or_(L, ex - 5.5, ey - 3.5, 11, 7, '#1d1d33'); or_(L, ex - 4.5, ey - 2.5, 3, 2, '#7a8cf0'); }
+      else if (id === 'round') { ring(L, ex, ey, 6, 5.5, '#e8b84a'); od(L, ex - 3, ey - 3, '#ffffff'); }
+      else if (id === 'hearts') { spr(L, Math.round(oX(ex)) - 4, Math.round(oY(ey)) - 4, HEARTG_ROWS, HEARTG); }
+    }
+    if (id === 'sunglasses') { or_(L, hx - 7, ey - 3, 14, 2, '#1d1d33'); or_(L, hx - 25, hy - 1.5, 5, 2, '#1d1d33'); or_(L, hx + 20, hy - 1.5, 5, 2, '#1d1d33'); }
+    if (id === 'round') or_(L, hx - 6.5, ey - 1, 13, 1, '#e8b84a');
+  }
+  function drawNeckWear(L, hx, hy, id) {
+    if (id === 'scarf') {
+      or_(L, hx + 6, hy + 20, 5, 10, '#e04848'); or_(L, hx + 6, hy + 25, 5, 1, '#fff0f0'); or_(L, hx + 6, hy + 27, 5, 1, '#fff0f0');
+      oe(L, hx, hy + 19.5, 17, 3.6, ['#ff8a8a', '#e04848', '#b02f2f'], { d: .1 });
+      for (let i = -14; i <= 14; i += 5) od(L, hx + i, hy + 19.5, '#fff0f0');
+    } else if (id === 'bow') {
+      sprc(L, hx, hy + 24, ['rr.....rr', 'rrrr.rrrr', 'rrrrkrrrr', 'rrrr.rrrr', 'rr.....rr'], { r: '#ff5a8a', k: '#a8274f' });
+    } else if (id === 'bandana') {
+      sprc(L, hx, hy + 26, ['bbbbbbbbbbbbbbb', '.bbwbbbwbbbwbb.', '..bbbbbbbbbbb..', '...bbbwbbbbb...', '....bbbbbbb....', '.....bbbbb.....', '......bbb......'], { b: '#4f83e8', w: '#ffffff' });
+    }
+  }
+  function drawWear(L, hx, hy) {
+    const w = WEAR || {};
+    if (w.neck) drawNeckWear(L, hx, hy, w.neck);
+    if (w.face) drawFaceWear(L, hx, hy, w.face);
+    const h = w.hat && HAT[w.hat];
+    if (h) sprc(L, hx + (h.dx || 0), hy + h.by, h.rows, h.map);
+  }
+  function bodyBack(L, id) { if (id === 'cape') oe(L, OX, 68, 23, 19, ['#ff7a7a', '#d93b3b', '#a72a2a'], { d: .08 }); }
+  function bodyFront(L, id) {
+    if (id === 'tee') { oe(L, OX, 73, 17.2, 13.5, ['#8fe8cc', '#4cc4a4', '#2f9c80'], { d: .1 }); os(L, OX - 3, 66, SPR.heart.rows, SPR.heart.map); }
+    else if (id === 'sweater') { oe(L, OX, 73, 17.2, 13.5, ['#7fb0ff', '#4f83e8', '#3560c4'], { d: .1 }); stripesEll(L, OX, 73, 17.2, 13.5, 4, '#e8f1ff'); }
+    else if (id === 'apron') { oe(L, OX, 74, 12.5, 12.5, ['#ffd3e0', '#ff9fbf', '#e06b95'], { d: .1 }); or_(L, OX - 9, 60, 2, 8, '#e06b95'); or_(L, OX + 7, 60, 2, 8, '#e06b95'); or_(L, OX - 5, 75, 10, 5, '#fff0f5'); }
+  }
+
+  // ---------- мебель: рисунки (низ по центру для пола, центр для стены) ----------
+  const FURN = {
+    cactus: { w: 16, h: 27, draw: (L) => {
+      ell(L, 8, 12, 4, 10, GRN); ell(L, 3.5, 14, 2.4, 4, GRN); ell(L, 12.5, 10, 2.4, 4, GRN);
+      rect(L, 3, 21, 10, 2, '#e08a58'); rect(L, 4, 23, 8, 3, '#c96a3d'); rect(L, 7, 1, 2, 2, '#ff8ab8'); } },
+    pouf: { w: 22, h: 16, draw: (L) => {
+      ell(L, 11, 9, 10, 6.5, ['#ffb3cc', '#ff7aa5', '#d4507e']); ell(L, 11, 5.5, 8, 3, ['#ffd3e2', '#ffb3cc'], { d: .1 }); } },
+    plant: { w: 24, h: 38, draw: (L) => {
+      ell(L, 12, 11, 4, 8, GRN); ell(L, 7, 17, 4, 7, GRN); ell(L, 17, 17, 4, 7, GRN); ell(L, 9, 8, 3, 6, GRN); ell(L, 15, 8, 3, 6, GRN);
+      rect(L, 6, 26, 12, 3, '#e08a58'); rect(L, 7, 29, 10, 7, '#c96a3d'); rect(L, 7, 29, 2, 7, '#e08a58'); } },
+    table: { w: 26, h: 22, draw: (L) => {
+      rect(L, 11, 10, 4, 9, '#8f5e35'); ell(L, 13, 20, 7, 2, ['#8f5e35', '#6e4527']); ell(L, 13, 8, 12, 3.5, ['#d9a468', '#c99358', '#a8723f']);
+      rect(L, 8, 2, 5, 5, '#ffffff'); rect(L, 9, 3, 3, 2, '#b07a47'); dot(L, 13, 4, '#ffffff'); dot(L, 10, 0, '#e8eef5'); dot(L, 11, 1, '#e8eef5'); } },
+    lamp: { w: 16, h: 44, draw: (L) => {
+      ell(L, 8, 42, 5, 2, ['#c9d4e0', '#8a9bb0']); rect(L, 7, 13, 2, 29, '#8a9bb0');
+      spr(L, 1, 4, ['....yyyyyy....', '...yyyyyyyy...', '..yyhyyyyyyy..', '.yyyhyyyyyyyy.', 'yyyyyyyyyyyyyy', 'dddddddddddddd'], { y: '#ffd96a', h: '#fff3b0', d: '#d9a63a' }); } },
+    tree: { w: 30, h: 46, draw: (L) => {
+      rect(L, 13, 38, 4, 6, '#7a4a2a');
+      for (let i = 0; i < 3; i++) {
+        const top = 5 + i * 10, hw = 7 + i * 3;
+        for (let r = 0; r < 13; r++) { const half = Math.round(r / 12 * hw); for (let x = 15 - half; x <= 15 + half; x++) dot(L, x, top + r, (x + r) % 4 === 0 ? '#6ac975' : (x < 15 ? '#4eaa56' : '#3a8f48')); }
+      }
+      rect(L, 14, 1, 2, 4, '#ffd93d'); rect(L, 13, 2, 4, 2, '#ffd93d');
+      [[15, 14, '#ff5a6a'], [11, 24, '#6ab7ff'], [19, 25, '#ffd93d'], [8, 34, '#ff5a6a'], [22, 35, '#6ab7ff'], [15, 33, '#ffd93d'], [13, 19, '#ffd93d']].forEach(([x, y, c]) => rect(L, x, y, 2, 2, c)); } },
+    armchair: { w: 34, h: 30, draw: (L) => {
+      rect(L, 3, 3, 28, 18, '#e0707e'); rect(L, 3, 3, 28, 2, '#f7a8b0'); rect(L, 0, 12, 7, 14, '#c95160'); rect(L, 27, 12, 7, 14, '#c95160'); rect(L, 0, 12, 7, 2, '#e0707e'); rect(L, 27, 12, 7, 2, '#e0707e');
+      rect(L, 7, 16, 20, 9, '#ef8a96'); rect(L, 7, 16, 20, 1, '#f7a8b0'); rect(L, 2, 26, 3, 3, '#6e4527'); rect(L, 29, 26, 3, 3, '#6e4527'); } },
+    bookcase: { w: 30, h: 42, draw: (L) => {
+      rect(L, 1, 1, 28, 40, '#8f5630'); rect(L, 3, 3, 24, 36, '#5e3820');
+      const cols = ['#e8505b', '#4f83e8', '#4eaa56', '#ffcf3d', '#a86be8', '#ff9a3c'];
+      [3, 15, 27].forEach((y0, r) => {
+        rect(L, 3, y0 + 10, 24, 2, '#8f5630'); let x = 4, i = r * 2;
+        while (x < 25) { const w = 3 + (i % 2), h = 7 + ((i * 5) % 4); rect(L, x, y0 + 10 - h, w, h, cols[i % cols.length]); x += w; i++; }
+      }); } },
+    aquarium: { w: 34, h: 30, draw: (L) => {
+      rect(L, 3, 23, 28, 6, '#8f5630'); rect(L, 3, 23, 28, 1, '#b07a47');
+      band(L, 3, 3, 28, 19, ['#b6e8ff', '#7fcbf5', '#58b0e6']);
+      rect(L, 2, 2, 30, 1, '#eaf9ff'); rect(L, 2, 2, 1, 21, '#eaf9ff'); rect(L, 31, 2, 1, 21, '#eaf9ff'); rect(L, 2, 22, 30, 1, '#eaf9ff');
+      rect(L, 3, 19, 28, 3, '#f0d79a'); rect(L, 6, 12, 2, 8, '#3f9a4d'); rect(L, 8, 14, 1, 6, '#4eaa56'); rect(L, 25, 10, 2, 10, '#3f9a4d');
+      spr(L, 11, 8, ['..oo...o', '.ooooooo', 'oookooo.', '.ooooooo', '..oo...o'], { o: '#ff9a3c', k: OUT });
+      spr(L, 20, 14, ['.bbb.b', 'bbkbbb', '.bbb.b'], { b: '#6a8cff', k: OUT });
+      dot(L, 22, 6, '#fff'); dot(L, 23, 4, '#fff'); dot(L, 16, 5, '#fff'); } },
+    tv: { w: 34, h: 31, draw: (L) => {
+      rect(L, 4, 24, 26, 7, '#8f5630'); rect(L, 4, 24, 26, 1, '#b07a47'); rect(L, 2, 3, 30, 21, '#2a2f3d');
+      band(L, 4, 5, 26, 17, ['#7fd0ff', '#4a9ee6']); spr(L, 14, 9, SPR.heart.rows, SPR.heart.map);
+      rect(L, 12, 0, 1, 3, '#c9d4e0'); rect(L, 21, 0, 1, 3, '#c9d4e0'); rect(L, 13, 2, 8, 1, '#c9d4e0'); dot(L, 29, 22, '#7aff9a'); } },
+    clock: { w: 18, h: 18, draw: (L) => {
+      ell(L, 9, 9, 8, 8, ['#ffd45c', '#e8b84a']); ell(L, 9, 9, 6.5, 6.5, ['#ffffff', '#e8eef5']);
+      rect(L, 9, 4, 1, 5, OUT); rect(L, 9, 9, 4, 1, OUT); dot(L, 9, 3, '#e8505b'); dot(L, 9, 14, '#8a9bb0'); dot(L, 14, 9, '#8a9bb0'); dot(L, 4, 9, '#8a9bb0'); } },
+    picture: { w: 26, h: 22, draw: (L) => {
+      rect(L, 1, 1, 24, 20, '#8f5630'); band(L, 3, 3, 20, 16, ['#ff9a5a', '#ffcc66', '#ffe9a0']); ell(L, 13, 13, 4, 4, ['#fff6b8', '#ffd93d']);
+      band(L, 3, 14, 20, 5, ['#4fa0e8', '#2f78c4']); rect(L, 1, 1, 24, 1, '#b07a47'); } },
+    photo: { w: 20, h: 24, draw: (L) => {
+      rect(L, 1, 1, 18, 22, '#ff9ab8'); rect(L, 3, 3, 14, 18, '#fff4f6');
+      spr(L, 3, 6, SPR.heart.rows, SPR.heart.map); spr(L, 10, 11, SPR.heart.rows, { r: '#4f83e8', h: '#9cc2ff', d: '#2f55b0' }); } },
+    poster: { w: 22, h: 28, draw: (L) => {
+      rect(L, 1, 1, 20, 26, '#f4efe6'); band(L, 3, 3, 16, 22, ['#9ed0ff', '#c9e6ff']);
+      ell(L, 6, 12, 2, 2, FUR); ell(L, 16, 12, 2, 2, FUR); ell(L, 11, 15, 6.5, 5.5, FUR, { d: .1 }); ell(L, 11, 17, 3.5, 2.5, BELLY);
+      dot(L, 8, 14, OTT_OUT); dot(L, 14, 14, OTT_OUT); rect(L, 10, 16, 2, 1, OTT_OUT); rect(L, 6, 22, 10, 1, '#ffffff'); } },
+    mirror: { w: 16, h: 28, draw: (L) => {
+      ell(L, 8, 14, 7, 13, ['#ffd45c', '#e8b84a']); ell(L, 8, 14, 5.5, 11.5, ['#e2f6ff', '#b8e2f5', '#9cd3ee']);
+      dot(L, 5, 8, '#fff'); dot(L, 5, 9, '#fff'); dot(L, 6, 7, '#fff'); dot(L, 11, 20, '#fff'); } },
+    garland: { w: 56, h: 14, draw: (L) => {
+      const yy = (x) => Math.round(2 + Math.sin(Math.PI * x / 55) * 6);
+      for (let x = 0; x < 56; x++) dot(L, x, yy(x), '#6e4527');
+      ['#ff5a6a', '#ffd93d', '#4fa8ff', '#4eaa56'].forEach((c, k) => { for (let x = 3 + k * 4; x < 55; x += 16) rect(L, x, yy(x) + 1, 2, 3, c); }); } },
+  };
+  const FC = {};
+  function furnLayer(id) {
+    if (FC[id]) return FC[id];
+    const d = FURN[id]; if (!d) return null;
+    const L = newLayer(d.w, d.h); d.draw(L); outline(L); return (FC[id] = L);
+  }
+
+  // ---------- мелкие помощники интерфейса ----------
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+  function toast(text, ms = 2300) {
+    if (!text) return; const t = $('toast'); t.textContent = text; t.classList.add('show');
+    clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), ms);
+  }
+  function pxCanvas(src, k, crop) {
+    const [cx, cy, cw, ch] = crop || [0, 0, src.width, src.height];
+    const cv = document.createElement('canvas'); cv.width = cw; cv.height = ch; cv.className = 'pxi';
+    cv.style.width = (cw * k) + 'px'; cv.style.height = (ch * k) + 'px';
+    cv.getContext('2d').drawImage(src, cx, cy, cw, ch, 0, 0, cw, ch); return cv;
+  }
+  const WL = {};
+  const CROP = { hat: [14, 14, 56, 40], face: [14, 30, 56, 34], neck: [14, 42, 56, 34], body: [14, 46, 56, 44] };
+  function wearPreview(id) {
+    const c = CAT[id]; if (!WL[id]) WL[id] = drawOtter(0, 'idle', false, { [c.s]: id });
+    return pxCanvas(WL[id].c, 2, CROP[c.s]);
+  }
+  function furnPreview(id, kmax) {
+    const f = furnLayer(id); if (!f) return el('div', 'emo', '❔');
+    return pxCanvas(f.c, Math.max(1, Math.min(kmax || 2, Math.floor(88 / Math.max(f.w, f.h)))));
+  }
+  async function rpc(action, extra) {
+    try {
+      const r = await api('/api/pet/action', Object.assign({ action }, extra || {}));
+      if (r.state) { render(r.state); seenTs = Math.max(seenTs, r.state.last_ts || 0); }
+      return r;
+    } catch (e) {
+      if (String(e.message) === 'auth') veil(AUTH_MSG); else toast('Связь потерялась, попробуй ещё раз 📡');
+      return null;
+    }
+  }
+  const owns = (id) => !!(S && (S.owned || []).includes(id));
+
+  // ---------- навигация: Главная / Меню и разделы меню ----------
+  const PANELS = ['menu', 'shop', 'wardrobe', 'quests', 'rewards', 'settings'];
+  function show(t) {
+    const edit = t === 'edit'; if (edit) t = 'home';
+    tab = t; setEdit(edit);
+    document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x.dataset.tab === (t === 'home' ? 'home' : 'menu')));
+    const home = t === 'home';
+    $('stage').style.display = home ? '' : 'none';
+    $('actions').style.display = (home && !edit) ? '' : 'none';
+    $('editbar').style.display = (home && edit) ? 'flex' : 'none';
+    PANELS.forEach(p => $('panel-' + p).style.display = (p === t) ? 'block' : 'none');
+    if (t === 'shop') renderShop(); else if (t === 'wardrobe') renderWardrobe(); else if (t === 'settings') renderSettings();
+    haptic('light');
+  }
+  function updatePanels() {
+    if (tab === 'shop') renderShop(); else if (tab === 'wardrobe') renderWardrobe();
+    else if (tab === 'home' && view.edit) renderEditList();
+  }
+  document.querySelectorAll('nav button').forEach(b => b.addEventListener('click', () => show(b.dataset.tab)));
+  document.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', () => show(b.dataset.go)));
+  $('who').addEventListener('click', () => show('settings'));
+
+  // ---------- магазин ----------
+  let shopBusy = false;
+  function renderShop() {
+    if (!CAT || !S) return;
+    $('shopcoins').textContent = S.coins;
+    document.querySelectorAll('#shopseg button').forEach(b => b.classList.toggle('on', b.dataset.k === shopTab));
+    const box = $('shoplist'); box.textContent = '';
+    Object.keys(CAT).filter(id => CAT[id].k === shopTab && !CAT[id].base).forEach(id => box.appendChild(shopCard(id)));
+  }
+  function shopCard(id) {
+    const c = CAT[id], d = el('div', 'it'), pv = el('div', 'pv');
+    pv.appendChild(c.k === 'food' ? el('div', 'emo', c.e) : c.k === 'wear' ? wearPreview(id) : furnPreview(id));
+    d.appendChild(pv); d.appendChild(el('b', null, c.n));
+    d.appendChild(el('div', 'ds', c.k === 'food'
+      ? 'Сытость +' + c.hu + ' · Радость +' + c.hp + (c.en ? ' · Энергия +' + c.en : '')
+      : c.k === 'wear' ? SLOT_RU[c.s] : (c.pl === 'wall' ? 'Висит на стене' : 'Стоит на полу')));
+    const b = el('button', 'buy');
+    if (c.k === 'food') {
+      const q = (S.inv || {})[id] || 0; if (q) d.appendChild(el('div', 'own', 'В запасе: ' + q));
+      b.textContent = 'Купить · ' + c.p + ' 🪙';
+    } else if (owns(id)) { b.textContent = 'Куплено ✓'; b.classList.add('off'); b.disabled = true; }
+    else b.textContent = 'Купить · ' + c.p + ' 🪙';
+    if (!b.disabled && S.coins < c.p) b.classList.add('poor');
+    b.addEventListener('click', () => buyItem(id));
+    d.appendChild(b); return d;
+  }
+  async function buyItem(id) {
+    if (shopBusy) return; const c = CAT[id];
+    if (S.coins < c.p) { toast('Не хватает монет 🪙 Поиграйте и погладьте питомца!'); haptic('err'); return; }
+    shopBusy = true; haptic('light');
+    try { const r = await rpc('buy', { item: id }); if (r) { toast(r.say); haptic(r.ok ? 'ok' : 'err'); } } finally { shopBusy = false; }
+  }
+  document.querySelectorAll('#shopseg button').forEach(b => b.addEventListener('click', () => { shopTab = b.dataset.k; renderShop(); haptic('light'); }));
+
+  // ---------- гардероб ----------
+  function renderWardrobe() {
+    if (!CAT || !S) return;
+    const slots = $('wslots'); slots.textContent = '';
+    ['hat', 'face', 'neck', 'body'].forEach(s => { const id = (S.worn || {})[s]; slots.appendChild(el('div', 'slot' + (id ? ' on' : ''), SLOT_RU[s] + ': ' + (id ? CAT[id].n : '—'))); });
+    const box = $('wlist'); box.textContent = '';
+    const ids = (S.owned || []).filter(id => CAT[id] && CAT[id].k === 'wear');
+    if (!ids.length) { box.appendChild(el('div', 'empty', 'Гардероб пока пуст. Загляни в Меню → Магазин 🛍')); return; }
+    ids.forEach(id => {
+      const c = CAT[id], on = (S.worn || {})[c.s] === id, d = el('div', 'it'), pv = el('div', 'pv');
+      pv.appendChild(wearPreview(id)); d.appendChild(pv); d.appendChild(el('b', null, c.n)); d.appendChild(el('div', 'ds', SLOT_RU[c.s]));
+      const b = el('button', 'buy' + (on ? ' alt' : ''), on ? 'Снять' : 'Надеть');
+      b.addEventListener('click', async () => { haptic('light'); const r = await rpc(on ? 'unwear' : 'wear', { item: id }); if (r && !r.ok) toast(r.say); });
+      d.appendChild(b); box.appendChild(d);
+    });
+  }
+  function wardFrame(now) {
+    const cv = $('wprev'), x = cv.getContext('2d'); x.imageSmoothingEnabled = false; x.clearRect(0, 0, cv.width, cv.height);
+    const O = drawOtter(now, 'idle', (Math.floor(now / 160) % 31) === 0);
+    x.drawImage(O.c, 0, Math.floor(now / 650) % 2);
+  }
+
+  // ---------- настройки: имя питомца ----------
+  function renderSettings() { if (S) $('nameinp').value = S.name; }
+  $('namesave').addEventListener('click', async () => {
+    const v = $('nameinp').value.trim();
+    if (!v) { toast('Имя не может быть пустым ✏️'); return; }
+    const r = await rpc('rename', { name: v });
+    if (r) { toast(r.say); haptic(r.ok ? 'ok' : 'err'); if (r.ok) $('nameinp').blur(); }
+  });
+  $('nameinp').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('namesave').click(); });
+
+  // ---------- выбор еды ----------
+  function closeSheet() { $('sheet').classList.remove('show'); }
+  function openFeedSheet() {
+    if (!CAT || !S) return;
+    const box = $('sheetlist'); box.textContent = ''; $('sheettitle').textContent = 'Чем покормить?';
+    Object.keys(CAT).filter(id => CAT[id].k === 'food').forEach(id => {
+      const c = CAT[id], q = (S.inv || {})[id] || 0; if (!q && !c.base) return;
+      const b = el('button', 'srow'); b.appendChild(el('span', 'e', c.e));
+      const m = el('span', 'm', c.n); m.appendChild(el('small', null, 'Сытость +' + c.hu + ' · Радость +' + c.hp + (c.en ? ' · Энергия +' + c.en : '')));
+      b.appendChild(m); b.appendChild(el('span', 'r', q ? '×' + q : c.p + ' 🪙'));
+      b.addEventListener('click', () => { closeSheet(); act('feed', $('mainact'), { item: id }); });
+      box.appendChild(b);
+    });
+    $('sheet').classList.add('show');
+  }
+  $('sheetclose').addEventListener('click', closeSheet);
+  $('sheetshop').addEventListener('click', () => { closeSheet(); shopTab = 'food'; show('shop'); });
+  $('sheet').addEventListener('pointerdown', (e) => { if (e.target === $('sheet')) closeSheet(); });
+
+  // ---------- расстановка мебели ----------
+  const fl = () => view.fy + 8, fh = () => view.H - view.fy - 10;
+  function pxOf(c, it) {
+    return { x: Math.round(it.x / 100 * view.W), y: c.pl === 'wall' ? Math.round(4 + it.y / 100 * (view.fy - 20)) : Math.round(fl() + it.y / 100 * fh()) };
+  }
+  function pctOf(c, px, py) {
+    return { x: clamp(Math.round(px / view.W * 100), 5, 95), y: c.pl === 'wall' ? clamp(Math.round((py - 4) / (view.fy - 20) * 100), 0, 100) : clamp(Math.round((py - fl()) / fh() * 100), 0, 100) };
+  }
+  function roomItems(room) {
+    const out = []; if (!S || !CAT || !view.fy) return out;
+    for (const id in (S.placed || {})) {
+      const it = S.placed[id]; if (it.room !== room) continue;
+      const c = CAT[id], f = c && furnLayer(id); if (!f) continue;
+      const p = pxOf(c, it); out.push({ id, c, f, x: p.x, y: p.y });
+    }
+    out.sort((a, b) => ((a.c.pl === 'wall') ? 0 : 1) - ((b.c.pl === 'wall') ? 0 : 1) || a.y - b.y);
+    return out;
+  }
+  function drawItems(room, dx, front, now) {
+    for (const o of roomItems(room)) {
+      if ((o.c.pl !== 'wall' && o.y > view.baseY + 4) !== front) continue;
+      const x = o.x - (o.f.w >> 1) + dx, y = o.c.pl === 'wall' ? o.y - (o.f.h >> 1) : o.y - o.f.h;
+      sx.drawImage(o.f.c, x, y);
+      if (view.edit && sel === o.id) {
+        sx.fillStyle = (Math.floor(now / 350) % 2) ? '#ffe27a' : '#ffffff';
+        const x0 = x - 1, y0 = y - 1, w = o.f.w + 2, h = o.f.h + 2;
+        for (const [cx, cy, a, b] of [[x0, y0, 1, 1], [x0 + w, y0, -1, 1], [x0, y0 + h, 1, -1], [x0 + w, y0 + h, -1, -1]]) { sx.fillRect(cx, cy, 4 * a, b); sx.fillRect(cx, cy, a, 4 * b); }
+      }
+    }
+  }
+  function hitItem(lx, ly) {
+    const list = roomItems(view.cur);
+    for (let i = list.length - 1; i >= 0; i--) {
+      const o = list[i], x0 = o.x - (o.f.w >> 1), y0 = o.c.pl === 'wall' ? o.y - (o.f.h >> 1) : o.y - o.f.h;
+      if (lx >= x0 && lx <= x0 + o.f.w && ly >= y0 && ly <= y0 + o.f.h) return o.id;
+    }
+    return null;
+  }
+  const toLocal = (e) => { const r = sc.getBoundingClientRect(); return [(e.clientX - r.left) / view.K, (e.clientY - r.top) / view.K]; };
+  const placedHere = (id) => !!(S && S.placed && S.placed[id] && S.placed[id].room === view.cur);
+  function setEdit(on) { view.edit = !!on; if (!on) { sel = null; drag = null; } else renderEditList(); }
+  function renderEditList() {
+    const box = $('editlist'); if (!box || !S || !CAT) return; box.textContent = '';
+    const ids = (S.owned || []).filter(id => CAT[id] && CAT[id].k === 'furn');
+    if (!ids.length) box.appendChild(el('div', 'empty', 'Мебели пока нет — загляни в Меню → Магазин 🛍'));
+    ids.forEach(id => {
+      const pl = (S.placed || {})[id], b = el('button', 'chip' + (sel === id ? ' on' : ''));
+      b.appendChild(furnPreview(id, 1)); b.appendChild(el('span', 'cn', CAT[id].n));
+      b.appendChild(el('small', null, !pl ? 'в кладовой' : pl.room === view.cur ? 'здесь' : ROOMS[pl.room].title));
+      b.addEventListener('click', () => pickFurn(id)); box.appendChild(b);
+    });
+    $('editstore').disabled = !(sel && S.placed && S.placed[sel]);
+    $('edithint').textContent = sel ? 'Тапни по комнате или перетащи «' + CAT[sel].n + '»' : 'Выбери вещь, чтобы поставить её в эту комнату';
+  }
+  async function pickFurn(id) {
+    if (view.trans) return; haptic('light');
+    if (!placedHere(id)) {
+      const r = await rpc('place', { item: id, room: view.cur, x: 50, y: CAT[id].pl === 'wall' ? 35 : 55 });
+      if (!r || !r.ok) { if (r && r.say) toast(r.say); return; }
+    }
+    sel = id; renderEditList();
+  }
+  function editDown(e) {
+    if (view.trans || !S) return;
+    const [lx, ly] = toLocal(e), hit = hitItem(lx, ly);
+    if (hit) { sel = hit; renderEditList(); }
+    if (!sel || !placedHere(sel)) return;
+    const p = pxOf(CAT[sel], S.placed[sel]);
+    drag = { id: sel, dx: hit ? p.x - lx : 0, dy: hit ? p.y - ly : 0 };
+    dragTo(lx, ly);
+    try { sc.setPointerCapture(e.pointerId); } catch (_) {}
+  }
+  function dragTo(lx, ly) {
+    const it = S.placed && S.placed[drag.id]; if (!it) return;
+    const q = pctOf(CAT[drag.id], lx + drag.dx, ly + drag.dy); it.x = q.x; it.y = q.y;
+  }
+  sc.addEventListener('pointermove', (e) => { if (!drag) return; const [lx, ly] = toLocal(e); dragTo(lx, ly); });
+  async function endDrag() {
+    if (!drag) return; const d = drag; drag = null;
+    const it = S && S.placed && S.placed[d.id]; if (it) await rpc('place', { item: d.id, room: it.room, x: it.x, y: it.y });
+  }
+  sc.addEventListener('pointerup', endDrag); sc.addEventListener('pointercancel', endDrag);
+  $('editstore').addEventListener('click', async () => {
+    if (!sel) return; const id = sel; sel = null; haptic('light');
+    const r = await rpc('unplace', { item: id }); if (r && !r.ok) toast(r.say);
+  });
+  $('editdone').addEventListener('click', () => show('home'));
 
   drawAvatar(); layout();
   new ResizeObserver(() => { layout(); }).observe($('stage'));
   window.addEventListener('resize', layout);
-  setInterval(() => frame(performance.now()), 100);
+  setInterval(() => { const n = performance.now(); frame(n); if (tab === 'wardrobe') wardFrame(n); }, 100);
 
   window.__pet = { otter, view };   // для отладки
 
@@ -734,7 +1219,7 @@
     veil('Эта игра открывается только из Telegram. Напиши боту /pet и нажми «🦦 Играть».');
   } else {
     refresh(true);
-    setInterval(() => { if (!busy && !document.hidden) refresh(false); }, 15000);
+    setInterval(() => { if (!busy && !drag && !document.hidden) refresh(false); }, 15000);
     document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(false); });
   }
 })();
