@@ -546,6 +546,17 @@ def init_db():
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
             """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS llm_usage (
+                    day DATE NOT NULL,
+                    model TEXT NOT NULL,
+                    calls INT DEFAULT 0,
+                    ok INT DEFAULT 0,
+                    quota_errors INT DEFAULT 0,
+                    errors INT DEFAULT 0,
+                    PRIMARY KEY (day, model)
+                );
+            """)
             cursor.execute(
                 "CREATE INDEX IF NOT EXISTS idx_reminders_pending"
                 " ON reminders (done, remind_at);"
@@ -1490,6 +1501,156 @@ def get_weather(city: str, place: dict = None) -> str:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# УЧЁТ ЗАПРОСОВ К GEMINI (чтобы видеть расход суточной квоты)
+# ---------------------------------------------------------------------------
+
+GEMINI_RPD_LIMIT = int(os.getenv("GEMINI_RPD_LIMIT", "500"))  # суточный лимит на модель
+_usage_warned = set()  # (день, порог), чтобы не писать предупреждение каждый раз
+_last_quota_error = {"at": None, "model": "", "text": ""}
+
+
+def pacific_tz():
+    try:
+        from zoneinfo import ZoneInfo
+
+        return ZoneInfo("America/Los_Angeles")
+    except Exception:
+        return timezone(timedelta(hours=-8))
+
+
+def pacific_day() -> str:
+    """Сегодняшняя дата по тихоокеанскому времени: по ней Google считает сутки."""
+    return datetime.now(pacific_tz()).strftime("%Y-%m-%d")
+
+
+def next_quota_reset_local() -> str:
+    """Когда сбросится суточная квота — в местном времени бота."""
+    pt = pacific_tz()
+    now = datetime.now(pt)
+    reset = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    return reset.astimezone(local_tz()).strftime("%d.%m %H:%M")
+
+
+def classify_llm_error(exc: BaseException) -> str:
+    text = f"{type(exc).__name__} {exc}".casefold()
+    if "429" in text or "quota" in text or "resource_exhausted" in text:
+        return "quota"
+    return "error"
+
+
+def record_llm_call(model: str, outcome: str, detail: str = ""):
+    """Записывает один запрос к Gemini: счётчик в БД и строка в логах.
+
+    outcome: ok | quota | error. Любая ошибка учёта не должна ломать запрос.
+    """
+    day = pacific_day()
+    ok_n, quota_n, err_n = (outcome == "ok"), (outcome == "quota"), (outcome == "error")
+    total = None
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "INSERT INTO llm_usage (day, model, calls, ok, quota_errors, errors)"
+                    " VALUES (%s, %s, 1, %s, %s, %s)"
+                    " ON CONFLICT (day, model) DO UPDATE SET"
+                    " calls = llm_usage.calls + 1, ok = llm_usage.ok + EXCLUDED.ok,"
+                    " quota_errors = llm_usage.quota_errors + EXCLUDED.quota_errors,"
+                    " errors = llm_usage.errors + EXCLUDED.errors",
+                    (day, model, int(ok_n), int(quota_n), int(err_n)),
+                )
+                cursor.execute(
+                    "SELECT calls FROM llm_usage WHERE day = %s AND model = %s",
+                    (day, model),
+                )
+                total = cursor.fetchone()[0]
+    except Exception as e:
+        logging.warning(f"Учёт запросов Gemini недоступен: {e}")
+
+    if outcome == "quota":
+        _last_quota_error.update(
+            at=_utcnow(), model=model, text=" ".join(str(detail).split())[:400]
+        )
+        logging.warning(
+            f"📊 Gemini {model}: КВОТА исчерпана. Сегодня запросов: {total}."
+            f" Ответ Google: {' '.join(str(detail).split())[:300]}"
+        )
+    else:
+        mark = "ок" if outcome == "ok" else f"ОШИБКА: {' '.join(str(detail).split())[:120]}"
+        logging.info(
+            f"📊 Gemini {model}: запрос №{total if total is not None else '?'} за сутки"
+            f" (лимит {GEMINI_RPD_LIMIT}) — {mark}"
+        )
+    if total:
+        for percent in (80, 95):
+            if total >= GEMINI_RPD_LIMIT * percent // 100 and (day, model, percent) not in _usage_warned:
+                _usage_warned.add((day, model, percent))
+                logging.warning(
+                    f"⚠️ Gemini {model}: израсходовано {total} из {GEMINI_RPD_LIMIT}"
+                    f" запросов за сутки ({percent}%+). Сброс в {next_quota_reset_local()}"
+                )
+
+
+def get_llm_usage(days: int = 7):
+    """Запросы к Gemini по дням и моделям (последние сутки первыми)."""
+    since = (datetime.now(pacific_tz()) - timedelta(days=days - 1)).strftime("%Y-%m-%d")
+    with get_db() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "SELECT day, model, calls, ok, quota_errors, errors FROM llm_usage"
+                " WHERE day >= %s ORDER BY day DESC, model",
+                (since,),
+            )
+            rows = cursor.fetchall()
+    return [
+        {"day": str(r[0])[:10], "model": r[1], "calls": r[2], "ok": r[3],
+         "quota": r[4], "errors": r[5]}
+        for r in rows
+    ]
+
+
+def format_llm_usage(rows) -> str:
+    today = pacific_day()
+    todays = [r for r in rows if r["day"] == today]
+    total = sum(r["calls"] for r in todays)
+    lines = [
+        "📊 <b>Запросы бота к Gemini</b>",
+        f"Сутки считаются по тихоокеанскому времени, сброс в {next_quota_reset_local()}"
+        " по местному.",
+        "",
+        f"<b>Сегодня ({today}):</b>",
+    ]
+    if todays:
+        for r in todays:
+            lines.append(
+                f"• {html.escape(r['model'])}: {r['calls']} из {GEMINI_RPD_LIMIT}"
+                f" (успешно {r['ok']}, квота {r['quota']}, другие ошибки {r['errors']})"
+            )
+        lines.append(f"Всего: {total}")
+    else:
+        lines.append("• запросов ещё не было")
+    older = {}
+    for r in rows:
+        if r["day"] != today:
+            older[r["day"]] = older.get(r["day"], 0) + r["calls"]
+    if older:
+        lines += ["", "<b>Предыдущие дни:</b>"]
+        lines += [f"• {d}: {n}" for d, n in sorted(older.items(), reverse=True)]
+    if _last_quota_error["at"]:
+        lines += [
+            "",
+            f"⛔ Последняя ошибка квоты: {format_local(_last_quota_error['at'])},"
+            f" {html.escape(_last_quota_error['model'])}",
+            html.escape(_last_quota_error["text"][:300]),
+        ]
+    lines += [
+        "",
+        "ℹ️ Это только запросы самого бота. Если с этим же ключом работают другие"
+        " приложения или чат в AI Studio, в панели Google цифра будет больше.",
+    ]
+    return "\n".join(lines)
+
+
 _TRANSIENT_MARKERS = (
     "503", "502", "504", "500", "unavailable", "overloaded", "timeout",
     "timed out", "deadline", "connection", "reset by peer", "temporarily",
@@ -1517,12 +1678,18 @@ llm_retry = retry(
 
 @llm_retry
 def _generate_reply_sync(model_name, history_contents, contents, system_prompt):
-    chat = client.chats.create(
-        model=model_name,
-        history=history_contents,
-        config=genai_types.GenerateContentConfig(system_instruction=system_prompt),
-    )
-    return chat.send_message(contents).text
+    try:
+        chat = client.chats.create(
+            model=model_name,
+            history=history_contents,
+            config=genai_types.GenerateContentConfig(system_instruction=system_prompt),
+        )
+        text = chat.send_message(contents).text
+    except Exception as e:
+        record_llm_call(model_name, classify_llm_error(e), str(e))
+        raise
+    record_llm_call(model_name, "ok")
+    return text
 
 
 async def process_with_cascade(
@@ -1653,13 +1820,19 @@ def parse_memory_ops(text: str, valid_ids=None):
 
 @llm_retry
 def _generate_json_sync(model_name, prompt):
-    return client.models.generate_content(
-        model=model_name,
-        contents=prompt,
-        config=genai_types.GenerateContentConfig(
-            response_mime_type="application/json"
-        ),
-    )
+    try:
+        response = client.models.generate_content(
+            model=model_name,
+            contents=prompt,
+            config=genai_types.GenerateContentConfig(
+                response_mime_type="application/json"
+            ),
+        )
+    except Exception as e:
+        record_llm_call(model_name, classify_llm_error(e), str(e))
+        raise
+    record_llm_call(model_name, "ok")
+    return response
 
 
 def _extract_ops_sync(prompt: str, valid_ids):
@@ -1886,6 +2059,7 @@ COMMANDS_HELP = (
     "• /remind &lt;когда и что&gt; — напоминание (например: завтра в 18:00 купить цветы)\n"
     "• /reminders — список напоминаний, /reminddelete &lt;номер&gt; — удалить\n"
     "• /weather &lt;город&gt; — погода и прогноз на 3 дня\n"
+    "• /limits — сколько запросов бот отправил в Gemini за сутки\n"
     "• /memory — посмотреть общую и личную память\n"
     "• /remember [тип] &lt;текст&gt; — запомнить вручную как важное (типы: personal,"
     " partner — про партнёра, couple, event, emotion, inside_joke)\n"
@@ -2622,6 +2796,19 @@ async def cmd_remind_delete(message: types.Message, command: CommandObject):
     await message.answer("🗑 Напоминание удалено." if ok else "❌ Нет такого напоминания.")
 
 
+@dp.message(Command("limits"))
+async def cmd_limits(message: types.Message):
+    if not is_allowed(message.from_user):
+        return
+    try:
+        rows = await asyncio.to_thread(get_llm_usage, 7)
+    except Exception as e:
+        logging.error(f"Не удалось прочитать учёт запросов: {e}")
+        await message.answer("Не удалось получить статистику запросов.")
+        return
+    await send_long(message, format_llm_usage(rows), parse_mode="HTML")
+
+
 @dp.message(Command("weather"))
 async def cmd_weather(message: types.Message, command: CommandObject):
     if not is_allowed(message.from_user):
@@ -2887,6 +3074,16 @@ async def main():
     run_in_background(memory_maintenance_loop())
     run_in_background(keep_alive_loop())
 
+    try:
+        usage = await asyncio.to_thread(get_llm_usage, 1)
+        today_total = sum(r["calls"] for r in usage if r["day"] == pacific_day())
+        logging.info(
+            f"📊 Gemini: сегодня (по PT) запросов {today_total} из {GEMINI_RPD_LIMIT};"
+            f" сброс в {next_quota_reset_local()} (местное время)"
+        )
+    except Exception as e:
+        logging.warning(f"Не удалось прочитать учёт запросов при старте: {e}")
+
     scheduler.start()
     try:
         count = await asyncio.to_thread(load_pending_reminders)
@@ -2903,6 +3100,7 @@ async def main():
             types.BotCommand(command="remind", description="Поставить напоминание"),
             types.BotCommand(command="reminders", description="Мои напоминания"),
             types.BotCommand(command="weather", description="Погода и прогноз"),
+            types.BotCommand(command="limits", description="Запросы к Gemini за сутки"),
             types.BotCommand(command="draw", description="Холст для рисования"),
             types.BotCommand(command="command", description="Список команд"),
         ])
