@@ -38,6 +38,8 @@ from google import genai
 from google.genai import types as genai_types
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
+import pet  # игра «Наша выдра» (pet.py лежит рядом с app.py)
+
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
 
@@ -309,6 +311,13 @@ class WebAppHandler(BaseHTTPRequestHandler):
                 self._reply(200, content, "text/html; charset=utf-8")
             except Exception:
                 self._reply(404, b"Drawing page not found")
+        elif path == "/pet":
+            try:
+                with open(os.path.join(BASE_DIR, "static", "pet.html"), "rb") as f:
+                    content = f.read()
+                self._reply(200, content, "text/html; charset=utf-8")
+            except Exception:
+                self._reply(404, b"Pet page not found")
         elif path.startswith("/img/"):
             token = path[5:].split(".")[0]
             with _drawings_lock:
@@ -326,6 +335,9 @@ class WebAppHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = urllib.parse.urlparse(self.path).path
+        if path in ("/api/pet/state", "/api/pet/action"):
+            self._pet_api(path)
+            return
         if path != "/api/upload":
             self._reply(404)
             return
@@ -440,6 +452,30 @@ class WebAppHandler(BaseHTTPRequestHandler):
             )
         except Exception as e:
             logging.error(f"Ошибка загрузки рисунка: {e}")
+            self._reply(500, b"Error")
+
+    def _pet_api(self, path: str):
+        """API игры «Наша выдра». Личность берётся ТОЛЬКО из подписи Telegram."""
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+            if length <= 0 or length > 8192:
+                self._reply(413, b"Bad size")
+                return
+            data = json.loads(self.rfile.read(length).decode("utf-8"))
+            tg_user = validate_webapp_init_data(str(data.get("init_data") or ""))
+            if tg_user is None or tg_user["id"] not in ALLOWED_USER_IDS:
+                self._reply(403, b"Forbidden")
+                return
+            names = {uid: user_name(uid) for uid in ALLOWED_USER_IDS}
+            if path == "/api/pet/state":
+                result = {"ok": True, "state": pet.get_state(get_db, names)}
+            else:
+                action = str(data.get("action") or "")[:20]
+                result = pet.perform(get_db, action, tg_user["id"], names)
+            result["you"] = tg_user["id"]
+            self._reply(200, json.dumps(result).encode("utf-8"), "application/json")
+        except Exception as e:
+            logging.error(f"Ошибка API выдры: {e}")
             self._reply(500, b"Error")
 
     def log_message(self, format, *args):
@@ -2063,12 +2099,35 @@ async def cmd_draw(message: types.Message):
     await send_draw_prompt(message)
 
 
+async def send_pet_prompt(message: types.Message):
+    base = public_base_url()
+    if not base:
+        await message.answer("Игра пока недоступна: не задан адрес приложения.")
+        return
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[[
+            InlineKeyboardButton(text="🦦 Играть", web_app=WebAppInfo(url=f"{base}/pet"))
+        ]]
+    )
+    await message.answer("Бублик ждёт вас! 🦦", reply_markup=keyboard)
+
+
+@dp.message(Command("pet"))
+async def cmd_pet(message: types.Message):
+    if not is_allowed(message.from_user):
+        return
+    await send_pet_prompt(message)
+
+
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message, command: CommandObject):
     if not is_allowed(message.from_user):
         return
     if command.args == "draw":
         await send_draw_prompt(message)
+        return
+    if command.args == "pet":
+        await send_pet_prompt(message)
         return
     await message.answer(
         "Привет! Я твой личный ИИ-помощник.\n"
@@ -2084,6 +2143,7 @@ COMMANDS_HELP = (
     "• /start — приветствие и справка\n"
     "• /command — список команд\n"
     "• /draw — холст для рисования\n"
+    "• /pet — игра «Наша выдра»\n"
     "• /remind &lt;когда и что&gt; — напоминание (например: завтра в 18:00 купить цветы)\n"
     "• /reminders — список напоминаний, /reminddelete &lt;номер&gt; — удалить\n"
     "• /weather &lt;город&gt; — погода и прогноз на 3 дня\n"
@@ -2286,7 +2346,7 @@ MEDIA_PLACEHOLDERS = {"Голосовое сообщение", "Видеосоо
 
 # Команды обрабатываются своими обработчиками; общий обработчик их не перехватывает,
 # в каком бы месте файла они ни были объявлены.
-BOT_COMMANDS = ["draw", "start", "command", "memory", "remember", "memorydelete",
+BOT_COMMANDS = ["draw", "pet", "start", "command", "memory", "remember", "memorydelete",
                 "memoryclear", "remind", "reminders", "reminddelete", "limits", "weather"]
 
 
@@ -3118,6 +3178,7 @@ async def memory_maintenance_loop():
 async def main():
     logging.info("Инициализация базы данных...")
     await asyncio.to_thread(init_db)
+    await asyncio.to_thread(pet.init_tables, get_db)
     logging.info("База данных готова.")
 
     # Имена из профилей Telegram (работает, если человек уже писал боту)
@@ -3159,6 +3220,7 @@ async def main():
             types.BotCommand(command="weather", description="Погода и прогноз"),
             types.BotCommand(command="limits", description="Запросы к Gemini за сутки"),
             types.BotCommand(command="draw", description="Холст для рисования"),
+            types.BotCommand(command="pet", description="Наша выдра (игра)"),
             types.BotCommand(command="command", description="Список команд"),
         ])
     except Exception as e:
