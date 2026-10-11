@@ -103,7 +103,7 @@ svg { display: block; fill: none; stroke: currentColor; stroke-width: 1.8; strok
   will-change: transform;
 }
 #stage canvas { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: block; }
-#liveCanvas { pointer-events: none; }
+#liveCanvas, #textCanvas { pointer-events: none; }
 #textMark { position: absolute; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%;
   border: 2px solid var(--accent); background: rgba(255,255,255,.7); display: none; pointer-events: none; }
 
@@ -222,6 +222,7 @@ input[type=range]::-moz-range-thumb { width: 18px; height: 18px; border-radius: 
     <div id="stage">
       <canvas id="bgCanvas"></canvas>
       <canvas id="artCanvas"></canvas>
+      <canvas id="textCanvas"></canvas>
       <canvas id="liveCanvas"></canvas>
       <div id="textMark"></div>
     </div>
@@ -248,10 +249,11 @@ input[type=range]::-moz-range-thumb { width: 18px; height: 18px; border-radius: 
 <!-- текст -->
 <div class="sheet-wrap" id="textSheet">
   <div class="sheet">
-    <h3>Надпись</h3>
+    <h3 id="textTitle">Новый текст</h3>
     <input id="textInput" type="text" maxlength="60" placeholder="Что написать?" autocomplete="off" autocapitalize="sentences">
     <div class="actions">
       <button class="pill" id="textCancel">Отмена</button>
+      <button class="pill" id="textDelete" style="display:none">Удалить</button>
       <button class="pill main" id="textDone">Готово</button>
     </div>
   </div>
@@ -318,10 +320,12 @@ input[type=range]::-moz-range-thumb { width: 18px; height: 18px; border-radius: 
   const PAD_X = 12, PAD_Y = 8;
   const $ = (id) => document.getElementById(id);
   const viewport = $('viewport'), stage = $('stage');
-  const bgCanvas = $('bgCanvas'), artCanvas = $('artCanvas'), liveCanvas = $('liveCanvas');
+  const bgCanvas = $('bgCanvas'), artCanvas = $('artCanvas'), liveCanvas = $('liveCanvas'), textCanvas = $('textCanvas');
   const bgCtx = bgCanvas.getContext('2d');
   const artCtx = artCanvas.getContext('2d', { willReadFrequently: true });
   const liveCtx = liveCanvas.getContext('2d');
+  const textCtx = textCanvas.getContext('2d');
+  let texts = [];     // текстовые подписи: можно менять, двигать и удалять
   let W = 0, H = 0;   // размер листа в CSS-пикселях
 
   function applySize(canvas, ctx) {
@@ -366,12 +370,13 @@ input[type=range]::-moz-range-thumb { width: 18px; height: 18px; border-radius: 
     }
     W = w; H = h;
     stage.style.width = W + 'px'; stage.style.height = H + 'px';
-    applySize(bgCanvas, bgCtx); applySize(artCanvas, artCtx); applySize(liveCanvas, liveCtx);
+    applySize(bgCanvas, bgCtx); applySize(artCanvas, artCtx); applySize(liveCanvas, liveCtx); applySize(textCanvas, textCtx);
     drawBg();
     if (old) {   // рисунок остаётся на месте, привязан к левому верхнему углу
       artCtx.save(); artCtx.setTransform(1, 0, 0, 1, 0, 0); artCtx.drawImage(old, 0, 0); artCtx.restore();
       history.length = 0; redoStack.length = 0; updateHistoryButtons();
     }
+    renderTexts();
     applyView();
   }
 
@@ -382,13 +387,15 @@ input[type=range]::-moz-range-thumb { width: 18px; height: 18px; border-radius: 
     if (withPattern) x.drawImage(bgCanvas, 0, 0);
     else { x.fillStyle = S.paper.color; x.fillRect(0, 0, c.width, c.height); }
     x.drawImage(artCanvas, 0, 0);
+    x.drawImage(textCanvas, 0, 0);
     return c;
   }
 
   // ================= Отмена / повтор =================
   const history = [], redoStack = [];
   const MAX_HISTORY = 12;
-  const snap = () => artCtx.getImageData(0, 0, artCanvas.width, artCanvas.height);
+  const snap = () => ({ img: artCtx.getImageData(0, 0, artCanvas.width, artCanvas.height), texts: JSON.stringify(texts) });
+  function restore(h) { artCtx.putImageData(h.img, 0, 0); texts = JSON.parse(h.texts); renderTexts(); }
 
   function pushHistory() {
     history.push(snap());
@@ -399,13 +406,13 @@ input[type=range]::-moz-range-thumb { width: 18px; height: 18px; border-radius: 
   function undo() {
     if (!history.length) return;
     redoStack.push(snap());
-    artCtx.putImageData(history.pop(), 0, 0);
+    restore(history.pop());
     updateHistoryButtons(); haptic('tick');
   }
   function redo() {
     if (!redoStack.length) return;
     history.push(snap());
-    artCtx.putImageData(redoStack.pop(), 0, 0);
+    restore(redoStack.pop());
     updateHistoryButtons(); haptic('tick');
   }
   function updateHistoryButtons() {
@@ -518,7 +525,7 @@ input[type=range]::-moz-range-thumb { width: 18px; height: 18px; border-radius: 
     const pt = toPaper(e), t = S.tool;
     if (t === 'pick') { pickColor(pt); return; }
     if (t === 'fill') { doFill(pt); return; }
-    if (t === 'text') { textTap = { pid: e.pointerId, pt }; return; }
+    if (t === 'text') { textTap = { pid: e.pointerId, pt, hit: hitText(pt), moved: false, start: pt }; return; }
 
     stroke = { pid: e.pointerId, tool: t, pts: [pt], start: pt, last: pt, mid: pt, hist: false };
     if (t === 'pen' || t === 'marker') {
@@ -582,7 +589,7 @@ input[type=range]::-moz-range-thumb { width: 18px; height: 18px; border-radius: 
 
   function cancelStroke() {
     const s = stroke; if (!s) return; stroke = null;
-    if (s.tool === 'eraser' && s.snapshot) artCtx.putImageData(s.snapshot, 0, 0);
+    if (s.tool === 'eraser' && s.snapshot) restore(s.snapshot);
     clearLive(); liveCanvas.style.opacity = 1;
   }
 
@@ -608,7 +615,16 @@ input[type=range]::-moz-range-thumb { width: 18px; height: 18px; border-radius: 
     if (!pointers.has(e.pointerId)) return;
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (gesture && pointers.size >= 2) { moveGesture(); return; }
+    if (textTap && textTap.pid === e.pointerId && textTap.hit) { dragText(e); return; }
     if (stroke && e.pointerId === stroke.pid) strokeMove(e);
+  }
+  function dragText(e) {
+    const tt = textTap, pt = toPaper(e), t = tt.hit;
+    if (!tt.moved) {
+      if (Math.hypot(pt.x - tt.start.x, pt.y - tt.start.y) < 7) return;
+      tt.moved = true; tt.ox = t.x; tt.oy = t.y; pushHistory();
+    }
+    t.x = tt.ox + pt.x - tt.start.x; t.y = tt.oy + pt.y - tt.start.y; renderTexts();
   }
   function onUp(e) {
     if (!pointers.has(e.pointerId)) return;
@@ -616,7 +632,8 @@ input[type=range]::-moz-range-thumb { width: 18px; height: 18px; border-radius: 
     try { viewport.releasePointerCapture(e.pointerId); } catch (err) {}
     if (textTap && textTap.pid === e.pointerId) {
       const tap = textTap; textTap = null;
-      if (e.type === 'pointerup' && pointers.size === 0 && !gesture) openText(tap.pt);
+      if (e.type === 'pointerup' && pointers.size === 0 && !gesture && !tap.moved) openText(tap.pt, tap.hit);
+      else if (tap.moved && e.type === 'pointercancel') { /* оставляем где остановился */ }
     }
     if (gesture) { if (pointers.size < 2) gesture = null; }
     if (pointers.size === 0) gestureLock = false;
@@ -692,28 +709,67 @@ input[type=range]::-moz-range-thumb { width: 18px; height: 18px; border-radius: 
   }
 
   // ================= Текст =================
-  let textPos = null;
+  let textPos = null, editing = null;
   const textFontSize = () => 18 + S.size * 2.4;
-  function drawText(c, pos, str) {
-    c.save(); c.font = `700 ${textFontSize()}px ui-rounded, "SF Pro Rounded", system-ui, sans-serif`;
-    c.fillStyle = S.color; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(str, pos.x, pos.y); c.restore();
+  const fontFor = (size) => `700 ${size}px ui-rounded, "SF Pro Rounded", system-ui, sans-serif`;
+  function drawText(c, t) {
+    c.save(); c.font = fontFor(t.size);
+    c.fillStyle = t.color; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(t.str, t.x, t.y); c.restore();
   }
-  function openText(pt) {
-    resetPointers(); textPos = pt; $('textInput').value = '';
-    const m = $('textMark'); m.style.left = pt.x + 'px'; m.style.top = pt.y + 'px'; m.style.display = 'block';
+  function renderTexts() {
+    textCtx.save(); textCtx.setTransform(1, 0, 0, 1, 0, 0); textCtx.clearRect(0, 0, textCanvas.width, textCanvas.height); textCtx.restore();
+    for (const t of texts) if (t !== editing) drawText(textCtx, t);
+  }
+  function hitText(pt) {
+    textCtx.save();
+    try {
+      for (let i = texts.length - 1; i >= 0; i--) {
+        const t = texts[i]; textCtx.font = fontFor(t.size);
+        const w = textCtx.measureText(t.str).width / 2 + 12, h = t.size * 0.7 + 12;
+        if (Math.abs(pt.x - t.x) <= w && Math.abs(pt.y - t.y) <= h) return t;
+      }
+    } finally { textCtx.restore(); }
+    return null;
+  }
+  function openText(pt, existing) {
+    resetPointers(); editing = existing || null;
+    textPos = existing ? { x: existing.x, y: existing.y } : pt;
+    $('textInput').value = existing ? existing.str : '';
+    $('textDelete').style.display = existing ? '' : 'none';
+    $('textTitle').textContent = existing ? 'Изменить текст' : 'Новый текст';
+    if (existing) renderTexts();
+    const m = $('textMark'); m.style.left = textPos.x + 'px'; m.style.top = textPos.y + 'px'; m.style.display = 'block';
     $('textSheet').classList.add('open');
-    setTimeout(() => $('textInput').focus(), 60);
+    liveDraw();
+    setTimeout(() => { const i = $('textInput'); i.focus(); try { i.setSelectionRange(i.value.length, i.value.length); } catch (err) {} }, 60);
+  }
+  function liveDraw() {
+    clearLive();
+    const v = $('textInput').value;
+    if (!textPos || !v) return;
+    drawText(liveCtx, { x: textPos.x, y: textPos.y, str: v,
+      color: editing ? editing.color : S.color, size: editing ? editing.size : textFontSize() });
   }
   function closeText() {
     $('textSheet').classList.remove('open'); $('textMark').style.display = 'none';
-    $('textInput').blur(); clearLive(); textPos = null; resetPointers();
+    $('textInput').blur(); clearLive(); textPos = null; editing = null; renderTexts(); resetPointers();
     setTimeout(() => { resetPointers(); layout(false); }, 350);
   }
-  $('textInput').addEventListener('input', () => { clearLive(); if (textPos) drawText(liveCtx, textPos, $('textInput').value); });
+  $('textInput').addEventListener('input', liveDraw);
   $('textCancel').onclick = closeText;
+  $('textDelete').onclick = () => {
+    if (editing) { pushHistory(); texts = texts.filter(t => t !== editing); haptic('light'); }
+    closeText();
+  };
   $('textDone').onclick = () => {
     const v = $('textInput').value.trim();
-    if (v && textPos) { const pos = textPos; clearLive(); pushHistory(); drawText(artCtx, pos, v); haptic('light'); }
+    if (editing) {
+      if (!v) { pushHistory(); texts = texts.filter(t => t !== editing); }
+      else if (v !== editing.str) { pushHistory(); editing.str = v; }
+      haptic('light');
+    } else if (v && textPos) {
+      pushHistory(); texts.push({ x: textPos.x, y: textPos.y, str: v, color: S.color, size: textFontSize() }); haptic('light');
+    }
     closeText();
   };
   $('textInput').addEventListener('keydown', e => { if (e.key === 'Enter') $('textDone').click(); });
@@ -792,7 +848,7 @@ input[type=range]::-moz-range-thumb { width: 18px; height: 18px; border-radius: 
   $('undo').onclick = undo; $('redo').onclick = redo;
   $('clear').onclick = () => {
     if (!S.dirty && !history.length) return;
-    pushHistory(); artCtx.save(); artCtx.setTransform(1, 0, 0, 1, 0, 0); artCtx.clearRect(0, 0, artCanvas.width, artCanvas.height); artCtx.restore();
+    pushHistory(); texts = []; renderTexts(); artCtx.save(); artCtx.setTransform(1, 0, 0, 1, 0, 0); artCtx.clearRect(0, 0, artCanvas.width, artCanvas.height); artCtx.restore();
     toast('Лист очищен. Вернуть можно кнопкой отмены.'); haptic('light');
   };
 
@@ -908,7 +964,7 @@ input[type=range]::-moz-range-thumb { width: 18px; height: 18px; border-radius: 
   setTimeout(() => layout(false), 250);
 
   // для отладки и тестов
-  window.__draw = { S, history, redoStack, view, flatten, get size() { return { W, H, DPR }; } };
+  window.__draw = { S, get texts() { return texts; }, history, redoStack, view, flatten, get size() { return { W, H, DPR }; } };
 })();
 </script>
 </body>
