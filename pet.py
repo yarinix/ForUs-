@@ -23,6 +23,11 @@ FLOORS = {"hunger": 15, "happy": 15, "energy": 20}
 DECAY_PER_HOUR = {"hunger": 3.0, "happy": 2.0, "energy": 1.0}
 MAX_DECAY_HOURS = 48
 
+# Комнаты: гостиная (home) соединена с кухней и спальней
+ROOMS = ("home", "kitchen", "bedroom")
+ADJACENT = {"home": ("kitchen", "bedroom"), "kitchen": ("home",), "bedroom": ("home",)}
+ROOM_NAMES = {"home": "в гостиную", "kitchen": "на кухню", "bedroom": "в спальню"}
+
 PET_COOLDOWN_SEC = 20       # монетка за поглаживание — не чаще, чем раз в 20 секунд
 
 SAY = {
@@ -35,6 +40,10 @@ REFUSE = {
     "feed_full": "Бублик совсем не голоден, отложит рыбку на потом 🙈",
     "feed_poor": "Не хватает монет на еду. Поиграйте с Бубликом — заработаете!",
     "play_tired": "Бублик слишком устал для игр. Пусть поспит 💤",
+    "feed_room": "Есть можно только на кухне 🍽",
+    "play_room": "Играть можно только в гостиной 🎾",
+    "sleep_room": "Спать можно только в спальне 🛏",
+    "move_far": "Туда не пройти напрямую: сначала зайдите в гостиную 🚪",
     "sleep_rested": "Бублик бодр и совсем не хочет спать ☀️",
 }
 
@@ -56,9 +65,14 @@ def init_tables(get_db):
                     last_pet_ts DOUBLE PRECISION NOT NULL DEFAULT 0,
                     last_actor BIGINT,
                     last_action TEXT,
-                    last_ts DOUBLE PRECISION
+                    last_ts DOUBLE PRECISION,
+                    room TEXT NOT NULL DEFAULT 'home'
                 );
             """)
+            # для таблицы, созданной первой версией игры
+            cur.execute(
+                "ALTER TABLE pet_state ADD COLUMN IF NOT EXISTS room TEXT NOT NULL DEFAULT 'home'"
+            )
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS pet_log (
                     id SERIAL PRIMARY KEY,
@@ -117,6 +131,7 @@ def public_state(st: dict, names=None) -> dict:
         "happy": round(st["happy"]),
         "energy": round(st["energy"]),
         "mood": _mood(st),
+        "room": st.get("room") or "home",
         "last_actor": names.get(st.get("last_actor")) if st.get("last_actor") else None,
         "last_actor_id": st.get("last_actor"),
         "last_action": st.get("last_action"),
@@ -126,7 +141,7 @@ def public_state(st: dict, names=None) -> dict:
 
 _COLUMNS = (
     "name", "level", "xp", "coins", "hunger", "happy", "energy",
-    "updated_ts", "last_pet_ts", "last_actor", "last_action", "last_ts",
+    "updated_ts", "last_pet_ts", "last_actor", "last_action", "last_ts", "room",
 )
 
 
@@ -154,11 +169,24 @@ def get_state(get_db, names=None) -> dict:
     return public_state(st, names)
 
 
-def _apply(st: dict, action: str, now: float):
+def _apply(st: dict, action: str, now: float, to: str = None):
     """Меняет st по правилам игры. Возвращает (ok, say, coins_delta, xp_delta)."""
     coins_delta = xp_delta = 0
+    room = st.get("room") or "home"
+
+    if action == "move":
+        if to not in ROOMS:
+            return False, REFUSE["move_far"], 0, 0
+        if to == room:
+            return True, "", 0, 0
+        if to not in ADJACENT[room]:
+            return False, REFUSE["move_far"], 0, 0
+        st["room"] = to
+        return True, f"Бублик идёт {ROOM_NAMES[to]} 🐾", 0, 0
 
     if action == "feed":
+        if room != "kitchen":
+            return False, REFUSE["feed_room"], 0, 0
         if st["hunger"] >= 92:
             return False, REFUSE["feed_full"], 0, 0
         if st["coins"] < 5:
@@ -170,6 +198,8 @@ def _apply(st: dict, action: str, now: float):
         xp_delta = 6
 
     elif action == "play":
+        if room != "home":
+            return False, REFUSE["play_room"], 0, 0
         if st["energy"] < 15:
             return False, REFUSE["play_tired"], 0, 0
         st["energy"] = _clamp(st["energy"] - 15)
@@ -180,6 +210,8 @@ def _apply(st: dict, action: str, now: float):
         xp_delta = 10
 
     elif action == "sleep":
+        if room != "bedroom":
+            return False, REFUSE["sleep_room"], 0, 0
         if st["energy"] >= 90:
             return False, REFUSE["sleep_rested"], 0, 0
         st["energy"] = _clamp(st["energy"] + 40)
@@ -212,29 +244,30 @@ def _apply(st: dict, action: str, now: float):
     return True, say, coins_delta, xp_delta
 
 
-def perform(get_db, action: str, user_id: int, names=None) -> dict:
+def perform(get_db, action: str, user_id: int, names=None, to: str = None) -> dict:
     """Выполняет действие игрока. Возвращает {"ok", "say", "state"}."""
     now = time.time()
     with get_db() as conn:
         with conn.cursor() as cur:
             st = _load(cur, lock=True)
             _decay(st, now)
-            ok, say, coins_delta, xp_delta = _apply(st, action, now)
-            if ok:
+            ok, say, coins_delta, xp_delta = _apply(st, action, now, to)
+            if ok and action != "move":
                 st["last_actor"], st["last_action"], st["last_ts"] = user_id, action, now
             # Время и сниженные за отсутствие характеристики сохраняем в любом случае
             cur.execute(
                 "UPDATE pet_state SET level=%s, xp=%s, coins=%s, hunger=%s, happy=%s,"
                 " energy=%s, updated_ts=%s, last_pet_ts=%s, last_actor=%s,"
-                " last_action=%s, last_ts=%s WHERE pet_key=%s",
+                " last_action=%s, last_ts=%s, room=%s WHERE pet_key=%s",
                 (st["level"], st["xp"], st["coins"], st["hunger"], st["happy"],
                  st["energy"], st["updated_ts"], st["last_pet_ts"], st["last_actor"],
-                 st["last_action"], st["last_ts"], PET_KEY),
+                 st["last_action"], st["last_ts"], st["room"], PET_KEY),
             )
             cur.execute(
                 "INSERT INTO pet_log (pet_key, user_id, action, ok, coins_delta, xp_delta)"
                 " VALUES (%s, %s, %s, %s, %s, %s)",
-                (PET_KEY, user_id, str(action)[:20], bool(ok), coins_delta, xp_delta),
+                (PET_KEY, user_id, (f"move:{to}" if action == "move" else str(action))[:20],
+                 bool(ok), coins_delta, xp_delta),
             )
     logging.info(f"🦦 {user_id}: {action} -> {'ок' if ok else 'отказ'}")
     return {"ok": ok, "say": say, "state": public_state(st, names)}
