@@ -22,7 +22,7 @@
   #head { display: flex; align-items: center; gap: 11px; background: linear-gradient(180deg, var(--card2), var(--card)); border: 1.5px solid var(--line);
     border-radius: 20px; padding: 9px 12px; box-shadow: 0 6px 18px rgba(0,0,0,.28); }
   #avatar { width: 50px; height: 50px; border-radius: 50%; background: radial-gradient(circle at 50% 35%, #ffe6bf, #f2b977); border: 2.5px solid #ffd9a0; flex: 0 0 auto; overflow: hidden; }
-  #avatar svg { width: 100%; height: 100%; display: block; }
+  #avatar canvas { width: 100%; height: 100%; display: block; image-rendering: pixelated; image-rendering: crisp-edges; object-fit: cover; }
   #who { flex: 1 1 auto; min-width: 0; }
   #pname { font-weight: 800; font-size: 19px; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #lvlrow { display: flex; align-items: center; gap: 8px; margin-top: 3px; }
@@ -31,7 +31,9 @@
   #xpfill { height: 100%; width: 0; border-radius: 4px; background: linear-gradient(90deg, #7a5cff, #4aa3ff); transition: width .45s; }
   #coins { display: flex; align-items: center; gap: 7px; font-weight: 800; font-size: 17px; background: rgba(8,16,40,.55); border: 1.5px solid var(--line);
     border-radius: 18px; padding: 6px 12px 6px 7px; }
-  .coin { width: 22px; height: 22px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #fff3b0, var(--coin) 55%, #d89a12); border: 2px solid #b97c06; box-shadow: inset 0 -2px 0 rgba(0,0,0,.15); }
+  .coinic { display: grid; place-items: center; }
+  .pxi { display: block; image-rendering: pixelated; image-rendering: crisp-edges; }
+  nav button span { display: grid; place-items: center; height: 24px; }
 
   /* показатели */
   #stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
@@ -47,8 +49,7 @@
 
   /* комната */
   #stage { position: relative; flex: 1 1 auto; min-height: 190px; border-radius: 22px; overflow: hidden; border: 2px solid var(--line); box-shadow: 0 8px 22px rgba(0,0,0,.35); background: #3a2a1f; }
-  #roomsvg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
-  #bubble { position: absolute; right: 8px; top: 12px; max-width: 58%; background: #fff; color: #2a2140; border-radius: 16px; padding: 9px 12px; font-size: 13.5px; font-weight: 800; line-height: 1.25;
+    #bubble { position: absolute; right: 8px; top: 12px; max-width: 58%; background: #fff; color: #2a2140; border-radius: 16px; padding: 9px 12px; font-size: 13.5px; font-weight: 800; line-height: 1.25;
     opacity: 0; transform: translateY(-6px) scale(.96); transition: opacity .2s, transform .2s; pointer-events: none; box-shadow: 0 5px 14px rgba(0,0,0,.28); }
   #bubble::after { content: ""; position: absolute; left: 16px; bottom: -8px; width: 16px; height: 16px; background: #fff; transform: rotate(45deg); border-radius: 3px; }
   #bubble.show { opacity: 1; transform: none; }
@@ -79,267 +80,32 @@
 
   #veil { position: fixed; inset: 0; background: rgba(8,14,34,.94); color: #fff; display: none; align-items: center; justify-content: center; text-align: center; padding: 30px; font-weight: 700; line-height: 1.45; z-index: 9; }
 
-  /* ===== выдра: позы переключаются атрибутом data-look ===== */
-  #otter .e-open, #otter .e-happy, #otter .e-closed, #otter .lids, #otter .m-smile, #otter .m-open, #otter .m-sad, #otter .m-yawn,
-  #otter .fx-hearts, #otter .fx-zzz, #otter .fx-fish, #otter .fx-ball { display: none; }
-  #otter[data-look="idle"] .e-open, #otter[data-look="idle"] .m-smile { display: inline; }
-  #otter[data-look="happy"] .e-open, #otter[data-look="happy"] .m-smile { display: inline; }
-  #otter[data-look="sleepy"] .e-open, #otter[data-look="sleepy"] .lids, #otter[data-look="sleepy"] .m-yawn { display: inline; }
-  #otter[data-look="sad"] .e-open, #otter[data-look="sad"] .m-sad { display: inline; }
-  #otter[data-look="feed"] .e-open, #otter[data-look="feed"] .m-open, #otter[data-look="feed"] .fx-fish { display: inline; }
-  #otter[data-look="play"] .e-happy, #otter[data-look="play"] .m-open, #otter[data-look="play"] .fx-ball { display: inline; }
-  #otter[data-look="sleep"] .e-closed, #otter[data-look="sleep"] .m-smile, #otter[data-look="sleep"] .fx-zzz { display: inline; }
-  #otter[data-look="pet"] .e-happy, #otter[data-look="pet"] .m-smile, #otter[data-look="pet"] .fx-hearts { display: inline; }
-  #otter[data-look="no"] .e-closed, #otter[data-look="no"] .m-sad { display: inline; }
-  #otter[data-look="pet"] .blush, #otter[data-look="happy"] .blush { opacity: .85; }
-
-  #otter .body { transform-box: fill-box; transform-origin: 50% 100%; animation: breathe 3.2s ease-in-out infinite; }
-  #otter .tail { transform-box: fill-box; transform-origin: 0% 50%; animation: wag 2.6s ease-in-out infinite; }
-  #otter .eyes { transform-box: fill-box; transform-origin: 50% 50%; animation: blink 5s infinite; }
-  #otter[data-look="play"] .body { animation: hop .5s ease-in-out infinite; }
-  #otter[data-look="play"] .tail, #otter[data-look="pet"] .tail { animation-duration: .5s; }
-  #otter[data-look="sleep"] .body, #otter[data-look="sleepy"] .body { animation-duration: 5s; }
-  #otter[data-look="no"] .body { animation: shake .45s ease-in-out 1; }
-  #otter[data-look="sad"] .ear { transform-box: fill-box; transform-origin: 50% 100%; transform: rotate(0) translateY(3px); }
-  #otter .fx-hearts text { animation: floatup 1.3s ease-out infinite; }
-  #otter .fx-hearts text:nth-child(2) { animation-delay: .4s; } #otter .fx-hearts text:nth-child(3) { animation-delay: .8s; }
-  #otter .fx-zzz text { animation: floatup 2.2s ease-out infinite; } #otter .fx-zzz text:nth-child(2) { animation-delay: .7s; } #otter .fx-zzz text:nth-child(3) { animation-delay: 1.4s; }
-  #otter .fx-fish { animation: nibble .6s ease-in-out infinite; transform-box: fill-box; }
-  #otter .fx-ball { animation: bounceball .5s ease-in infinite alternate; }
-  @keyframes breathe { 50% { transform: scale(1.018, 1.03); } }
-  @keyframes hop { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-9px); } }
-  @keyframes wag { 50% { transform: rotate(9deg); } }
-  @keyframes blink { 0%, 93%, 100% { transform: scaleY(1); } 96% { transform: scaleY(.1); } }
-  @keyframes shake { 20% { transform: translateX(-5px); } 60% { transform: translateX(5px); } }
-  @keyframes floatup { from { opacity: 0; transform: translateY(8px); } 25% { opacity: 1; } to { opacity: 0; transform: translateY(-26px); } }
-  @keyframes nibble { 50% { transform: translateY(-3px) rotate(-5deg); } }
-  @keyframes bounceball { from { transform: translateY(0); } to { transform: translateY(-34px); } }
+  #pixcv { position: absolute; image-rendering: pixelated; image-rendering: crisp-edges; display: block; }
   @media (max-height: 640px) { #avatar { width: 42px; height: 42px; } .act .em { width: 36px; height: 36px; font-size: 22px; } }
   @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
-
-
-  /* ===== KAWAII polish: визуальный слой поверх существующей игры ===== */
-  :root {
-    --bg: #241b3d; --bg2: #49345f; --card: #44305f; --card2: #604276;
-    --line: rgba(255, 205, 235, .42); --text: #fff7fc; --dim: #e7c9e8;
-    --blue: #f58abb; --blue2: #ffd0e8; --heart: #ff6fae;
-  }
-  #app {
-    background: radial-gradient(100% 45% at 50% 0, #76558f 0, #332448 68%, #241b3d 100%);
-  }
-  #head, .panel {
-    background: linear-gradient(145deg, rgba(111,76,139,.97), rgba(61,43,89,.98));
-    border-color: rgba(255,205,235,.45);
-    box-shadow: 0 6px 0 rgba(25,14,43,.28), 0 10px 24px rgba(13,7,24,.24), inset 0 1px rgba(255,255,255,.16);
-  }
-  #avatar {
-    border-color: #fff0c9;
-    box-shadow: 0 0 0 4px rgba(255,177,218,.25), 0 0 18px rgba(255,180,223,.28);
-    animation: avatarBob 3.6s ease-in-out infinite;
-  }
-  #pname { text-shadow: 0 2px 0 rgba(45,23,59,.25); }
-  #xpbar { height: 9px; border: 1px solid rgba(255,255,255,.2); background: rgba(30,16,48,.5); }
-  #xpfill { background: linear-gradient(90deg, #ff9acb, #ffe0a8, #c7a8ff); box-shadow: 0 0 9px rgba(255,168,218,.6); }
-  #coins { background: linear-gradient(145deg, rgba(255,223,159,.18), rgba(39,22,58,.6)); border-color: rgba(255,225,163,.55); }
-  .coin { box-shadow: 0 0 0 3px rgba(255,218,126,.12), inset 0 -2px 0 rgba(0,0,0,.15), 0 0 12px rgba(255,214,104,.25); }
-  .pill { background: rgba(38,23,57,.65); border-color: rgba(255,213,239,.3); box-shadow: inset 0 1px rgba(255,255,255,.06); }
-  .pill .fillbar { opacity: .72; }
-  #stage {
-    border: 2px solid rgba(255,220,241,.75);
-    box-shadow: 0 0 0 4px rgba(255,177,218,.12), 0 10px 26px rgba(15,8,28,.35), inset 0 0 0 1px rgba(255,255,255,.24);
-    background: #f7d8c8;
-    isolation: isolate;
-  }
-  #roomsvg { filter: saturate(1.08) contrast(1.015); }
-  #stage::before, #stage::after {
-    content: '✦  ·  ♡  ·  ✧'; position: absolute; z-index: 1; pointer-events: none;
-    color: rgba(255,255,255,.85); font-size: 19px; letter-spacing: 9px;
-    text-shadow: 0 1px 8px rgba(255,255,255,.8); animation: twinkle 3.2s ease-in-out infinite;
-  }
-  #stage::before { top: 19%; left: 5%; transform: rotate(-12deg); }
-  #stage::after { right: 5%; bottom: 22%; font-size: 16px; animation-delay: -1.6s; }
-  #bubble {
-    z-index: 4; border: 2px solid #ffc4e1;
-    background: linear-gradient(145deg, #fffafd, #ffeaf5); color: #57385e;
-    box-shadow: 0 5px 0 rgba(153,75,128,.14), 0 8px 18px rgba(68,30,75,.2);
-  }
-  #bubble::after { background: #ffeaf5; border-right: 2px solid #ffc4e1; border-bottom: 2px solid #ffc4e1; }
-  .pop {
-    z-index: 5; color: #fff9fd; -webkit-text-stroke: .25px #bd5d98;
-    text-shadow: 0 2px 0 #b85c91, 0 0 12px rgba(255,155,211,.95);
-    animation: popKawaii 1.15s cubic-bezier(.2,.75,.25,1) forwards;
-  }
-  #actions { gap: 9px; }
-  .act {
-    position: relative; overflow: hidden;
-    border: 1.5px solid rgba(255,209,237,.55); border-radius: 20px;
-    background: linear-gradient(160deg, #74518e 0%, #503666 100%);
-    box-shadow: 0 4px 0 #30203f, 0 8px 15px rgba(15,7,28,.25), inset 0 1px rgba(255,255,255,.2);
-  }
-  .act::after { content: '✧'; position: absolute; right: 7px; top: 5px; color: rgba(255,255,255,.5); font-size: 12px; }
-  .act .em {
-    border-radius: 16px; border: 1px solid rgba(255,255,255,.35);
-    background: radial-gradient(circle at 30% 22%, #fff, #ffd9ed 48%, #e9b8fa 100%);
-    box-shadow: 0 3px 8px rgba(32,12,44,.18); transition: transform .18s ease;
-  }
-  .act:active .em, .act.press .em { transform: scale(.88) rotate(-8deg); }
-  .act small { color: #f2d8f0; }
-  nav { background: rgba(42,26,62,.84); border-color: rgba(255,205,235,.38); box-shadow: inset 0 1px rgba(255,255,255,.06); }
-  nav button { transition: background .2s, color .2s, transform .2s; }
-  nav button.on {
-    color: #633d68; background: linear-gradient(145deg, #ffe2f1, #ffb9dc);
-    box-shadow: 0 3px 0 #c87eaf, 0 5px 12px rgba(255,147,204,.2);
-  }
-  nav button.on span { filter: none; animation: navBop 1.8s ease-in-out infinite; }
-  .panel { color: var(--text); }
-  .soon { background: rgba(255,177,218,.15); color: #ffd1e8; border-color: rgba(255,190,226,.45); }
-  .fx-heart {
-    position: absolute; z-index: 3; pointer-events: none; left: var(--x); top: var(--y);
-    font-size: var(--size, 22px); filter: drop-shadow(0 2px 3px rgba(145,53,112,.22));
-    animation: heartDrift 1.15s cubic-bezier(.2,.7,.25,1) forwards;
-  }
-  #otter .body { animation: breatheKawaii 3s ease-in-out infinite; }
-  #otter .tail { animation: wagKawaii 1.8s ease-in-out infinite; }
-  #otter[data-look="play"] .body { animation: hopKawaii .48s ease-in-out infinite; }
-  #otter[data-look="pet"] .body { animation: cuddle .55s ease-in-out 3; }
-  #otter[data-look="feed"] .body { animation: nibbleKawaii .42s ease-in-out infinite; }
-  #otter[data-look="sleep"] .body { animation: sleepyFloat 4.5s ease-in-out infinite; }
-  @keyframes avatarBob { 50% { transform: translateY(-2px) rotate(2deg); } }
-  @keyframes twinkle { 0%,100% { opacity: .45; } 50% { opacity: 1; } }
-  @keyframes navBop { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-2px); } }
-  @keyframes breatheKawaii { 0%,100% { transform: scale(1,1); } 50% { transform: scale(1.025,1.035); } }
-  @keyframes wagKawaii { 0%,100% { transform: rotate(-3deg); } 50% { transform: rotate(12deg); } }
-  @keyframes hopKawaii { 0%,100% { transform: translateY(0) scale(1,1); } 40% { transform: translateY(-11px) scale(1.02,.98); } 65% { transform: translateY(0) scale(.98,1.03); } }
-  @keyframes nibbleKawaii { 0%,100% { transform: translateY(0) rotate(0); } 50% { transform: translateY(-4px) rotate(-3deg); } }
-  @keyframes cuddle { 0%,100% { transform: rotate(0) scale(1); } 35% { transform: rotate(-2deg) scale(1.035); } 70% { transform: rotate(2deg) scale(1.02); } }
-  @keyframes sleepyFloat { 0%,100% { transform: translateY(0) scale(1); } 50% { transform: translateY(2px) scale(1.012,.99); } }
-  @keyframes popKawaii { 0% { opacity: 1; transform: translateY(0) scale(.7) rotate(-5deg); } 20% { transform: translateY(-8px) scale(1.15) rotate(4deg); } 100% { opacity: 0; transform: translateY(-62px) scale(1.02) rotate(7deg); } }
-  @keyframes heartDrift { 0% { opacity: 0; transform: translate(-50%,8px) scale(.45) rotate(-12deg); } 20% { opacity: 1; transform: translate(-50%,0) scale(1.12) rotate(8deg); } 100% { opacity: 0; transform: translate(calc(-50% + var(--drift, 12px)),-70px) scale(.8) rotate(18deg); } }
-  @media (prefers-reduced-motion: reduce) { #avatar, nav button.on span { animation: none !important; } }
-
 </style>
 </head>
 <body>
 
-<!-- общие рисунки: голова выдры для аватарки -->
-<svg width="0" height="0" style="position:absolute" aria-hidden="true">
-  <defs>
-    <g id="otter-head">
-      <circle cx="56" cy="58" r="11" fill="#7a4b30"/><circle cx="144" cy="58" r="11" fill="#7a4b30"/>
-      <circle cx="56" cy="59" r="5" fill="#d9a07a"/><circle cx="144" cy="59" r="5" fill="#d9a07a"/>
-      <ellipse cx="100" cy="94" rx="54" ry="47" fill="#8b5a3c"/>
-      <ellipse cx="100" cy="108" rx="33" ry="23" fill="#f6e0bd"/>
-      <circle cx="78" cy="88" r="7.5" fill="#2b1d24"/><circle cx="122" cy="88" r="7.5" fill="#2b1d24"/>
-      <circle cx="80.5" cy="85" r="2.8" fill="#fff"/><circle cx="124.5" cy="85" r="2.8" fill="#fff"/>
-      <ellipse cx="100" cy="99" rx="8" ry="5.5" fill="#2b1d24"/>
-      <path d="M91 108 Q100 117 109 108" fill="none" stroke="#2b1d24" stroke-width="3" stroke-linecap="round"/>
-      <circle cx="66" cy="104" r="7" fill="#ff8fa6" opacity=".55"/><circle cx="134" cy="104" r="7" fill="#ff8fa6" opacity=".55"/>
-    </g>
-  </defs>
-</svg>
-
 <div id="app">
   <header id="head">
-    <div id="avatar"><svg viewBox="30 30 140 140"><use href="#otter-head"/></svg></div>
+    <div id="avatar"><canvas id="avcv" width="38" height="34"></canvas></div>
     <div id="who">
       <div id="pname">Бублик</div>
       <div id="lvlrow"><span id="lvl">Уровень 1</span><div id="xpbar"><div id="xpfill"></div></div></div>
     </div>
-    <div id="coins"><i class="coin"></i><span id="coinv">0</span></div>
+    <div id="coins"><i class="coinic" data-icon="coin" data-k="3"></i><span id="coinv">0</span></div>
   </header>
 
   <div id="stats">
-    <div class="pill" id="p-happy"><div class="fillbar"></div><span class="ico">💗</span><b id="v-happy">0/100</b></div>
-    <div class="pill" id="p-hunger"><div class="fillbar"></div><span class="ico">🐟</span><b id="v-hunger">0/100</b></div>
-    <div class="pill" id="p-energy"><div class="fillbar"></div><span class="ico">⚡</span><b id="v-energy">0/100</b></div>
+    <div class="pill" id="p-happy"><div class="fillbar"></div><span class="ico" data-icon="heart" data-k="3"></span><b id="v-happy">0/100</b></div>
+    <div class="pill" id="p-hunger"><div class="fillbar"></div><span class="ico" data-icon="fish" data-k="3"></span><b id="v-hunger">0/100</b></div>
+    <div class="pill" id="p-energy"><div class="fillbar"></div><span class="ico" data-icon="bolt" data-k="3"></span><b id="v-energy">0/100</b></div>
   </div>
 
   <!-- ГЛАВНАЯ: комната с выдрой -->
   <div id="stage">
-    <svg id="roomsvg" viewBox="0 0 360 400" preserveAspectRatio="xMidYMid slice">
-      <defs>
-        <linearGradient id="wall" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fbe7bf"/><stop offset="1" stop-color="#f1c98c"/></linearGradient>
-        <linearGradient id="floor" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#d49a63"/><stop offset="1" stop-color="#a9693a"/></linearGradient>
-        <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8fd3ff"/><stop offset="1" stop-color="#d7f1ff"/></linearGradient>
-        <linearGradient id="beam" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff6c9" stop-opacity=".55"/><stop offset="1" stop-color="#fff6c9" stop-opacity="0"/></linearGradient>
-      </defs>
-      <g transform="translate(0 66)">
-      <rect y="-70" width="360" height="400" fill="url(#wall)"/>
-      <rect y="168" width="360" height="9" fill="#e7b57a"/><rect y="176" width="360" height="3" fill="#b9814a"/>
-      <polygon points="0,178 360,178 360,340 0,340" fill="url(#floor)"/>
-      <g stroke="#8f5630" stroke-opacity=".38" stroke-width="1.4">
-        <line x1="0" y1="206" x2="360" y2="206"/><line x1="0" y1="238" x2="360" y2="238"/><line x1="0" y1="272" x2="360" y2="272"/>
-        <line x1="70" y1="178" x2="30" y2="206"/><line x1="170" y1="178" x2="160" y2="206"/><line x1="270" y1="178" x2="290" y2="206"/>
-        <line x1="40" y1="206" x2="0" y2="238"/><line x1="140" y1="206" x2="120" y2="238"/><line x1="230" y1="206" x2="240" y2="238"/><line x1="330" y1="206" x2="350" y2="238"/>
-        <line x1="90" y1="238" x2="60" y2="272"/><line x1="200" y1="238" x2="195" y2="272"/><line x1="310" y1="238" x2="330" y2="272"/>
-      </g>
-      <!-- окно -->
-      <g>
-        <rect x="14" y="34" width="116" height="112" rx="10" fill="#9a6538"/>
-        <rect x="21" y="41" width="102" height="98" rx="6" fill="url(#sky)"/>
-        <circle cx="46" cy="104" r="26" fill="#4fae5b"/><circle cx="82" cy="112" r="30" fill="#3f9a4d"/><circle cx="108" cy="98" r="20" fill="#5fc16a"/>
-        <ellipse cx="86" cy="62" rx="20" ry="7" fill="#fff" opacity=".9"/><ellipse cx="98" cy="57" rx="11" ry="6" fill="#fff" opacity=".9"/>
-        <rect x="70" y="41" width="5" height="98" fill="#9a6538"/><rect x="21" y="86" width="102" height="5" fill="#9a6538"/>
-        <path d="M8 30 Q36 52 28 150 L8 150 Z" fill="#e9753b"/><path d="M136 30 Q108 52 116 150 L136 150 Z" fill="#e9753b"/>
-        <rect x="4" y="28" width="136" height="8" rx="4" fill="#7a4524"/>
-      </g>
-      <polygon points="20,140 130,140 214,300 70,300" fill="url(#beam)"/>
-      <!-- полка с растением и рамкой -->
-      <g>
-        <rect x="196" y="98" width="150" height="8" rx="3" fill="#8f5630"/><rect x="206" y="106" width="6" height="12" fill="#6e4023"/><rect x="330" y="106" width="6" height="12" fill="#6e4023"/>
-        <path d="M222 98 h26 l-4 -22 h-18 z" fill="#d1613b"/><path d="M235 76 q-16 -22 -26 -10 q12 2 26 10 z M235 76 q10 -26 22 -18 q-8 6 -22 18 z M235 76 q2 -22 14 -26 q-2 12 -14 26" fill="#3ea34f"/>
-        <rect x="262" y="58" width="40" height="40" rx="4" fill="#7a4524"/><rect x="267" y="63" width="30" height="30" fill="#bfe3ff"/><path d="M267 93 l10 -12 8 8 6 -6 6 10 z" fill="#5fae6a"/>
-        <rect x="312" y="66" width="10" height="32" fill="#4a79d8"/><rect x="323" y="72" width="9" height="26" fill="#d8573f"/><rect x="333" y="68" width="9" height="30" fill="#4aa56b"/>
-      </g>
-      <g opacity=".85"><rect x="296" y="124" width="40" height="40" rx="6" fill="#e9b97c"/><circle cx="316" cy="148" r="8" fill="#b97b46"/><circle cx="305" cy="136" r="3.4" fill="#b97b46"/><circle cx="316" cy="132" r="3.4" fill="#b97b46"/><circle cx="327" cy="136" r="3.4" fill="#b97b46"/></g>
-      <!-- ковёр -->
-      <ellipse cx="175" cy="262" rx="124" ry="26" fill="#d9a773"/><ellipse cx="175" cy="262" rx="112" ry="21" fill="#f2d9b0"/><ellipse cx="175" cy="262" rx="76" ry="13" fill="#ecc78f"/>
-      <!-- лежанка -->
-      <g><ellipse cx="312" cy="252" rx="46" ry="24" fill="#2f4fa3"/><ellipse cx="312" cy="246" rx="46" ry="23" fill="#4b72d6"/><ellipse cx="312" cy="249" rx="31" ry="13" fill="#e8dcc6"/>
-        <circle cx="312" cy="251" r="4.5" fill="#cdbb9b"/><circle cx="305" cy="246" r="2" fill="#cdbb9b"/><circle cx="312" cy="243" r="2" fill="#cdbb9b"/><circle cx="319" cy="246" r="2" fill="#cdbb9b"/></g>
-      <!-- миска -->
-      <g><ellipse cx="48" cy="270" rx="30" ry="9" fill="#1f3a8a"/><path d="M20 258 h56 l-6 14 q-22 8 -44 0 z" fill="#3b6fe0"/><ellipse cx="48" cy="258" rx="28" ry="8" fill="#2a4fb0"/><ellipse cx="48" cy="257" rx="22" ry="5.5" fill="#ffb55a"/><text x="48" y="265" font-size="11" text-anchor="middle">🐟</text></g>
-      <!-- кость и мячик -->
-      <g transform="translate(262 286) rotate(-14)"><rect x="0" y="-4" width="34" height="8" rx="3" fill="#fbf1de"/><circle cx="0" cy="-5" r="5" fill="#fbf1de"/><circle cx="0" cy="5" r="5" fill="#fbf1de"/><circle cx="34" cy="-5" r="5" fill="#fbf1de"/><circle cx="34" cy="5" r="5" fill="#fbf1de"/></g>
-      <g><circle cx="238" cy="276" r="11" fill="#3b82f6"/><path d="M228 272 q10 6 20 0" stroke="#fff" stroke-width="2" fill="none"/><circle cx="234" cy="272" r="3" fill="#fff" opacity=".5"/></g>
-
-      <!-- ВЫДРА -->
-      <g id="otter" data-look="idle" transform="translate(70 62) scale(.98)">
-        <ellipse cx="100" cy="212" rx="62" ry="9" fill="#000" opacity=".18"/>
-        <g class="tail"><path d="M138 178 C186 170 202 206 168 216 C178 200 156 194 136 196 Z" fill="#7a4b30"/></g>
-        <g class="body">
-          <ellipse cx="100" cy="160" rx="47" ry="53" fill="#8b5a3c"/>
-          <ellipse cx="100" cy="168" rx="31" ry="41" fill="#f6e0bd"/>
-          <ellipse cx="77" cy="209" rx="19" ry="9" fill="#6f432a"/><ellipse cx="123" cy="209" rx="19" ry="9" fill="#6f432a"/>
-          <g class="head">
-            <g class="ear"><circle cx="56" cy="58" r="11" fill="#7a4b30"/><circle cx="56" cy="59" r="5" fill="#d9a07a"/></g>
-            <g class="ear"><circle cx="144" cy="58" r="11" fill="#7a4b30"/><circle cx="144" cy="59" r="5" fill="#d9a07a"/></g>
-            <ellipse cx="100" cy="94" rx="54" ry="47" fill="#8b5a3c"/>
-            <ellipse cx="100" cy="108" rx="33" ry="23" fill="#f6e0bd"/>
-            <g class="eyes">
-              <g class="e-open"><circle cx="78" cy="88" r="7.5" fill="#2b1d24"/><circle cx="122" cy="88" r="7.5" fill="#2b1d24"/>
-                <circle cx="80.5" cy="85" r="2.8" fill="#fff"/><circle cx="124.5" cy="85" r="2.8" fill="#fff"/><circle cx="76" cy="91" r="1.3" fill="#fff"/><circle cx="120" cy="91" r="1.3" fill="#fff"/></g>
-              <g class="lids"><path d="M69 87 h18 v-2 a9 9 0 0 0 -18 0z" fill="#8b5a3c"/><path d="M113 87 h18 v-2 a9 9 0 0 0 -18 0z" fill="#8b5a3c"/><rect x="68" y="76" width="20" height="9" fill="#8b5a3c"/><rect x="112" y="76" width="20" height="9" fill="#8b5a3c"/></g>
-              <g class="e-happy" fill="none" stroke="#2b1d24" stroke-width="3.4" stroke-linecap="round"><path d="M70 91 Q78 80 86 91"/><path d="M114 91 Q122 80 130 91"/></g>
-              <g class="e-closed" fill="none" stroke="#2b1d24" stroke-width="3.4" stroke-linecap="round"><path d="M70 87 Q78 95 86 87"/><path d="M114 87 Q122 95 130 87"/></g>
-            </g>
-            <ellipse cx="100" cy="99" rx="8.5" ry="5.8" fill="#2b1d24"/><ellipse cx="98" cy="97.3" rx="2.6" ry="1.4" fill="#fff" opacity=".45"/>
-            <g fill="#8b5a3c" opacity=".55"><circle cx="86" cy="110" r="1.4"/><circle cx="81" cy="113" r="1.4"/><circle cx="114" cy="110" r="1.4"/><circle cx="119" cy="113" r="1.4"/></g>
-            <g class="m-smile"><path d="M90 108 Q100 118 110 108" fill="none" stroke="#2b1d24" stroke-width="3" stroke-linecap="round"/></g>
-            <g class="m-open"><path d="M90 107 Q100 129 110 107 Z" fill="#5a2230"/><path d="M94 118 Q100 124 106 118 Q100 114 94 118Z" fill="#ff8da1"/></g>
-            <g class="m-sad"><path d="M91 116 Q100 107 109 116" fill="none" stroke="#2b1d24" stroke-width="3" stroke-linecap="round"/></g>
-            <g class="m-yawn"><ellipse cx="100" cy="114" rx="6" ry="7" fill="#5a2230"/></g>
-            <circle class="blush" cx="64" cy="104" r="8" fill="#ff8fa6" opacity=".5"/><circle class="blush" cx="136" cy="104" r="8" fill="#ff8fa6" opacity=".5"/>
-          </g>
-          <ellipse cx="72" cy="158" rx="9" ry="14" fill="#7a4b30" transform="rotate(14 72 158)"/><ellipse cx="128" cy="158" rx="9" ry="14" fill="#7a4b30" transform="rotate(-14 128 158)"/>
-        </g>
-        <g class="fx-fish"><text x="96" y="152" font-size="34" text-anchor="middle">🐟</text></g>
-        <g class="fx-ball"><circle cx="176" cy="196" r="12" fill="#3b82f6"/><path d="M165 192 q11 7 22 0" stroke="#fff" stroke-width="2.4" fill="none"/><circle cx="171" cy="191" r="3.4" fill="#fff" opacity=".55"/></g>
-        <g class="fx-hearts" font-size="22" text-anchor="middle"><text x="40" y="60">💗</text><text x="162" y="50">💕</text><text x="100" y="28">💗</text></g>
-        <g class="fx-zzz" font-size="22" font-weight="800" fill="#fff" text-anchor="middle" style="paint-order:stroke" stroke="#27407f" stroke-width="3"><text x="158" y="48">z</text><text x="172" y="30">Z</text><text x="188" y="12">Z</text></g>
-      </g>
-      </g>
-    </svg>
+    <canvas id="pixcv" width="96" height="128"></canvas>
     <div id="bubble"></div>
   </div>
 
@@ -362,17 +128,17 @@
   </section>
 
   <div id="actions">
-    <button class="act" data-a="feed"><span class="em">🐟</span>Кормить<small>−5 монет</small></button>
-    <button class="act" data-a="play"><span class="em">🎾</span>Играть<small>+монеты</small></button>
-    <button class="act" data-a="sleep"><span class="em">🌙</span>Спать<small>+энергия</small></button>
-    <button class="act" data-a="pet"><span class="em">🤍</span>Гладить<small>+счастье</small></button>
+    <button class="act" data-a="feed"><span class="em" data-icon="fish" data-k="4"></span>Кормить<small>−5 монет</small></button>
+    <button class="act" data-a="play"><span class="em" data-icon="ball" data-k="4"></span>Играть<small>+монеты</small></button>
+    <button class="act" data-a="sleep"><span class="em" data-icon="moon" data-k="4"></span>Спать<small>+энергия</small></button>
+    <button class="act" data-a="pet"><span class="em" data-icon="heart" data-k="4"></span>Гладить<small>+счастье</small></button>
   </div>
 
   <nav>
-    <button data-tab="home" class="on"><span>🐾</span>Главная</button>
-    <button data-tab="quests"><span>📋</span>Задания</button>
-    <button data-tab="house"><span>🏠</span>Дом</button>
-    <button data-tab="rewards"><span>🏆</span>Достижения</button>
+    <button data-tab="home" class="on"><span data-icon="paw" data-k="3"></span>Главная</button>
+    <button data-tab="quests"><span data-icon="list" data-k="3"></span>Задания</button>
+    <button data-tab="house"><span data-icon="house" data-k="3"></span>Дом</button>
+    <button data-tab="rewards"><span data-icon="trophy" data-k="3"></span>Достижения</button>
   </nav>
 </div>
 <div id="veil"><div id="veiltxt"></div></div>
@@ -414,28 +180,8 @@
     $('stage').appendChild(el); setTimeout(() => el.remove(), 1100);
   }
 
-  // Декоративные частички на сцене: не меняют состояние игры и не обращаются к API.
-  function actionSparkles(kind) {
-    const stage = $('stage');
-    const glyphs = kind === 'feed' ? ['🐟', '✦', '♡', '✨']
-      : kind === 'play' ? ['⭐', '🎀', '✧', '💖']
-      : kind === 'sleep' ? ['🌙', '💤', '✦', '⭐']
-      : ['💗', '💕', '♡', '✨'];
-    for (let i = 0; i < 7; i++) {
-      const el = document.createElement('span');
-      el.className = 'fx-heart';
-      el.textContent = glyphs[i % glyphs.length];
-      el.style.setProperty('--x', (25 + Math.random() * 50) + '%');
-      el.style.setProperty('--y', (43 + Math.random() * 23) + '%');
-      el.style.setProperty('--size', (15 + Math.random() * 13) + 'px');
-      el.style.setProperty('--drift', ((Math.random() * 48) - 24) + 'px');
-      stage.appendChild(el);
-      setTimeout(() => el.remove(), 1250);
-    }
-  }
-
   // Поза выдры: короткая анимация действия, затем настроение
-  const otter = $('otter');
+  const otter = { dataset: { look: 'idle' } };   // текущая поза выдры (рисуется в canvas)
   function moodLook() {
     const m = S ? S.mood : 'ok';
     return { happy: 'happy', ok: 'idle', hungry: 'sad', sad: 'sad', sleepy: 'sleepy' }[m] || 'idle';
@@ -493,7 +239,6 @@
         }
       }
       say(r.say || '…');
-      if (r.ok) actionSparkles(name);
       setLook(r.ok ? name : 'no', r.ok ? 2100 : 800);
       haptic(r.ok ? 'ok' : 'err');
     } catch (e) {
@@ -510,6 +255,296 @@
     ['quests', 'house', 'rewards'].forEach(t => $('panel-' + t).style.display = (t === tab) ? 'block' : 'none');
     haptic('light');
   }));
+
+  // =====================================================================
+  // ПИКСЕЛЬ-АРТ: всё нарисовано кодом, без картинок. Один «пиксель» игры = K пикселей экрана.
+  // =====================================================================
+  const OUT = '#2a1722';
+  const BAYER = [[0, 2], [3, 1]];
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+  function newLayer(w, h) {
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    const x = c.getContext('2d', { willReadFrequently: true }); x.imageSmoothingEnabled = false;
+    return { c, x, w, h };
+  }
+  const dot = (L, x, y, col) => { L.x.fillStyle = col; L.x.fillRect(Math.round(x), Math.round(y), 1, 1); };
+  const rect = (L, x, y, w, h, col) => { L.x.fillStyle = col; L.x.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h)); };
+
+  // шаблоны из строк: '.' пусто, остальные символы — цвета из карты
+  function spr(L, x0, y0, rows, map) {
+    rows.forEach((row, j) => { for (let i = 0; i < row.length; i++) { const ch = row[i]; if (ch !== '.' && map[ch]) dot(L, x0 + i, y0 + j, map[ch]); } });
+  }
+
+  // шарик/эллипс с объёмом: свет слева сверху, оттенки из ramp (от светлого к тёмному), шахматная растушёвка на границах
+  function ell(L, cx, cy, rx, ry, ramp, o = {}) {
+    const lx = o.lx ?? -0.55, ly = o.ly ?? -0.7, lz = 0.5, n = ramp.length;
+    const ln = Math.hypot(lx, ly, lz);
+    for (let y = Math.floor(cy - ry); y <= Math.ceil(cy + ry); y++) {
+      for (let x = Math.floor(cx - rx); x <= Math.ceil(cx + rx); x++) {
+        const dx = (x + .5 - cx) / rx, dy = (y + .5 - cy) / ry, r2 = dx * dx + dy * dy;
+        if (r2 > 1) continue;
+        const nz = Math.sqrt(1 - r2), d = (dx * lx + dy * ly + nz * lz) / ln;      // -1..1
+        const t = 1 - clamp((d + 0.15) / 1.05, 0, 1);                              // 0 светло .. 1 тень
+        let idx = t * (n - 1) + (BAYER[y & 1][x & 1] - 1.5) * 0.2;
+        dot(L, x, y, ramp[clamp(Math.round(idx), 0, n - 1)]);
+      }
+    }
+  }
+  // плоский эллипс одним цветом (ковёр, еда в миске)
+  function flat(L, cx, cy, rx, ry, col) {
+    for (let y = Math.floor(cy - ry); y <= Math.ceil(cy + ry); y++) for (let x = Math.floor(cx - rx); x <= Math.ceil(cx + rx); x++) {
+      const dx = (x + .5 - cx) / rx, dy = (y + .5 - cy) / ry; if (dx * dx + dy * dy <= 1) dot(L, x, y, col);
+    }
+  }
+  // вертикальный градиент полосами с растушёвкой
+  function band(L, x, y, w, h, cols) {
+    for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+      const t = (j / Math.max(1, h - 1)) * (cols.length - 1) + (BAYER[(y + j) & 1][(x + i) & 1] - 1.5) * 0.22;
+      dot(L, x + i, y + j, cols[clamp(Math.round(t), 0, cols.length - 1)]);
+    }
+  }
+  // тёмная обводка вокруг всего нарисованного на слое
+  function outline(L, col = OUT) {
+    const img = L.x.getImageData(0, 0, L.w, L.h), d = img.data, a = (x, y) => (x < 0 || y < 0 || x >= L.w || y >= L.h) ? 0 : d[(y * L.w + x) * 4 + 3];
+    const hex = parseInt(col.slice(1), 16), r = hex >> 16, g = (hex >> 8) & 255, b = hex & 255, mark = [];
+    for (let y = 0; y < L.h; y++) for (let x = 0; x < L.w; x++) {
+      if (a(x, y) === 0 && (a(x - 1, y) > 0 || a(x + 1, y) > 0 || a(x, y - 1) > 0 || a(x, y + 1) > 0)) mark.push((y * L.w + x) * 4);
+    }
+    for (const i of mark) { d[i] = r; d[i + 1] = g; d[i + 2] = b; d[i + 3] = 255; }
+    L.x.putImageData(img, 0, 0);
+  }
+  // нарисовать функцией на временном слое, обвести и положить на целевой слой
+  function prop(target, fn, w, h) {
+    const T = newLayer(w || target.w, h || target.h); fn(T); outline(T); target.x.drawImage(T.c, 0, 0);
+  }
+
+  // ---------- палитры ----------
+  const FUR = ['#c58a5b', '#9c6641', '#78482c', '#563221'];
+  const FURD = ['#946141', '#744529', '#573220', '#3f2418'];
+  const BELLY = ['#fff4dc', '#f5ddb4', '#deba8b', '#bb966b'];
+  const BLUE = ['#7fb0ff', '#4f83e8', '#3560c4', '#264594'];
+  const WOOD = ['#c99358', '#b07a47', '#8f5e35', '#6e4527'];
+
+  // ---------- мелкие значки ----------
+  const SPR = {
+    heart: { rows: ['.rr.rr.', 'hrrrrrr', 'hrrrrrd', '.rrrrd.', '..rrd..', '...d...'], map: { r: '#ff4f6e', h: '#ffb6c4', d: '#c42a4d' } },
+    bolt: { rows: ['..yyy', '.yyy.', 'yyyyy', '..yy.', '.yy..', 'yy...'], map: { y: '#ffd93d' } },
+    fish: { rows: ['...bbb...o', '.bbbbbbbbo', 'bbkbbbbbo.', 'bLLLLLbbbo', '.bbbbbbbbo', '...bbb...o'.replace('o', '.')], map: { b: '#ff9a3c', L: '#ffd08a', k: '#2a1722', o: '#ff9a3c' } },
+    moon: { rows: ['..yyyy', '.yyyy.', 'yyyy..', 'yyyy..', 'yyyy..', '.yyyy.', '..yyyy'], map: { y: '#ffe27a' } },
+    paw: { rows: ['.p.p.p.', '.p.p.p.', 'p.ppp.p', '.ppppp.', '.ppppp.', '..ppp..'], map: { p: '#cfe0ff' } },
+    list: { rows: ['wwwwww', 'wLLLLw', 'wwwwww', 'wLLLLw', 'wwwwww', 'wLLLLw', 'wwwwww'], map: { w: '#e8efff', L: '#8aa6e8' } },
+    house: { rows: ['....r....', '...rrr...', '..rrrrr..', '.rrrrrrr.', 'wwwwwwwww', 'wwwdddwww', 'wwwdddwww'], map: { r: '#ff7a59', w: '#ffe9c4', d: '#8f5e35' } },
+    ball: { rows: ['..bbbb..', '.hbbbbb.', 'hbbbbbbb', 'wwwwwwww', 'bbbbbbdd', '.bbbbdd.', '..bdd...'.replace('bdd...','dd....')], map: { b: '#4f83e8', h: '#9cc2ff', d: '#2f55b0', w: '#ffffff' } },
+    trophy: { rows: ['yyyyyyy', 'yyyyyyy', '.yyyyy.', '..yyy..', '...y...', '..yyy..', '.yyyyy.'], map: { y: '#ffcf3d' } },
+    coin: { rows: ['..yyyy..', '.yhhyyy.', 'yhyyyyyd', 'yhyyyyyd', 'yyyyyydd', 'yyyyyydd', '.yyyddd.', '..yyyy..'], map: { y: '#ffcf3d', h: '#fff3a8', d: '#d89a12' } },
+  };
+  function icon(name, k) {
+    const s = SPR[name], w = Math.max(...s.rows.map(r => r.length)) + 2, h = s.rows.length + 2, L = newLayer(w, h);
+    spr(L, 1, 1, s.rows, s.map); outline(L);
+    const cv = document.createElement('canvas'); cv.width = w; cv.height = h; cv.className = 'pxi';
+    cv.style.width = (w * k) + 'px'; cv.style.height = (h * k) + 'px'; cv.getContext('2d').drawImage(L.c, 0, 0);
+    return cv;
+  }
+  document.querySelectorAll('[data-icon]').forEach(el => { el.textContent = ''; el.appendChild(icon(el.dataset.icon, +el.dataset.k || 3)); });
+
+  // ---------- выдра ----------
+  // слой 80×90, ноги стоят на y=80. look: idle, happy, sad, sleepy, feed, play, sleep, pet, no
+  const OW = 84, OH = 92, OX = 42, OB = 82;
+  function drawHead(L, hx, hy, look, blink) {
+    const open = !(look === 'sleep' || look === 'no' || blink), happyEyes = look === 'pet' || look === 'play';
+    // уши
+    ell(L, hx - 16, hy - 12, 4.4, 4.4, FUR); ell(L, hx + 16, hy - 12, 4.4, 4.4, FUR);
+    flat(L, hx - 16, hy - 11, 1.8, 1.8, '#e49c93'); flat(L, hx + 16, hy - 11, 1.8, 1.8, '#e49c93');
+    // голова и мордочка (широкая, как у выдры)
+    ell(L, hx, hy, 22, 16, FUR);
+    ell(L, hx, hy + 6, 14.5, 9.5, BELLY);
+    for (const sx of [-1, 1]) for (const [a, b] of [[16, 4], [17, 4], [18, 3], [16, 7], [17, 7], [18, 8]]) dot(L, hx + sx * a - (sx > 0 ? 0 : 0), hy + b, '#6a4630');
+    dot(L, hx - 8, hy + 8, '#a47046'); dot(L, hx - 10, hy + 10, '#a47046'); dot(L, hx + 8, hy + 8, '#a47046'); dot(L, hx + 10, hy + 10, '#a47046');
+    // пятно света на лбу
+    dot(L, hx - 9, hy - 9, '#d7a073'); dot(L, hx - 8, hy - 10, '#d7a073'); dot(L, hx - 7, hy - 10, '#d7a073');
+    // нос
+    ell(L, hx, hy + 2.5, 3.4, 2.4, ['#6b5361', '#3a2430', '#2a1722']); dot(L, hx - 1, hy + 1, '#a58ea0');
+    // глаза
+    for (const sx of [-1, 1]) {
+      const ex = hx + sx * 9, ey = hy - 3;
+      if (happyEyes) { [[-2, 1], [-1, 0], [0, 0], [1, 0], [2, 1]].forEach(([a, b]) => dot(L, ex + a, ey + b, OUT)); }
+      else if (!open) { [[-2, 0], [-1, 1], [0, 1], [1, 1], [2, 0]].forEach(([a, b]) => dot(L, ex + a, ey + b, OUT)); }
+      else {
+        ell(L, ex, ey, 2.6, 3.2, ['#3a2430', '#2a1722', '#1a0e14']);
+        rect(L, ex - 2, ey - 2, 2, 2, '#fff'); dot(L, ex + 1, ey + 1, '#cfd8ff');
+        if (look === 'sleepy') { rect(L, ex - 3, ey - 4, 7, 3, '#8a5937'); }
+        if (look === 'sad') { dot(L, ex - sx * 2, ey - 5, OUT); dot(L, ex - sx * 3, ey - 4, OUT); dot(L, ex - sx * 1, ey - 5, OUT); }
+      }
+      // румянец
+      rect(L, hx + sx * 15 - 1, hy + 3, 3, 2, look === 'pet' || look === 'happy' ? '#ff7f9a' : '#e98a92');
+    }
+    // рот
+    const my = hy + 7;
+    if (look === 'feed' || look === 'play') { ell(L, hx, my + 2, 4.2, 3.4, ['#8a2a42', '#5f1830']); flat(L, hx, my + 4, 2.4, 1.2, '#ff8aa0'); }
+    else if (look === 'sleepy') { ell(L, hx, my + 2, 2.4, 3, ['#8a2a42', '#5f1830']); }
+    else if (look === 'sad' || look === 'no') { [[-3, 2], [-2, 1], [-1, 0], [0, 0], [1, 0], [2, 1], [3, 2]].forEach(([a, b]) => dot(L, hx + a, my + b, OUT)); }
+    else { [[-3, 0], [-2, 1], [-1, 2], [0, 2], [1, 2], [2, 1], [3, 0]].forEach(([a, b]) => dot(L, hx + a, my + b, OUT)); }
+  }
+
+  function drawOtter(t, look, blink) {
+    const L = newLayer(OW, OH), wag = Math.floor(t / ((look === 'pet' || look === 'play') ? 130 : 420)) % 2;
+    // хвост
+    const tp = [[54, 76], [62, 80], [70, 78], [76, 72], [79, 64], [79, 56], [76, 49]];
+    for (let i = 0; i < tp.length - 1; i++) {
+      for (let f = 0; f < 1; f += 0.25) {
+        const k = i + f, x = tp[i][0] + (tp[i + 1][0] - tp[i][0]) * f, y = tp[i][1] + (tp[i + 1][1] - tp[i][1]) * f;
+        ell(L, x + (k > 2 ? wag * (k - 2) * 0.9 : 0), y, 5.8 - k * 0.45, 5 - k * 0.42, FURD);
+      }
+    }
+    // тело
+    ell(L, OX, 62, 18, 21, FUR);
+    ell(L, OX, 65, 11, 15, BELLY);
+    ell(L, OX, 53, 9, 7, BELLY);
+    // лапы-ноги
+    ell(L, OX - 10, 79, 7.5, 3.6, FURD); ell(L, OX + 10, 79, 7.5, 3.6, FURD);
+    if (look === 'feed') {
+      // держит рыбку
+      ell(L, OX - 13, 58, 4.4, 7.5, FURD); ell(L, OX + 13, 58, 4.4, 7.5, FURD);
+    } else {
+      ell(L, OX - 14, 64, 4.6, 8.5, FURD); ell(L, OX + 14, 64, 4.6, 8.5, FURD);
+    }
+    // голова
+    drawHead(L, OX, 38, look, blink);
+    // эффекты
+    if (look === 'feed') {
+      const b = Math.floor(t / 300) % 2;
+      spr(L, OX - 9, 52 - b, ['...bbbb......b', '.bbbbbbbbbbbbb', 'bbkbbbbbbbbbb.', 'bLLLLLLLbbbbb.', '.bbbbbbbbbbbbb', '...bbbb......b'], { b: '#ff9a3c', L: '#ffd08a', k: OUT });
+    }
+    if (look === 'pet') {
+      for (let i = 0; i < 3; i++) {
+        const ph = ((t / 900) + i / 3) % 1, x = [OX - 26, OX + 22, OX - 2][i], y = 22 - ph * 22 + [4, 0, -6][i];
+        if (ph < .9) spr(L, x, y, SPR.heart.rows, SPR.heart.map);
+      }
+    }
+    if (look === 'sleep') {
+      for (let i = 0; i < 3; i++) {
+        const ph = ((t / 1800) + i / 3) % 1, x = OX + 20 + i * 5 + ph * 4, y = 20 - ph * 18 - i * 3;
+        const z = i === 0 ? ['ZZZZ', '..Z.', '.Z..', 'ZZZZ'] : ['ZZZZZ', '...Z.', '..Z..', '.Z...', 'ZZZZZ'];
+        if (ph < .92) spr(L, x, y, z, { Z: '#ffffff' });
+      }
+    }
+    outline(L);
+    return L;
+  }
+
+  // ---------- комната ----------
+  const K_PREF = 3;
+  const view = { K: 3, W: 112, H: 150, room: null, floorY: 0, baseY: 0, ox: 0 };
+  const sc = $('pixcv'), sx = sc.getContext('2d'); sx.imageSmoothingEnabled = false;
+
+  function buildRoom(W, H) {
+    const R = newLayer(W, H), fy = Math.round(H * 0.5), baseY = fy + Math.round((H - fy) * 0.5);
+    view.floorY = fy; view.baseY = baseY;
+    // стена
+    band(R, 0, 0, W, fy, ['#fbe8c2', '#f8dfae', '#f1cf94']);
+    for (let x = 4; x < W; x += 10) for (let y = 0; y < fy - 14; y += 2) if (((x + y) >> 1) % 2 === 0) dot(R, x, y, '#f7dcab');   // тонкий узор обоев
+    // плинтус / панель
+    rect(R, 0, fy - 15, W, 15, '#d9a468'); rect(R, 0, fy - 15, W, 1, '#f0c48a'); rect(R, 0, fy - 1, W, 1, '#6e4527');
+    for (let x = 6; x < W; x += 14) { rect(R, x, fy - 12, 10, 9, '#c78f55'); rect(R, x, fy - 12, 10, 1, '#e3b278'); }
+    // пол: доски в перспективе
+    const rows = [0, 9, 20, 33, 48, 66, 90, 120].map(v => fy + Math.round(v * (H - fy) / 100 * 1.15)).filter(v => v < H);
+    rows.push(H);
+    for (let r = 0; r < rows.length - 1; r++) {
+      const y0 = rows[r], y1 = rows[r + 1], bw = 14 + r * 7, off = (r % 2) * (bw >> 1);
+      for (let y = y0; y < y1; y++) for (let x = 0; x < W; x++) {
+        const k = ((x + off) % bw), shade = (y - y0) / Math.max(1, y1 - y0);
+        const base = (Math.floor((x + off) / bw) + r) % 2 ? WOOD[1] : WOOD[0];
+        dot(R, x, y, shade > 0.7 && BAYER[y & 1][x & 1] > 1 ? WOOD[2] : base);
+        if (k === 0) dot(R, x, y, WOOD[2]);
+      }
+      rect(R, 0, y0, W, 1, WOOD[3]);
+    }
+    // окно
+    const wx = 5, wy = 12, ww = 36, wh = Math.min(40, fy - 28);
+    band(R, wx, wy, ww, wh, ['#8ed3ff', '#b6e5ff', '#e2f6ff']);
+    [[8, 9, 16, 12], [22, 11, 22, 14], [34, 9, 12, 10]].forEach(([x, y, w, h]) => ell(R, wx + x, wy + wh - 4 + (y - 10) * .2, w / 2 + 3, h / 2 + 5, ['#7fd08a', '#4fae5b', '#3f9a4d', '#2f7a3a']));
+    ell(R, wx + 26, wy + 8, 8, 3, ['#ffffff', '#e8f6ff']); ell(R, wx + 14, wy + 12, 6, 2.4, ['#ffffff', '#e8f6ff']);
+    prop(R, T => {
+      rect(T, wx - 3, wy - 3, ww + 6, 3, '#8f5630'); rect(T, wx - 3, wy + wh, ww + 6, 3, '#8f5630'); rect(T, wx - 3, wy, 3, wh, '#8f5630'); rect(T, wx + ww, wy, 3, wh, '#8f5630');
+      rect(T, wx + (ww >> 1) - 1, wy, 2, wh, '#8f5630'); rect(T, wx, wy + (wh >> 1) - 1, ww, 2, '#8f5630');
+      rect(T, wx - 6, wy - 6, ww + 12, 4, '#6e4527');
+      // шторы
+      for (let j = 0; j < wh + 8; j++) { const w2 = 7 - (j > wh - 6 ? 1 : 0); rect(T, wx - 5, wy - 3 + j, w2, 1, j % 6 < 3 ? '#f08a4b' : '#e0703a'); rect(T, wx + ww - 2, wy - 3 + j, w2, 1, j % 6 < 3 ? '#f08a4b' : '#e0703a'); }
+    });
+    // луч света
+    for (let y = wy + wh; y < H; y++) for (let x = wx; x < W; x++) {
+      const along = (y - (wy + wh)), left = wx + along * 0.55 - 2, right = wx + ww + along * 1.0 + 2;
+      if (x > left && x < right && ((x + y) & 1) === 0 && along < (H - wy - wh) * 0.7) dot(R, x, y, y < fy ? '#fff6cf' : '#e2b27a');
+    }
+    // полка с вещами
+    const sx0 = Math.round(W * 0.50), sy = fy - 33, sw = W - sx0 - 4;
+    prop(R, T => {
+      rect(T, sx0, sy, sw, 3, '#a2693a'); rect(T, sx0 + 4, sy + 3, 3, 5, '#7e4d2a'); rect(T, sx0 + sw - 8, sy + 3, 3, 5, '#7e4d2a');
+      // горшок с растением
+      ell(T, sx0 + 10, sy - 4, 5, 4, ['#e98062', '#cf6347', '#a94a31']); rect(T, sx0 + 5, sy - 8, 11, 2, '#b4543a');
+      [[-5, -14], [4, -15], [0, -19], [-8, -10], [8, -11]].forEach(([a, b]) => ell(T, sx0 + 10 + a, sy + b + 2, 2.6, 4.2, ['#7fd37e', '#4eaa56', '#2f7f3d']));
+      // картина
+      rect(T, sx0 + 22, sy - 17, 17, 15, '#7e4d2a'); rect(T, sx0 + 24, sy - 15, 13, 11, '#bfe3ff'); ell(T, sx0 + 30, sy - 6, 7, 4, ['#7fd08a', '#4fae5b']); dot(T, sx0 + 33, sy - 12, '#fff6a8');
+      // книги
+      rect(T, sx0 + sw - 17, sy - 10, 4, 10, '#4a79d8'); rect(T, sx0 + sw - 13, sy - 12, 4, 12, '#d8573f'); rect(T, sx0 + sw - 9, sy - 9, 4, 9, '#4aa56b'); rect(T, sx0 + sw - 5, sy - 11, 3, 11, '#e8b84a');
+    });
+    // постер с лапкой
+    prop(R, T => { rect(T, W - 22, fy - 62, 16, 18, '#f0c585'); rect(T, W - 20, fy - 60, 12, 14, '#f7dba5'); ell(T, W - 14, fy - 51, 3.4, 3, ['#c08a54', '#9a6a3c']); [[-4, -6], [0, -7], [4, -6], [-6, -3]].forEach(([a, b]) => dot(T, W - 14 + a, fy - 51 + b, '#9a6a3c')); });
+    // ковёр
+    const cx = Math.round(W * 0.47);
+    prop(R, T => { flat(T, cx, baseY + 4, W * 0.42, 14, '#e7b98a'); }, W, H);
+    flat(R, cx, baseY + 4, W * 0.42 - 1, 13, '#f3dcb6'); flat(R, cx, baseY + 4, W * 0.30, 9, '#ecc99a'); flat(R, cx, baseY + 4, W * 0.20, 6, '#f6e3c1');
+    for (let x = cx - W * 0.38; x < cx + W * 0.38; x += 4) { dot(R, x, baseY + 4 - 11, '#d9a773'); dot(R, x + 2, baseY + 4 + 12, '#d9a773'); }
+    // лежанка
+    const bx = W - 26, by = baseY + 10;
+    prop(R, T => { ell(T, bx, by, 25, 12, BLUE); flat(T, bx, by - 1, 16, 7, '#efe3cc'); ell(T, bx, by - 2, 16, 6, ['#efe3cc', '#e2d3b6']); [[0, 0], [-4, -3], [0, -4], [4, -3]].forEach(([a, b], i) => ell(T, bx + a, by + b - 1, i ? 1.3 : 2.2, i ? 1.3 : 1.6, ['#cdbb9b'])); });
+    // миска
+    const mx = 17, my = baseY + 20;
+    prop(R, T => { ell(T, mx, my, 12, 7, BLUE); flat(T, mx, my - 3, 9, 3, '#ffb15c'); [[-4, -3], [0, -4], [4, -3]].forEach(([a, b]) => dot(T, mx + a, my + b, '#ff9132')); dot(T, mx + 3, my + 3, '#fff'); dot(T, mx + 4, my + 3, '#fff'); });
+    // мячик и кость
+    prop(R, T => { ell(T, W - 53, baseY + 22, 5.5, 5.5, BLUE); for (let i = -4; i <= 4; i++) dot(T, W - 53 + i, baseY + 22 + Math.round(i * .35) - 1, '#fff'); });
+    prop(R, T => { spr(T, W - 43, baseY + 24, ['bb....bb', 'bbbbbbbb', 'bbbbbbbb', 'bb....bb'], { b: '#fbf1de' }); });
+    return R;
+  }
+
+  function layout() {
+    const st = $('stage'), r = st.getBoundingClientRect(); if (r.width < 50 || r.height < 50) return;
+    const K = Math.max(2, Math.min(5, Math.floor(r.width / 112) || K_PREF));
+    const W = Math.floor(r.width / K), H = Math.floor(r.height / K);
+    view.K = K; view.W = W; view.H = H; sc.width = W; sc.height = H;
+    sc.style.width = (W * K) + 'px'; sc.style.height = (H * K) + 'px'; sc.style.left = Math.floor((r.width - W * K) / 2) + 'px'; sc.style.top = Math.floor((r.height - H * K) / 2) + 'px';
+    view.room = buildRoom(W, H); view.ox = Math.round(W * 0.47);
+  }
+
+  function frame(now) {
+    if (!view.room) return;
+    const look = otter.dataset.look, blink = (Math.floor(now / 160) % 31) === 0;
+    sx.drawImage(view.room.c, 0, 0);
+    const hop = look === 'play' ? -Math.round(Math.abs(Math.sin(now / 130)) * 7) : (look === 'sleep' || look === 'sleepy' ? (Math.floor(now / 900) % 2) : (Math.floor(now / 650) % 2));
+    // тень на полу
+    sx.fillStyle = 'rgba(40,20,20,.28)'; for (let i = -22; i <= 22; i++) { const h = Math.round(Math.sqrt(1 - (i / 23) ** 2) * 4); sx.fillRect(view.ox + i, view.baseY - 1 - h + 3, 1, h * 2 - 1); }
+    const O = drawOtter(now, look, blink);
+    sx.drawImage(O.c, view.ox - OX, view.baseY - OB + hop - (look === 'play' ? 0 : 0));
+    if (look === 'play') {   // мячик подпрыгивает
+      const by = view.baseY - 4 - Math.round(Math.abs(Math.sin(now / 160)) * 26), bx = view.ox + 34;
+      const B = newLayer(14, 14); ell(B, 7, 7, 5.5, 5.5, BLUE); for (let i = -4; i <= 4; i++) dot(B, 7 + i, 6 + Math.round(i * .35), '#fff'); outline(B);
+      sx.drawImage(B.c, bx - 7, by - 7);
+    }
+  }
+
+  // аватарка: голова выдры
+  function drawAvatar() {
+    const cv = $('avcv'), L = newLayer(46, 40); drawHead(L, 23, 24, 'idle', false); outline(L);
+    cv.width = 46; cv.height = 40; cv.getContext('2d').drawImage(L.c, 0, 0);
+  }
+
+  drawAvatar(); layout();
+  new ResizeObserver(() => layout()).observe($('stage'));
+  window.addEventListener('resize', layout);
+  setInterval(() => frame(performance.now()), 100);
+
+  window.__pet = { otter, view };   // для отладки
 
   // ---------- старт ----------
   if (!tg.initData) {
