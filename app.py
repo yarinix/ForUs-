@@ -471,7 +471,8 @@ class WebAppHandler(BaseHTTPRequestHandler):
                 result = {"ok": True, "state": pet.get_state(get_db, names)}
             else:
                 action = str(data.get("action") or "")[:20]
-                result = pet.perform(get_db, action, tg_user["id"], names)
+                to = str(data.get("to") or "")[:12]
+                result = pet.perform(get_db, action, tg_user["id"], names, to)
             result["you"] = tg_user["id"]
             self._reply(200, json.dumps(result).encode("utf-8"), "application/json")
         except Exception as e:
