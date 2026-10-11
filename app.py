@@ -1767,6 +1767,25 @@ def upload_to_gemini(file_bytes, mime_type: str):
     return uploaded
 
 
+def transcribe_sync(uploaded_file) -> str:
+    """Дословная расшифровка речи из голосового/кружка (пустая строка, если не вышло)."""
+    prompt = (
+        "Дословно расшифруй речь из этого файла на языке оригинала. "
+        "Верни только текст, без пояснений. Если речи нет — верни пустую строку."
+    )
+    for model_name in MODELS_CASCADE:
+        try:
+            response = client.models.generate_content(
+                model=model_name, contents=[uploaded_file, prompt]
+            )
+            record_llm_call(model_name, "ok")
+            return (response.text or "").strip()
+        except Exception as e:
+            record_llm_call(model_name, classify_llm_error(e), str(e))
+            logging.warning(f"Модель {model_name} не расшифровала запись: {e}")
+    return ""
+
+
 def parse_memory_ops(text: str, valid_ids=None):
     """Разбирает JSON-ответ модели в список операций с памятью.
 
@@ -2329,6 +2348,24 @@ async def handle_media_or_text(message: types.Message):
             and message.reply_to_message.from_user.id == bot.id
         ):
             is_addressed_to_bot = True
+
+    # В группе голосовое/кружок не начинается с «чат» текстом, поэтому расшифровываем
+    # речь: если сказано «Чат, …» — отвечаем; иначе расшифровка уходит в историю.
+    if chat_type != "private" and file_bytes and mime_type in ("audio/ogg", "video/mp4"):
+        try:
+            media = await asyncio.to_thread(upload_to_gemini, file_bytes, mime_type)
+            spoken = await asyncio.to_thread(transcribe_sync, media)
+        except Exception as e:
+            logging.warning(f"Не удалось расшифровать запись в группе: {e}")
+            spoken = ""
+        if spoken:
+            low = spoken.lower().lstrip(" «\"'")
+            if not is_addressed_to_bot and low.startswith("чат"):
+                is_addressed_to_bot = True
+                spoken = spoken.lstrip(" «\"'")[3:].lstrip(" ,:;!?.-") or "Привет!"
+            user_text = spoken
+            if is_addressed_to_bot:
+                file_bytes = None  # речь уже в тексте, повторно файл не шлём
 
     # «Напомни завтра в 18:00 купить цветы», «через 5 минут напомни позвонить»,
     # «поставь напоминание…» — ставим напоминание без Gemini
