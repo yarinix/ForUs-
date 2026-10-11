@@ -881,27 +881,49 @@
   }
   function drawNeckWear(L, hx, hy, id) {
     if (id === 'scarf') {
-      or_(L, hx + 6, hy + 20, 5, 10, '#e04848'); or_(L, hx + 6, hy + 25, 5, 1, '#fff0f0'); or_(L, hx + 6, hy + 27, 5, 1, '#fff0f0');
-      oe(L, hx, hy + 19.5, 17, 3.6, ['#ff8a8a', '#e04848', '#b02f2f'], { d: .1 });
-      for (let i = -14; i <= 14; i += 5) od(L, hx + i, hy + 19.5, '#fff0f0');
+      or_(L, hx + 8, hy + 20, 6, 12, '#ef668b'); or_(L, hx + 8, hy + 26, 6, 2, '#fff0f7'); or_(L, hx + 8, hy + 30, 6, 2, '#fff0f7');
+      oe(L, hx, hy + 20, 19, 4.8, ['#ffc0d7', '#f477a4', '#bd426f'], { d: .1 });
+      for (let i = -15; i <= 15; i += 5) od(L, hx + i, hy + 20, '#fff0f7');
     } else if (id === 'bow') {
       sprc(L, hx, hy + 24, ['rr.....rr', 'rrrr.rrrr', 'rrrrkrrrr', 'rrrr.rrrr', 'rr.....rr'], { r: '#ff5a8a', k: '#a8274f' });
     } else if (id === 'bandana') {
       sprc(L, hx, hy + 26, ['bbbbbbbbbbbbbbb', '.bbwbbbwbbbwbb.', '..bbbbbbbbbbb..', '...bbbwbbbbb...', '....bbbbbbb....', '.....bbbbb.....', '......bbb......'], { b: '#4f83e8', w: '#ffffff' });
     }
   }
+  // Увеличенный масштаб одежды: аксессуары должны занимать размер головы/тела,
+  // а не выглядеть крошечными пикселями на выдре.
+  function sprcWear(L, cx, by, rows, map, scale = 1.5) {
+    const width = Math.max(...rows.map(r => r.length));
+    const expanded = [];
+    for (const row of rows) {
+      const pixels = row.padEnd(width, '.').split('').map(ch => ch === '.' ? '.' : ch.repeat(scale)).join('');
+      for (let n = 0; n < scale; n++) expanded.push(pixels);
+    }
+    sprc(L, cx, by, expanded, map);
+  }
   function drawWear(L, hx, hy) {
     const w = WEAR || {};
     if (w.neck) drawNeckWear(L, hx, hy, w.neck);
     if (w.face) drawFaceWear(L, hx, hy, w.face);
     const h = w.hat && HAT[w.hat];
-    if (h) sprc(L, hx + (h.dx || 0), hy + h.by, h.rows, h.map);
+    if (h) sprcWear(L, hx + (h.dx || 0), hy + h.by, h.rows, h.map, w.hat === 'flower' ? 2 : 2);
   }
-  function bodyBack(L, id) { if (id === 'cape') oe(L, OX, 68, 23, 19, ['#ff7a7a', '#d93b3b', '#a72a2a'], { d: .08 }); }
+  function bodyBack(L, id) { if (id === 'cape') oe(L, OX, 68, 24, 20, ['#ff9dbb', '#ec6593', '#b94370'], { d: .08 }); }
   function bodyFront(L, id) {
-    if (id === 'tee') { oe(L, OX, 73, 17.2, 13.5, ['#8fe8cc', '#4cc4a4', '#2f9c80'], { d: .1 }); os(L, OX - 3, 66, SPR.heart.rows, SPR.heart.map); }
-    else if (id === 'sweater') { oe(L, OX, 73, 17.2, 13.5, ['#7fb0ff', '#4f83e8', '#3560c4'], { d: .1 }); stripesEll(L, OX, 73, 17.2, 13.5, 4, '#e8f1ff'); }
-    else if (id === 'apron') { oe(L, OX, 74, 12.5, 12.5, ['#ffd3e0', '#ff9fbf', '#e06b95'], { d: .1 }); or_(L, OX - 9, 60, 2, 8, '#e06b95'); or_(L, OX + 7, 60, 2, 8, '#e06b95'); or_(L, OX - 5, 75, 10, 5, '#fff0f5'); }
+    if (id === 'tee') {
+      oe(L, OX, 73, 19.5, 16, ['#b9f5e3', '#69d8bd', '#35ad91'], { d: .1 });
+      of(L, OX, 61, 5, 3, '#69d8bd');
+      sprc(L, OX, 72, SPR.heart.rows, SPR.heart.map);
+    } else if (id === 'sweater') {
+      oe(L, OX, 73, 19.5, 16, ['#b8d4ff', '#7ba8f5', '#4777d7'], { d: .1 });
+      stripesEll(L, OX, 73, 19.5, 16, 5, '#fff0f7');
+      of(L, OX, 60, 5, 3, '#7ba8f5');
+    } else if (id === 'apron') {
+      oe(L, OX, 74, 16.5, 15.5, ['#ffe0eb', '#ffacd0', '#e879a6'], { d: .1 });
+      or_(L, OX - 11, 59, 3, 11, '#e879a6'); or_(L, OX + 8, 59, 3, 11, '#e879a6');
+      or_(L, OX - 7, 74, 14, 7, '#fff5fa');
+      of(L, OX, 63, 5, 3, '#ffacd0');
+    }
   }
 
   // ---------- мебель: рисунки (низ по центру для пола, центр для стены) ----------
