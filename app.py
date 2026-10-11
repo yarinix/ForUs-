@@ -1445,7 +1445,16 @@ def geocode(name: str, count: int = 3):
         for part in (r.get("name"), r.get("admin1"), r.get("country")):
             if part and part not in parts:
                 parts.append(part)
-        places.append({"title": ", ".join(parts), "lat": lat, "lon": lon})
+        places.append({"title": ", ".join(parts), "lat": lat, "lon": lon,
+                       "name": str(r.get("name") or "")})
+    # убираем повторы: одинаковые названия или почти те же координаты
+    unique = []
+    for p in places:
+        if not any(p["title"] == q["title"] or
+                   (abs(p["lat"] - q["lat"]) < 0.08 and abs(p["lon"] - q["lon"]) < 0.08)
+                   for q in unique):
+            unique.append(p)
+    places = unique
     if len(_geo_cache) > 200:
         _geo_cache.clear()
     _geo_cache[key] = (time.time(), places)
@@ -2256,7 +2265,13 @@ async def cb_memory_clear(callback: types.CallbackQuery):
 MEDIA_PLACEHOLDERS = {"Голосовое сообщение", "Видеосообщение", "Фотография"}
 
 
-@dp.message(F.text | F.voice | F.video_note | F.photo)
+# Команды обрабатываются своими обработчиками; общий обработчик их не перехватывает,
+# в каком бы месте файла они ни были объявлены.
+BOT_COMMANDS = ["draw", "start", "command", "memory", "remember", "memorydelete",
+                "memoryclear", "remind", "reminders", "reminddelete", "limits", "weather"]
+
+
+@dp.message(~Command(*BOT_COMMANDS), F.text | F.voice | F.video_note | F.photo)
 async def handle_media_or_text(message: types.Message):
     if not is_allowed(message.from_user):
         return
@@ -2958,7 +2973,12 @@ async def inline_query_handler(query: types.InlineQuery):
             )
             return
 
-        places = await asyncio.to_thread(geocode, city, 3)
+        places = await asyncio.to_thread(geocode, city, 5)
+        # Если город с таким именем один — показываем только его
+        exact = [p for p in places if p.get("name", "").casefold() == city.casefold()]
+        if len(exact) == 1:
+            places = exact
+        places = places[:3]
         if not places:
             await query.answer(
                 hint(f"Не нашёл город «{city[:40]}»", "Проверь написание или допиши название"),
@@ -2976,7 +2996,7 @@ async def inline_query_handler(query: types.InlineQuery):
             articles.append(
                 InlineQueryResultArticle(
                     id=f"weather_{i}",
-                    title=f"{lines[0] if lines else place['title']}",
+                    title=place["title"] if len(places) > 1 else (lines[0] if lines else place["title"]),
                     description=summary[:120],
                     input_message_content=InputTextMessageContent(message_text=text),
                 )
