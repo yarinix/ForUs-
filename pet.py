@@ -18,6 +18,8 @@ import time
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+import pet_quests as quests   # ежедневные задания (pet_quests.py лежит рядом)
+
 # В PostgreSQL строка блокируется на время действия, чтобы два одновременных
 # нажатия (два игрока) не затёрли друг друга.
 FOR_UPDATE = " FOR UPDATE"
@@ -40,6 +42,7 @@ SLEEP_NEEDS_BELOW = 85                # выше этой энергии спа�
 
 TZ = "Asia/Omsk"                      # app.py подставляет BOT_TIMEZONE
 ADMIN_IDS = []                        # app.py подставляет id админов (PET_ADMIN_IDS)
+USER_IDS = []                         # app.py подставляет двух игроков общей пары (COUPLE_USER_IDS)
 NIGHT_FROM, NIGHT_TO = 22, 7          # ночь: с 22:00 до 7:00
 
 # Комнаты: гостиная (home) соединена с кухней и спальней
@@ -178,6 +181,7 @@ def init_tables(get_db):
             cur.execute(
                 "CREATE INDEX IF NOT EXISTS idx_pet_log_key ON pet_log (pet_key, id);"
             )
+            quests.init(cur)
             # Вещи пары: еда (qty), одежда (worn), мебель (room/x/y — где стоит)
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS pet_items (
@@ -280,7 +284,7 @@ def public_catalog() -> dict:
     return CATALOG
 
 
-def public_state(st: dict, names=None, now: float = None, uid=None) -> dict:
+def public_state(st: dict, names=None, now: float = None, uid=None, quests_view=None) -> dict:
     names = names or {}
     now = now or time.time()
     inv, owned, worn, placed = {}, [], {}, {}
@@ -296,7 +300,7 @@ def public_state(st: dict, names=None, now: float = None, uid=None) -> dict:
             worn[c["s"]] = iid
         if c["k"] == "furn" and it.get("room"):
             placed[iid] = {"room": it["room"], "x": it["x"], "y": it["y"]}
-    return {
+    out = {
         "name": st["name"],
         "level": st["level"],
         "xp": st["xp"],
@@ -322,6 +326,9 @@ def public_state(st: dict, names=None, now: float = None, uid=None) -> dict:
         "night": is_night(now),
         "is_admin": bool(uid and uid in ADMIN_IDS),
     }
+    if quests_view is not None:
+        out["quests"] = quests_view
+    return out
 
 
 _COLUMNS = (
@@ -377,12 +384,13 @@ def _load(cur, lock: bool, pet_key=PET_KEY) -> dict:
 
 def get_state(get_db, names=None, uid=None, pet_key=PET_KEY) -> dict:
     """Текущее состояние (с учётом времени, без записи в базу, кроме первого создания)."""
+    now = time.time()
     with get_db() as conn:
         with conn.cursor() as cur:
             st = _load(cur, lock=False, pet_key=pet_key)
-    now = time.time()
+            qv = _quests_view(cur, st, uid, names, now, pet_key)   # None, если это чужой питомец (гость)
     _decay(st, now)
-    return public_state(st, names, now, uid)
+    return public_state(st, names, now, uid, qv)
 
 
 def _clean_name(raw) -> str:
@@ -574,6 +582,110 @@ def _apply(st: dict, action: str, now: float, p: dict):
     return True, say, coins_delta, xp_delta
 
 
+def _users_for(pet_key: str) -> list:
+    """Кто играет с этим питомцем: общий питомец пары — оба, отдельный («user:<id>») — один человек."""
+    if pet_key == PET_KEY:
+        return list(USER_IDS)
+    try:
+        return [int(pet_key.split(":", 1)[1])]
+    except (IndexError, ValueError):
+        return []
+
+
+def _owned_kinds(st: dict) -> set:
+    return {CATALOG[i]["k"] for i in st.get("items", {}) if i in CATALOG and CATALOG[i]["k"] != "food"}
+
+
+def _ensure_quests(cur, st: dict, now: float, pet_key: str):
+    day = quests.day_key(now, TZ)
+    users = _users_for(pet_key)
+    quests.ensure_daily(cur, pet_key, day, users, _owned_kinds(st))
+    return day, users
+
+
+def _quests_view(cur, st: dict, uid, names, now: float, pet_key: str):
+    """Задания дня для игрока uid (создаёт их, если день новый). Чужому питомцу — ничего."""
+    if not uid or uid not in _users_for(pet_key):
+        return None
+    day, users = _ensure_quests(cur, st, now, pet_key)
+    return quests.view(cur, pet_key, day, uid, users, names or {}, st["name"], now, TZ)
+
+
+def _level_up(st: dict) -> int:
+    """Повышает уровень, пока хватает опыта. Возвращает монеты-бонус за новые уровни."""
+    bonus = 0
+    while st["xp"] >= xp_needed(st["level"]):
+        st["xp"] -= xp_needed(st["level"])
+        st["level"] += 1
+        st["coins"] += 10
+        bonus += 10
+    return bonus
+
+
+def _give(st: dict, coins: int, xp: int, item) -> None:
+    st["coins"] += coins
+    st["xp"] += xp
+    if item and item in CATALOG:
+        it = st["items"].setdefault(item, _new_item())
+        it["qty"] = min(MAX_FOOD, it["qty"] + 1)
+        _touch(st, item)
+
+
+def _claim(cur, st: dict, uid: int, qkey: str, now: float, pet_key: str):
+    """Выдаёт награду за задание. Возвращает (ok, say, coins_delta, xp_delta)."""
+    day, _users = _ensure_quests(cur, st, now, pet_key)
+    status, rw = quests.claim(cur, pet_key, day, str(qkey or ""), uid)
+    if status != "ok":
+        msg = {"none": "Такого задания нет 🤔", "forbidden": "Это личное задание партнёра 🙈",
+               "not_done": "Задание ещё не выполнено ⏳", "claimed": "Награда уже получена ✅"}[status]
+        return False, msg, 0, 0
+    coins, xp = rw["coins"], rw["xp"]
+    _give(st, coins, xp, rw["item"])
+    parts = [f"+{coins} 🪙", f"+{xp} XP"] + ([f"{CATALOG[rw['item']]['e']} {CATALOG[rw['item']]['n']}"] if rw["item"] in CATALOG else [])
+    say = "🎁 Награда: " + ", ".join(parts)
+    if rw["last"]:                                   # забрали последнее задание дня
+        b = quests.DAY_BONUS
+        _give(st, b["coins"], b["xp"], b["item"])
+        coins += b["coins"]
+        xp += b["xp"]
+        say += f"\n🎉 Все задания дня выполнены! Бонус: +{b['coins']} 🪙, +{b['xp']} XP, {CATALOG[b['item']]['e']} {CATALOG[b['item']]['n']}"
+    lv = _level_up(st)
+    if lv:
+        coins += lv
+        say += f"\n🎉 Новый уровень: {st['level']}! +{lv} 🪙"
+    return True, say, coins, xp
+
+
+def _game_events(action: str, item, coins_delta: int, xp_delta: int, lvl_gain: int,
+                 room_changed: bool, newly_placed: bool) -> dict:
+    """Какие «события заданий» породило действие в игре."""
+    ev = {}
+    if action == "feed":
+        ev["feed"] = 1
+        if (item or "fish") != "fish":
+            ev["fancy"] = 1
+    elif action in ("play", "sleep", "pet", "wear"):
+        ev[action] = 1
+    elif action == "move" and room_changed:
+        ev["move"] = 1
+    elif action == "place" and newly_placed:
+        ev["place"] = 1
+    elif action == "buy":
+        ev["buy"] = 1
+        kind = CATALOG.get(item or "", {}).get("k")
+        if kind:
+            ev["buy_" + kind] = 1
+    if coins_delta > 0:
+        ev["earn"] = coins_delta
+    elif coins_delta < 0:
+        ev["spend"] = -coins_delta
+    if xp_delta > 0:
+        ev["xp"] = xp_delta
+    if lvl_gain > 0:
+        ev["level"] = lvl_gain
+    return ev
+
+
 CARE_ACTIONS = ("feed", "play", "sleep", "pet", "wake")   # только они показываются партнёру как «кто что сделал»
 
 
@@ -598,7 +710,18 @@ def perform(get_db, action: str, user_id: int, names=None, to: str = None,
         with conn.cursor() as cur:
             st = _load(cur, lock=True, pet_key=pet_key)
             _decay(st, now)
-            ok, say, coins_delta, xp_delta = _apply(st, action, now, params)
+            if action == "claim":
+                ok, say, coins_delta, xp_delta = _claim(cur, st, user_id, item, now, pet_key)
+            else:
+                lvl0, room0 = st["level"], st.get("room")
+                prev_room = (st["items"].get(item or "") or {}).get("room")
+                ok, say, coins_delta, xp_delta = _apply(st, action, now, params)
+                if ok:                                   # прогресс заданий от действий в игре
+                    ev = _game_events(action, item, coins_delta, xp_delta, st["level"] - lvl0,
+                                      st.get("room") != room0, prev_room != room)
+                    if ev:
+                        day, users = _ensure_quests(cur, st, now, pet_key)
+                        quests.bump(cur, pet_key, day, user_id, ev, users)
             say = say.replace("{name}", st["name"])
             if ok and action in CARE_ACTIONS:
                 st["last_actor"], st["last_action"], st["last_ts"] = user_id, action, now
@@ -615,8 +738,9 @@ def perform(get_db, action: str, user_id: int, names=None, to: str = None,
                 " VALUES (%s, %s, %s, %s, %s, %s)",
                 (pet_key, user_id, tag[:20], bool(ok), coins_delta, xp_delta),
             )
+            qv = _quests_view(cur, st, user_id, names, now, pet_key)
     logging.info(f"🦦 {user_id}: {action} -> {'ок' if ok else 'отказ'}")
-    return {"ok": ok, "say": say, "state": public_state(st, names, now, user_id)}
+    return {"ok": ok, "say": say, "state": public_state(st, names, now, user_id, qv)}
 
 
 def process_wakeups(get_db, pet_key=PET_KEY):
@@ -685,6 +809,7 @@ def admin(get_db, user_id: int, op: str, p: dict, names=None, pet_key=PET_KEY) -
                 _fresh(st, now)
                 st["name"] = DEFAULT_NAME
                 cur.execute("DELETE FROM pet_items WHERE pet_key=%s", (pet_key,))
+                cur.execute("DELETE FROM pet_quests WHERE pet_key=%s", (pet_key,))
                 st["items"] = {}
                 msg = "Игра сброшена с нуля 🔄"
             elif op == "reset_stats":                # только персонаж, вещи остаются
@@ -701,6 +826,14 @@ def admin(get_db, user_id: int, op: str, p: dict, names=None, pet_key=PET_KEY) -
                         it = _new_item(); it["qty"] = 1
                         st["items"][iid] = it
                         _touch(st, iid)
+            elif op == "quests_done":                # для проверки: выполнить все задания дня
+                day, _users = _ensure_quests(cur, st, now, pet_key)
+                cur.execute("UPDATE pet_quests SET progress = target, done = TRUE"
+                            " WHERE pet_key=%s AND day=%s AND claimed = FALSE", (pet_key, day))
+                msg = "Все задания дня выполнены ✅ Заберите награды в «Заданиях»"
+            elif op == "quests_reset":               # сбросить прогресс сегодняшних заданий
+                cur.execute("DELETE FROM pet_quests WHERE pet_key=%s AND day=%s", (pet_key, quests.day_key(now, TZ)))
+                msg = "Прогресс заданий сброшен 🔄"
             elif op == "log":
                 cur.execute(
                     "SELECT user_id, action, ok, coins_delta, created_at FROM pet_log"
@@ -718,8 +851,9 @@ def admin(get_db, user_id: int, op: str, p: dict, names=None, pet_key=PET_KEY) -
                 cur.execute(
                     "INSERT INTO pet_log (pet_key, user_id, action, ok) VALUES (%s, %s, %s, %s)",
                     (pet_key, user_id, ("admin:" + op)[:20], True))
+            qv = _quests_view(cur, st, user_id, names, now, pet_key)
     logging.info(f"🛠 админ {user_id}: {op}")
-    out = {"ok": True, "say": msg, "state": public_state(st, names, now, user_id)}
+    out = {"ok": True, "say": msg, "state": public_state(st, names, now, user_id, qv)}
     if log is not None:
         out["log"] = log
     return out
