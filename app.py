@@ -73,6 +73,11 @@ for _pair in os.getenv("USER_NAMES", "").split(","):
 
 # Часовой пояс для «сегодня/завтра» в ответах бота и в извлечении фактов
 BOT_TIMEZONE = os.getenv("BOT_TIMEZONE", "Asia/Omsk")
+pet.TZ = BOT_TIMEZONE                       # день и ночь в игре — по местным часам
+# Админ игры «Наша выдра»: по умолчанию первый в ALLOWED_USERS; можно задать PET_ADMIN_IDS=id1,id2
+pet.ADMIN_IDS = [
+    int(x) for x in os.getenv("PET_ADMIN_IDS", "").replace(" ", "").split(",") if x.isdigit()
+] or ALLOWED_USER_IDS[:1]
 
 # Если "1" — рисунки принимаются ТОЛЬКО с подписью Telegram (initData).
 # Включай после того, как добавишь отправку initData в static/draw.html.
@@ -335,7 +340,7 @@ class WebAppHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = urllib.parse.urlparse(self.path).path
-        if path in ("/api/pet/state", "/api/pet/action"):
+        if path in ("/api/pet/state", "/api/pet/action", "/api/pet/admin"):
             self._pet_api(path)
             return
         if path != "/api/upload":
@@ -468,9 +473,15 @@ class WebAppHandler(BaseHTTPRequestHandler):
                 return
             names = {uid: user_name(uid) for uid in ALLOWED_USER_IDS}
             if path == "/api/pet/state":
-                result = {"ok": True, "state": pet.get_state(get_db, names)}
+                result = {"ok": True, "state": pet.get_state(get_db, names, tg_user["id"])}
                 if data.get("catalog"):       # каталог магазина нужен клиенту один раз при запуске
                     result["catalog"] = pet.public_catalog()
+            elif path == "/api/pet/admin":
+                if tg_user["id"] not in pet.ADMIN_IDS:      # только админ, по подписи Telegram
+                    self._reply(403, b"Forbidden")
+                    return
+                params = data.get("params") if isinstance(data.get("params"), dict) else {}
+                result = pet.admin(get_db, tg_user["id"], str(data.get("op") or "")[:20], params, names)
             else:
                 action = str(data.get("action") or "")[:20]
                 to = str(data.get("to") or "")[:12]
@@ -3172,6 +3183,23 @@ async def keep_alive_loop():
             await asyncio.sleep(600)
 
 
+async def pet_wake_loop():
+    """Раз в минуту: если выдра проснулась — присылаем уведомление обоим."""
+    await asyncio.sleep(20)
+    while True:
+        try:
+            name = await asyncio.to_thread(pet.process_wakeups, get_db)
+            if name:
+                for uid in ALLOWED_USER_IDS:
+                    try:
+                        await bot.send_message(uid, f"☀️ {name} проснулся и ждёт вас! 🦦 /pet")
+                    except Exception as e:
+                        logging.warning(f"Не удалось отправить уведомление {uid}: {e}")
+        except Exception:
+            logging.exception("Цикл пробуждений выдры")
+        await asyncio.sleep(60)
+
+
 async def memory_maintenance_loop():
     """Раз в сутки сливает дубли и убирает устаревшее."""
     while True:
@@ -3200,6 +3228,7 @@ async def main():
 
     run_in_background(memory_maintenance_loop())
     run_in_background(keep_alive_loop())
+    run_in_background(pet_wake_loop())
 
     try:
         usage = await asyncio.to_thread(get_llm_usage, 1)
