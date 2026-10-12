@@ -56,6 +56,9 @@ ALLOWED_USER_IDS = [
     int(uid.strip()) for uid in ALLOWED_USERS_RAW.split(",") if uid.strip().isdigit()
 ]
 
+COUPLE_USER_IDS = {5084782149, 1253880871}
+BOT_OWNER_ID = int(os.getenv("BOT_OWNER_ID", "5084782149"))
+
 DEFAULT_USER_NAMES = {
     5084782149: "Основной пользователь",
     1253880871: "Полина",
@@ -154,9 +157,16 @@ def remember_name(user) -> None:
 
 
 def partner_of(uid):
-    """Второй участник пары (если разрешённых ровно двое)."""
-    others = [u for u in ALLOWED_USER_IDS if u != uid]
-    return others[0] if len(ALLOWED_USER_IDS) == 2 and others else None
+    """Партнёр только для исходной пары; добавленные пользователи не становятся парой автоматически."""
+    if uid not in COUPLE_USER_IDS:
+        return None
+    others = [u for u in COUPLE_USER_IDS if u != uid]
+    return others[0] if others else None
+
+
+def pet_key_for_user(uid: int) -> str:
+    """У исходной пары одна общая выдра; у каждого добавленного пользователя — своя."""
+    return "couple" if uid in COUPLE_USER_IDS else f"user:{int(uid)}"
 
 
 # ---------------------------------------------------------------------------
@@ -473,7 +483,7 @@ class WebAppHandler(BaseHTTPRequestHandler):
                 return
             names = {uid: user_name(uid) for uid in ALLOWED_USER_IDS}
             if path == "/api/pet/state":
-                result = {"ok": True, "state": pet.get_state(get_db, names, tg_user["id"])}
+                result = {"ok": True, "state": pet.get_state(get_db, names, tg_user["id"], pet_key=pet_key_for_user(tg_user["id"]))}
                 if data.get("catalog"):       # каталог магазина нужен клиенту один раз при запуске
                     result["catalog"] = pet.public_catalog()
             elif path == "/api/pet/admin":
@@ -481,7 +491,7 @@ class WebAppHandler(BaseHTTPRequestHandler):
                     self._reply(403, b"Forbidden")
                     return
                 params = data.get("params") if isinstance(data.get("params"), dict) else {}
-                result = pet.admin(get_db, tg_user["id"], str(data.get("op") or "")[:20], params, names)
+                result = pet.admin(get_db, tg_user["id"], str(data.get("op") or "")[:20], params, names, pet_key=pet_key_for_user(tg_user["id"]))
             else:
                 action = str(data.get("action") or "")[:20]
                 to = str(data.get("to") or "")[:12]
@@ -491,6 +501,7 @@ class WebAppHandler(BaseHTTPRequestHandler):
                     name=str(data.get("name") or "")[:60],
                     room=str(data.get("room") or "")[:12],
                     x=data.get("x"), y=data.get("y"),
+                    pet_key=pet_key_for_user(tg_user["id"]),
                 )
             result["you"] = tg_user["id"]
             self._reply(200, json.dumps(result).encode("utf-8"), "application/json")
@@ -525,6 +536,11 @@ def get_db():
 def init_db():
     with get_db() as conn:
         with conn.cursor() as cursor:
+            cursor.execute("CREATE TABLE IF NOT EXISTS bot_allowed_users (user_id BIGINT PRIMARY KEY, added_by BIGINT, added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
+            for _uid in ALLOWED_USER_IDS:
+                cursor.execute("INSERT INTO bot_allowed_users (user_id, added_by) VALUES (%s, %s) ON CONFLICT (user_id) DO NOTHING", (_uid, BOT_OWNER_ID))
+            cursor.execute("SELECT user_id FROM bot_allowed_users ORDER BY user_id")
+            ALLOWED_USER_IDS[:] = [int(row[0]) for row in cursor.fetchall()]
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS messages (
                     id SERIAL PRIMARY KEY,
@@ -723,6 +739,8 @@ def resolve_scope(user_id, memory_type: str, subject: str = None, shared=None):
     """
     if shared is None:
         shared = memory_type in SHARED_MEMORY_TYPES
+    if user_id not in COUPLE_USER_IDS:
+        shared = False
     owner = None if shared else user_id
     if subject not in SUBJECTS:
         subject = "couple" if memory_type in ("couple", "inside_joke") else "self"
@@ -886,21 +904,31 @@ def get_memories(
     fetch_limit = max(limit * 8, 300) if ranked else limit
     with get_db() as conn:
         with conn.cursor() as cursor:
+            is_original_couple = user_id in COUPLE_USER_IDS
             if include_personal:
+                if is_original_couple:
+                    cursor.execute(
+                        f"SELECT {_MEM_COLUMNS} FROM memories"
+                        " WHERE (user_id = %s OR user_id IS NULL) AND content <> %s"
+                        " ORDER BY id DESC LIMIT %s",
+                        (user_id, TEST_MEMORY_TEXT, fetch_limit),
+                    )
+                else:
+                    cursor.execute(
+                        f"SELECT {_MEM_COLUMNS} FROM memories"
+                        " WHERE user_id = %s AND content <> %s"
+                        " ORDER BY id DESC LIMIT %s",
+                        (user_id, TEST_MEMORY_TEXT, fetch_limit),
+                    )
+                rows = cursor.fetchall()
+            elif is_original_couple:
                 cursor.execute(
-                    f"SELECT {_MEM_COLUMNS} FROM memories"
-                    " WHERE (user_id = %s OR user_id IS NULL) AND content <> %s"
-                    " ORDER BY id DESC LIMIT %s",
-                    (user_id, TEST_MEMORY_TEXT, fetch_limit),
-                )
-            else:
-                cursor.execute(
-                    f"SELECT {_MEM_COLUMNS} FROM memories"
-                    " WHERE user_id IS NULL AND content <> %s"
-                    " ORDER BY id DESC LIMIT %s",
+                    f"SELECT {_MEM_COLUMNS} FROM memories WHERE user_id IS NULL AND content <> %s ORDER BY id DESC LIMIT %s",
                     (TEST_MEMORY_TEXT, fetch_limit),
                 )
-            rows = cursor.fetchall()
+                rows = cursor.fetchall()
+            else:
+                rows = []
 
     now = _utcnow()
     items = [_row_to_memory(r) for r in rows]
@@ -1063,6 +1091,7 @@ def update_user_memory(user_id: int, new_fact: str):
 
 
 def get_couple_memory() -> str:
+    """Читает старую общую заметку пары; вызывается только для исходной пары."""
     with get_db() as conn:
         with conn.cursor() as cursor:
             cursor.execute("SELECT memory_text FROM couple_memory WHERE id = 1")
@@ -1119,8 +1148,11 @@ def delete_memory_phrase(user_id: int, phrase: str):
                     )
                     deleted_from.append("личную память")
 
-            cursor.execute("SELECT memory_text FROM couple_memory WHERE id = 1")
-            row = cursor.fetchone()
+            if user_id in COUPLE_USER_IDS:
+                cursor.execute("SELECT memory_text FROM couple_memory WHERE id = 1")
+                row = cursor.fetchone()
+            else:
+                row = None
             if row and row[0]:
                 lines = row[0].split("\n")
                 new_lines = [l for l in lines if phrase_lower not in l.lower()]
@@ -1135,8 +1167,8 @@ def delete_memory_phrase(user_id: int, phrase: str):
             # Новая память: свои личные + общие
             cursor.execute(
                 "SELECT id, content, user_id FROM memories"
-                " WHERE user_id = %s OR user_id IS NULL",
-                (user_id,),
+                " WHERE user_id = %s OR (user_id IS NULL AND %s = TRUE)",
+                (user_id, user_id in COUPLE_USER_IDS),
             )
             personal_ids, shared_ids = [], []
             for mem_id, content, owner in cursor.fetchall():
@@ -1158,8 +1190,8 @@ def delete_memory_id(user_id: int, mem_id: int) -> bool:
         with conn.cursor() as cursor:
             cursor.execute(
                 "SELECT id FROM memories WHERE id = %s"
-                " AND (user_id = %s OR user_id IS NULL)",
-                (mem_id, user_id),
+                " AND (user_id = %s OR (user_id IS NULL AND %s = TRUE))",
+                (mem_id, user_id, user_id in COUPLE_USER_IDS),
             )
             if not cursor.fetchone():
                 return False
@@ -1173,7 +1205,7 @@ def clear_memory(user_id: int, include_shared: bool = False):
         with conn.cursor() as cursor:
             cursor.execute("DELETE FROM user_memory WHERE user_id = %s", (user_id,))
             cursor.execute("DELETE FROM memories WHERE user_id = %s", (user_id,))
-            if include_shared:
+            if include_shared and user_id in COUPLE_USER_IDS:
                 cursor.execute("DELETE FROM couple_memory WHERE id = 1")
                 cursor.execute("DELETE FROM memories WHERE user_id IS NULL")
 
@@ -2154,14 +2186,49 @@ async def cmd_start(message: types.Message, command: CommandObject):
         "• В личке я общаюсь с тобой напрямую.\n"
         "• В общем чате я молча слушаю и запоминаю, а отзываюсь на префикс"
         " «чат» или ответ реплаем.\n"
+        "• Новые пользователи получают отдельную память и игру.\n"
         "• Список команд: /command"
     )
+
+
+@dp.message(Command("adduser"))
+async def cmd_adduser(message: types.Message, command: CommandObject):
+    """Добавляет Telegram ID в постоянный белый список. Только владелец бота."""
+    if not message.from_user or message.from_user.id != BOT_OWNER_ID:
+        return
+    raw = (command.args or "").strip()
+    if not raw.isdigit():
+        await message.answer("Укажи числовой Telegram ID: /adduser 123456789")
+        return
+    new_id = int(raw)
+    if new_id <= 0 or new_id > 9_223_372_036_854_775_807:
+        await message.answer("❌ Некорректный Telegram ID.")
+        return
+    if new_id in ALLOWED_USER_IDS:
+        await message.answer("ℹ️ Этот пользователь уже есть в белом списке.")
+        return
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "INSERT INTO bot_allowed_users (user_id, added_by) VALUES (%s, %s) ON CONFLICT (user_id) DO NOTHING",
+                    (new_id, message.from_user.id),
+                )
+        ALLOWED_USER_IDS.append(new_id)
+        await message.answer(
+            f"✅ Пользователь {new_id} добавлен. У него будут отдельные личная память, история и игра. "
+            "Он не добавляется в общую память пары автоматически."
+        )
+    except Exception:
+        logging.exception("Не удалось добавить пользователя в белый список")
+        await message.answer("❌ Не удалось сохранить пользователя. Проверь подключение к базе данных.")
 
 
 COMMANDS_HELP = (
     "📋 <b>Доступные команды бота:</b>\n\n"
     "• /start — приветствие и справка\n"
     "• /command — список команд\n"
+    "• /adduser <telegram_id> — добавить пользователя (только владелец)\n"
     "• /draw — холст для рисования\n"
     "• /pet — игра «Наша выдра»\n"
     "• /remind &lt;когда и что&gt; — напоминание (например: завтра в 18:00 купить цветы)\n"
@@ -2210,7 +2277,7 @@ async def cmd_memory(message: types.Message):
     pid = partner_of(user_id)
     partner = user_name(pid) if pid is not None else "партнёр"
 
-    couple = await asyncio.to_thread(get_couple_memory)
+    couple = await asyncio.to_thread(get_couple_memory) if user_id in COUPLE_USER_IDS else EMPTY_COUPLE_MEMORY
     personal = await asyncio.to_thread(get_user_memory, user_id)
     items = await asyncio.to_thread(get_memories, user_id, 80, None, True, False)
 
@@ -2366,7 +2433,7 @@ MEDIA_PLACEHOLDERS = {"Голосовое сообщение", "Видеосоо
 
 # Команды обрабатываются своими обработчиками; общий обработчик их не перехватывает,
 # в каком бы месте файла они ни были объявлены.
-BOT_COMMANDS = ["draw", "pet", "start", "command", "memory", "remember", "memorydelete",
+BOT_COMMANDS = ["draw", "pet", "start", "command", "adduser", "memory", "remember", "memorydelete",
                 "memoryclear", "remind", "reminders", "reminddelete", "limits", "weather"]
 
 
@@ -2488,7 +2555,7 @@ async def handle_media_or_text(message: types.Message):
 
     # --- АКТИВНЫЙ РЕЖИМ (отправка ответа пользователю) ---
     now_line = f"Сейчас: {current_time_str()}."
-    couple_memory = await asyncio.to_thread(get_couple_memory)
+    couple_memory = await asyncio.to_thread(get_couple_memory) if user_id in COUPLE_USER_IDS else EMPTY_COUPLE_MEMORY
 
     if chat_type == "private":
         user_memory = await asyncio.to_thread(get_user_memory, user_id)
@@ -2500,12 +2567,13 @@ async def handle_media_or_text(message: types.Message):
             f"{FORMAT_HINT}"
         )
     else:
+        group_title = "ГРУППОВОЙ чат пары" if user_id in COUPLE_USER_IDS else "ГРУППОВОЙ чат"
         system_prompt = (
-            f"Ты — эмпатичный ИИ-помощник. ГРУППОВОЙ чат пары.\n"
+            f"Ты — эмпатичный ИИ-помощник. {group_title}.\n"
             f"Сейчас обращается: {speaker_name}.\n"
             f"{now_line}\n\n"
-            f"💞 Общая информация о паре:\n{couple_memory}"
-            f"{FORMAT_HINT}"
+            + (f"💞 Общая информация о паре:\n{couple_memory}\n" if user_id in COUPLE_USER_IDS else "")
+            + f"{FORMAT_HINT}"
         )
 
     try:
@@ -3188,13 +3256,15 @@ async def pet_wake_loop():
     await asyncio.sleep(20)
     while True:
         try:
-            name = await asyncio.to_thread(pet.process_wakeups, get_db)
-            if name:
-                for uid in ALLOWED_USER_IDS:
-                    try:
-                        await bot.send_message(uid, f"☀️ {name} проснулся и ждёт вас! 🦦 /pet")
-                    except Exception as e:
-                        logging.warning(f"Не удалось отправить уведомление {uid}: {e}")
+            keys = {pet_key_for_user(uid): [u for u in ALLOWED_USER_IDS if pet_key_for_user(u) == pet_key_for_user(uid)] for uid in ALLOWED_USER_IDS}
+            for key, recipients in keys.items():
+                name = await asyncio.to_thread(pet.process_wakeups, get_db, pet_key=key)
+                if name:
+                    for uid in recipients:
+                        try:
+                            await bot.send_message(uid, f"☀️ {name} проснулся и ждёт вас! 🦦 /pet")
+                        except Exception as e:
+                            logging.warning(f"Не удалось отправить уведомление {uid}: {e}")
         except Exception:
             logging.exception("Цикл пробуждений выдры")
         await asyncio.sleep(60)
