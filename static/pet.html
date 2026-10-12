@@ -172,6 +172,15 @@
   .chipbtn.danger { background: linear-gradient(180deg, #e0534f, #b8302c); }
   #admlog { font-size: 12px; color: var(--dim); line-height: 1.5; white-space: pre-wrap; }
   .panel h4 { margin: 14px 0 4px; font-size: 14px; }
+  #visitbar { display:flex; align-items:center; gap:8px; padding:8px 12px; background:rgba(30,48,91,.72); border-bottom:1px solid var(--line); }
+  #visitselect { flex:1; min-width:0; font:inherit; font-size:13px; font-weight:800; color:var(--text); background:rgba(8,16,40,.65); border:1.5px solid var(--line); border-radius:12px; padding:9px 10px; }
+  #visitbtn, #returnbtn { border:0; border-radius:12px; padding:9px 12px; font:inherit; font-size:12px; font-weight:900; color:white; background:linear-gradient(180deg,#647ce8,#4055b8); white-space:nowrap; }
+  #returnbtn { background:linear-gradient(180deg,#1f9f83,#14745f); display:none; }
+  #visitnote { display:none; padding:6px 12px; text-align:center; font-size:12px; font-weight:800; color:#d8e5ff; background:rgba(20,33,68,.75); }
+  #app.guest-mode > :not(#visitbar):not(#visitnote) { pointer-events:none; }
+  #app.guest-mode #stats, #app.guest-mode #actions, #app.guest-mode #editbar, #app.guest-mode nav, #app.guest-mode .panel { display:none !important; }
+  #app.guest-mode #stage { display:block !important; }
+  #app.guest-mode .arrow, #app.guest-mode #sleepbar button { display:none !important; }
 
   @media (max-height: 640px) { #avatar { width: 42px; height: 42px; } .act .em { width: 36px; height: 36px; font-size: 22px; } }
   @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
@@ -188,6 +197,12 @@
     </div>
     <div id="coins"><i class="coinic" data-icon="coin" data-k="3"></i><span id="coinv">0</span></div>
   </header>
+  <div id="visitbar">
+    <select id="visitselect" aria-label="Выбрать питомца"><option value="">Мой питомец</option></select>
+    <button id="visitbtn" type="button">🏡 В гости</button>
+    <button id="returnbtn" type="button">↩ К себе</button>
+  </div>
+  <div id="visitnote">👀 Ты в гостях — можно смотреть, но нельзя менять чужого питомца</div>
 
   <div id="stats">
     <div class="pill" id="p-happy"><div class="fillbar"></div><span class="ico" data-icon="heart" data-k="3"></span><b id="v-happy">0/100</b></div>
@@ -317,6 +332,7 @@
 
   // ---------- состояние ----------
   let S = null, busy = false, acting = false, bubbleTimer = null, lookTimer = null, seenTs = 0, myId = null;
+  let viewingUserId = null, peopleLoaded = false;
   let skew = 0, wakeAsked = false;
   let CAT = null, tab = 'home', wornKey = '', sel = null, drag = null, shopTab = 'food';
   const ACTIONS = { wake: 'разбудил(а)', feed: 'покормил(а)', play: 'поиграл(а) с', sleep: 'уложил(а) спать', pet: 'погладил(а)' };
@@ -363,14 +379,58 @@
     updatePanels();
   }
 
+  async function loadPeople() {
+    if (peopleLoaded) return;
+    try {
+      const r = await api('/api/pet/state', { people: 1 });
+      const sel = $('visitselect');
+      (r.people || []).forEach(person => {
+        const op = document.createElement('option'); op.value = String(person.id); op.textContent = person.name + ' · 🦦';
+        sel.appendChild(op);
+      });
+      peopleLoaded = true;
+      $('visitbtn').style.display = sel.options.length > 1 ? '' : 'none';
+    } catch (e) {
+      if (String(e.message) === 'auth') veil(AUTH_MSG);
+    }
+  }
+  function setGuestMode(targetId, label) {
+    viewingUserId = targetId == null ? null : Number(targetId);
+    const guest = viewingUserId !== null && viewingUserId !== myId;
+    $('app').classList.toggle('guest-mode', guest);
+    $('visitselect').value = guest ? String(viewingUserId) : '';
+    $('visitbtn').style.display = $('visitselect').options.length > 1 ? '' : 'none';
+    $('visitbtn').textContent = guest ? '➡️ Перейти' : '🏡 В гости';
+    $('returnbtn').style.display = guest ? '' : 'none';
+    $('visitnote').style.display = guest ? 'block' : 'none';
+    if (guest) {
+      $('visitnote').textContent = '👀 Ты в гостях у ' + (label || 'друга') + ' — можно смотреть, но нельзя менять чужого питомца';
+      show('home');
+    }
+  }
+  async function visitSelected() {
+    const val = $('visitselect').value;
+    if (!val) { toast('Выбери, к кому хочешь зайти 🏡'); return; }
+    const opt = $('visitselect').selectedOptions[0];
+    setGuestMode(Number(val), opt ? opt.textContent.replace(/\s*·\s*🦦$/, '') : 'друга');
+    await refresh(true);
+  }
+  $('visitbtn').addEventListener('click', visitSelected);
+  $('returnbtn').addEventListener('click', async () => { setGuestMode(null); await refresh(true); });
+
   async function refresh(first) {
     try {
-      const r = await api('/api/pet/state', (first || !CAT) ? { catalog: 1 } : {});
+      await loadPeople();
+      const body = (first || !CAT) ? { catalog: 1 } : {};
+      if (viewingUserId !== null && viewingUserId !== myId) body.view_user_id = viewingUserId;
+      const r = await api('/api/pet/state', body);
       if (!r.ok) throw new Error('bad');
       if (r.catalog) CAT = r.catalog;
       const st = r.state; myId = r.you;
+      // Если текущий пользователь совпал с выбранным — это обычный режим.
+      if (viewingUserId === myId) setGuestMode(null);
       render(st, first);
-      if (!first && st.last_ts && st.last_ts > seenTs && st.last_actor_id !== myId && st.last_action) {
+      if (!viewingUserId && !first && st.last_ts && st.last_ts > seenTs && st.last_actor_id !== myId && st.last_action) {
         say((st.last_actor || 'Партнёр') + ' ' + (ACTIONS[st.last_action] || 'играет с') + ' ' + (st.last_action === 'play' || !ACTIONS[st.last_action] ? 'питомцем' : 'питомца') + ' 💞');
       }
       seenTs = Math.max(seenTs, st.last_ts || 0);
@@ -427,6 +487,7 @@
   $('arR').addEventListener('click', () => move($('arR').dataset.to));
 
   async function act(name, btn, extra) {
+    if (viewingUserId !== null && viewingUserId !== myId) { toast('В гостях можно только смотреть 👀'); return; }
     if (busy || (view && view.trans)) return; busy = true; if (btn) btn.classList.add('press'); haptic('light');
     try {
       const r = await api('/api/pet/action', Object.assign({ action: name }, extra || {}));
@@ -1080,6 +1141,7 @@
     return pxCanvas(f.c, Math.max(1, Math.min(kmax || 2, Math.floor(88 / Math.max(f.w, f.h)))));
   }
   async function rpc(action, extra) {
+    if (viewingUserId !== null && viewingUserId !== myId) { toast('В гостях можно только смотреть 👀'); return null; }
     try {
       const r = await api('/api/pet/action', Object.assign({ action }, extra || {}));
       if (r.state) { render(r.state); seenTs = Math.max(seenTs, r.state.last_ts || 0); }
@@ -1183,6 +1245,7 @@
   const A_FIELDS = ['happy', 'hunger', 'energy', 'coins', 'level', 'xp', 'name', 'room'];
   function renderAdmin() { A_FIELDS.forEach(k => { $('a-' + k).value = ''; $('a-' + k).placeholder = (S && S[k] != null && k !== 'room') ? String(S[k]) : ''; }); }
   async function adm(op, params) {
+    if (viewingUserId !== null && viewingUserId !== myId) { toast('В гостях нельзя управлять питомцем 👀'); return null; }
     try {
       const r = await api('/api/pet/admin', { op, params: params || {} });
       if (r.state) render(r.state);
