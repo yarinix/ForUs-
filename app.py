@@ -78,6 +78,7 @@ for _pair in os.getenv("USER_NAMES", "").split(","):
 BOT_TIMEZONE = os.getenv("BOT_TIMEZONE", "Asia/Omsk")
 pet.TZ = BOT_TIMEZONE                       # день и ночь в игре — по местным часам
 # Админ игры «Наша выдра»: по умолчанию первый в ALLOWED_USERS; можно задать PET_ADMIN_IDS=id1,id2
+pet.USER_IDS = sorted(COUPLE_USER_IDS)      # двое с общим питомцем: для общих и личных заданий
 pet.ADMIN_IDS = [
     int(x) for x in os.getenv("PET_ADMIN_IDS", "").replace(" ", "").split(",") if x.isdigit()
 ] or ALLOWED_USER_IDS[:1]
@@ -487,13 +488,18 @@ class WebAppHandler(BaseHTTPRequestHandler):
                 if data.get("people"):
                     # Показываем только людей с отдельным питомцем; у исходной пары питомец общий.
                     own_key = pet_key_for_user(caller_id)
-                    people = []
+                    people, seen_keys = [], set()
                     for uid in ALLOWED_USER_IDS:
-                        if uid == caller_id or pet_key_for_user(uid) == own_key:
+                        key = pet_key_for_user(uid)
+                        if uid == caller_id or key == own_key or key in seen_keys:
                             continue
-                        label = user_name(uid)
-                        if not label or label == "Пользователь":
-                            label = f"Гость {uid}"
+                        seen_keys.add(key)
+                        if key == "couple":     # у пары один питомец на двоих — показываем одной записью
+                            label = " и ".join(user_name(u) for u in sorted(COUPLE_USER_IDS))
+                        else:
+                            label = user_name(uid)
+                            if not label or label == "Пользователь":
+                                label = f"Гость {uid}"
                         people.append({"id": uid, "name": label})
                     result = {"ok": True, "people": people, "you": caller_id}
                 else:
@@ -3343,7 +3349,7 @@ async def main():
         logging.exception("Не удалось загрузить напоминания")
 
     try:
-        await bot.set_my_commands([
+        base_commands = [
             types.BotCommand(command="memory", description="Что бот помнит"),
             types.BotCommand(command="remember", description="Запомнить вручную"),
             types.BotCommand(command="memorydelete", description="Удалить факт"),
@@ -3355,7 +3361,16 @@ async def main():
             types.BotCommand(command="draw", description="Холст для рисования"),
             types.BotCommand(command="pet", description="Наша выдра (игра)"),
             types.BotCommand(command="command", description="Список команд"),
-        ])
+        ]
+        await bot.set_my_commands(base_commands)
+        # /adduser работает только у владельца — показываем его в меню только ему
+        try:
+            await bot.set_my_commands(
+                base_commands + [types.BotCommand(command="adduser", description="Добавить пользователя (владелец)")],
+                scope=types.BotCommandScopeChat(chat_id=BOT_OWNER_ID),
+            )
+        except Exception as e:
+            logging.warning(f"Не удалось добавить /adduser в меню владельца: {e}")
     except Exception as e:
         logging.warning(f"Не удалось обновить меню команд: {e}")
 
