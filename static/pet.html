@@ -160,6 +160,18 @@
     background: #fff; color: #2a2140; font-weight: 800; font-size: 13.5px; line-height: 1.3; border-radius: 15px; padding: 10px 14px; box-shadow: 0 6px 18px rgba(0,0,0,.35); transition: opacity .2s, transform .2s; text-align: center; }
   #toast.show { opacity: 1; transform: translate(-50%, 0); }
   #who { cursor: pointer; }
+  #sleepbar { position: absolute; left: 8px; right: 8px; bottom: 10px; z-index: 3; display: none; align-items: center; gap: 10px; background: rgba(8,16,60,.82); border: 1.5px solid #4a6fd6; border-radius: 16px; padding: 9px 12px; box-shadow: 0 4px 14px rgba(0,0,0,.4); }
+  #sleepbar.show { display: flex; }
+  #sleeptxt { flex: 1; font-weight: 800; font-size: 13.5px; line-height: 1.3; }
+  #sleeptxt small { display: block; font-size: 11px; color: var(--dim); font-weight: 700; margin-top: 1px; }
+  .adm { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; margin: 8px 0 12px; }
+  .adm label { min-width: 0; display: flex; flex-direction: column; gap: 3px; font-size: 11.5px; font-weight: 800; color: var(--dim); }
+  .adm input, .adm select { width: 100%; box-sizing: border-box; font: inherit; font-weight: 800; font-size: 15px; color: var(--text); background: rgba(8,16,40,.55); border: 1.5px solid var(--line); border-radius: 12px; padding: 8px 10px; outline: none; min-width: 0; }
+  .admbtns { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 12px; }
+  .admbtns .chipbtn { flex: 1 1 44%; }
+  .chipbtn.danger { background: linear-gradient(180deg, #e0534f, #b8302c); }
+  #admlog { font-size: 12px; color: var(--dim); line-height: 1.5; white-space: pre-wrap; }
+  .panel h4 { margin: 14px 0 4px; font-size: 14px; }
 
   @media (max-height: 640px) { #avatar { width: 42px; height: 42px; } .act .em { width: 36px; height: 36px; font-size: 22px; } }
   @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
@@ -190,6 +202,7 @@
     <button class="arrow" id="arL" style="left:6px"><span data-icon="arrL" data-k="4"></span><small>Кухня</small></button>
     <button class="arrow" id="arR" style="right:6px"><span data-icon="arrR" data-k="4"></span><small>Спальня</small></button>
     <div id="bubble"></div>
+    <div id="sleepbar"><div id="sleeptxt"></div><button class="chipbtn alt" id="wakebtn">Разбудить</button></div>
   </div>
 
   <!-- разделы меню -->
@@ -201,6 +214,7 @@
       <button class="mcard" data-go="edit"><span data-icon="house" data-k="4"></span>Дом<small>расставить мебель</small></button>
       <button class="mcard" data-go="quests"><span data-icon="list" data-k="4"></span>Задания<small>скоро</small></button>
       <button class="mcard" data-go="rewards"><span data-icon="trophy" data-k="4"></span>Достижения<small>скоро</small></button>
+      <button class="mcard" data-go="admin" id="admcard" style="display:none"><span data-icon="gear" data-k="4"></span>Админка<small>управление игрой</small></button>
       <button class="mcard" data-go="settings"><span data-icon="gear" data-k="4"></span>Настройки<small>имя питомца</small></button>
     </div>
   </section>
@@ -220,6 +234,30 @@
     <p>Как зовут вашего питомца? Имя увидите вы оба.</p>
     <div class="field"><input id="nameinp" type="text" maxlength="16" placeholder="Имя питомца" autocomplete="off"><button class="chipbtn" id="namesave">Сохранить</button></div>
     <p>До 16 символов.</p>
+  </section>
+  <section class="panel" id="panel-admin">
+    <div class="top"><button class="back" data-go="menu">‹ Меню</button><h3>Админка</h3></div>
+    <p>Видна только тебе. Пустые поля не меняются.</p>
+    <div class="adm">
+      <label>Радость<input id="a-happy" type="number" inputmode="numeric" min="0" max="100"></label>
+      <label>Сытость<input id="a-hunger" type="number" inputmode="numeric" min="0" max="100"></label>
+      <label>Энергия<input id="a-energy" type="number" inputmode="numeric" min="0" max="100"></label>
+      <label>Монеты<input id="a-coins" type="number" inputmode="numeric" min="0"></label>
+      <label>Уровень<input id="a-level" type="number" inputmode="numeric" min="1"></label>
+      <label>Опыт<input id="a-xp" type="number" inputmode="numeric" min="0"></label>
+      <label>Имя<input id="a-name" type="text" maxlength="16"></label>
+      <label>Комната<select id="a-room"><option value="">—</option><option value="kitchen">Кухня</option><option value="home">Гостиная</option><option value="bedroom">Спальня</option></select></label>
+    </div>
+    <div class="admbtns"><button class="chipbtn" id="a-apply">Применить значения</button><button class="chipbtn alt" id="a-fill">Всё на 100</button></div>
+    <h4>Сон</h4>
+    <div class="admbtns"><button class="chipbtn alt" data-adm="sleep" data-h="0.05">Уложить на 3 мин</button><button class="chipbtn alt" data-adm="sleep" data-h="1">Уложить на 1 ч</button><button class="chipbtn alt" data-adm="sleep" data-h="8">Уложить на 8 ч</button><button class="chipbtn alt" data-adm="wake" data-n="1">Разбудить + уведомление</button></div>
+    <h4>Деньги и вещи</h4>
+    <div class="admbtns"><button class="chipbtn alt" data-adm="add_coins" data-amount="100">+100 монет</button><button class="chipbtn alt" data-adm="add_coins" data-amount="1000">+1000 монет</button><button class="chipbtn alt" data-adm="unlock_all">Открыть все вещи</button><button class="chipbtn alt" data-adm="clear_items">Убрать все вещи</button></div>
+    <h4>Сброс</h4>
+    <div class="admbtns"><button class="chipbtn danger" data-adm="reset_stats" data-confirm="Сбросить уровень, опыт и характеристики? Вещи и монеты останутся.">Сбросить персонажа</button><button class="chipbtn danger" data-adm="reset" data-confirm="Сбросить ВСЮ игру: уровень, монеты, вещи, имя?">Сбросить всю игру</button></div>
+    <h4>Журнал действий</h4>
+    <div class="admbtns"><button class="chipbtn alt" id="a-log">Показать последние 30</button></div>
+    <div id="admlog"></div>
   </section>
   <section class="panel" id="panel-quests">
     <div class="top"><button class="back" data-go="menu">‹ Меню</button><h3>Задания</h3></div>
@@ -279,8 +317,9 @@
 
   // ---------- состояние ----------
   let S = null, busy = false, acting = false, bubbleTimer = null, lookTimer = null, seenTs = 0, myId = null;
+  let skew = 0, wakeAsked = false;
   let CAT = null, tab = 'home', wornKey = '', sel = null, drag = null, shopTab = 'food';
-  const ACTIONS = { feed: 'покормил(а)', play: 'поиграл(а) с', sleep: 'уложил(а) спать', pet: 'погладил(а)' };
+  const ACTIONS = { wake: 'разбудил(а)', feed: 'покормил(а)', play: 'поиграл(а) с', sleep: 'уложил(а) спать', pet: 'погладил(а)' };
 
   function say(text, ms = 3300) {
     const b = $('bubble'); b.textContent = text; b.classList.add('show');
@@ -296,7 +335,7 @@
   const otter = { dataset: { look: 'idle' } };   // текущая поза выдры (рисуется в canvas)
   function moodLook() {
     const m = S ? S.mood : 'ok';
-    return { happy: 'happy', ok: 'idle', hungry: 'sad', sad: 'sad', sleepy: 'sleepy' }[m] || 'idle';
+    return { sleeping: 'sleep', happy: 'happy', ok: 'idle', hungry: 'sad', sad: 'sad', sleepy: 'sleepy' }[m] || 'idle';
   }
   function setLook(kind, ms) {
     otter.dataset.look = kind; acting = !!ms;
@@ -311,7 +350,7 @@
     el.classList.toggle('low', v < 30);
   }
   function render(st, instant) {
-    S = st;
+    S = st; if (st.now) { skew = st.now - Date.now() / 1000; S._at = Date.now(); }
     $('pname').textContent = st.name; $('lvl').textContent = 'Уровень ' + st.level; $('coinv').textContent = st.coins;
     $('xpfill').style.width = Math.min(100, st.xp / st.xp_need * 100) + '%';
     setPill('p-happy', 'happy', st.happy); setPill('p-hunger', 'hunger', st.hunger); setPill('p-energy', 'energy', st.energy);
@@ -319,6 +358,8 @@
     syncRoom(st.room, instant);
     const wk = JSON.stringify(st.worn || {});
     if (wk !== wornKey) { wornKey = wk; drawAvatar(); }
+    $('admcard').style.display = st.is_admin ? '' : 'none';
+    updateSleep();
     updatePanels();
   }
 
@@ -339,6 +380,7 @@
     }
   }
   function greet(st) {
+    if (st.sleeping) { say(st.name + ' спит… 💤', 3000); return; }
     say({ hungry: 'Я проголодался… 🐟', sleepy: 'Так хочется спать… 💤', sad: 'Поиграем? Мне скучно…', happy: 'Ура, вы пришли! 💕', ok: 'Привет! 🦦' }[st.mood], 3800);
   }
 
@@ -364,11 +406,11 @@
     $('roomname').textContent = r.title;
     [['left', 'arL'], ['right', 'arR']].forEach(([side, id]) => {
       const el = $(id), to = r[side];
-      el.style.display = (to && !view.trans) ? '' : 'none';
+      el.style.display = (to && !view.trans && !(S && S.sleeping)) ? '' : 'none';
       if (to) { el.dataset.to = to; el.querySelector('small').textContent = ROOMS[to].title; }
     });
     const a = $('mainact'); a.dataset.a = r.act; a.querySelector('.lbl').textContent = r.label; a.querySelector('small').textContent = r.sub;
-    a.style.visibility = view.trans ? 'hidden' : 'visible';
+    a.style.visibility = (view.trans || (S && S.sleeping)) ? 'hidden' : 'visible';
     const em = a.querySelector('.em'); if (em.dataset.cur !== r.icon) { em.dataset.cur = r.icon; em.textContent = ''; em.appendChild(icon(r.icon, 4)); }
   }
   async function move(to) {
@@ -819,12 +861,42 @@
       const B = newLayer(14, 14); ell(B, 7, 7, 5.5, 5.5, BLUE); for (let i = -4; i <= 4; i++) dot(B, 7 + i, 6 + Math.round(i * .35), '#fff'); outline(B);
       sx.drawImage(B.c, bx - 7, by - 7);
     }
+    { const a = dayAlpha(); if (a > 0.01) { sx.fillStyle = 'rgba(10,16,64,' + a.toFixed(3) + ')'; sx.fillRect(0, 0, view.W, view.H); } }
     if (!view.trans && view.cur === 'bedroom' && look === 'sleep') { sx.fillStyle = 'rgba(12,18,70,.38)'; sx.fillRect(0, 0, view.W, view.H); }
   }
   // положение и размеры выдры в «пикселях игры» — для касания
   function otterHit(lx, ly) {
     return Math.abs(lx - view.ox) < 23 && ly > view.baseY - OB + 4 + oY(14) && ly < view.baseY + 4;
   }
+
+  // ---------- реальное время: день и ночь по часам BOT_TIMEZONE (час приходит с сервера) ----------
+  function gameHour() {
+    if (!S || S.hour == null) return 12;
+    return (S.hour + (Date.now() - (S._at || Date.now())) / 3600000) % 24;
+  }
+  function dayAlpha() {
+    const h = gameHour(), N = 0.36;
+    if (h >= 22 || h < 5) return N;
+    if (h < 8) return N * (1 - (h - 5) / 3);       // рассвет
+    if (h < 18) return 0;
+    return N * (h - 18) / 4;                         // закат
+  }
+  const fmtLeft = (sec) => { sec = Math.max(0, Math.ceil(sec)); const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60; return h ? h + ' ч ' + m + ' мин' : (m ? m + ' мин ' + s + ' с' : s + ' с'); };
+  function updateSleep() {
+    const bar = $('sleepbar'); if (!S) return;
+    if (S.sleeping) {
+      const left = S.sleep_until - (Date.now() / 1000 + skew);
+      if (left <= 0) { if (!wakeAsked) { wakeAsked = true; setTimeout(() => { wakeAsked = false; refresh(false); }, 1500); } }
+      $('sleeptxt').innerHTML = '';
+      $('sleeptxt').append('«' + S.name + '» спит… осталось ' + fmtLeft(left));
+      const sm = document.createElement('small'); sm.textContent = 'Энергия восстанавливается во сне'; $('sleeptxt').appendChild(sm);
+    }
+    bar.classList.toggle('show', !!S.sleeping);
+    $('hint').style.visibility = S.sleeping ? 'hidden' : '';
+    const night = dayAlpha() > 0.2; if (view && ROOMS[view.cur]) $('roomname').textContent = ROOMS[view.cur].title + (night ? ' 🌙' : '');
+  }
+  $('wakebtn').addEventListener('click', () => act('wake', null));
+  setInterval(updateSleep, 1000);
 
   // аватарка: голова выдры
   function drawAvatar() {
@@ -840,7 +912,14 @@
   const GRN = ['#7fd37e', '#4eaa56', '#2f7f3d'];
 
   // спрайт по центру: cx — центр, by — нижняя строка (в координатах выдры, с учётом её масштаба)
-  function sprc(L, cx, by, rows, map) {
+  function scaleRows(rows, f) {
+    if (!f || f === 1) return rows;
+    const w0 = Math.max(...rows.map(r => r.length)), h0 = rows.length, w = Math.round(w0 * f), h = Math.round(h0 * f), out = [];
+    for (let y = 0; y < h; y++) { let r = ''; for (let x = 0; x < w; x++) r += (rows[Math.min(h0 - 1, Math.floor(y / f))] || '').padEnd(w0, '.')[Math.min(w0 - 1, Math.floor(x / f))]; out.push(r); }
+    return out;
+  }
+  function sprc(L, cx, by, rows, map, sc) {
+    rows = scaleRows(rows, sc);
     const w = Math.max(...rows.map(r => r.length)), rr = rows.map(r => r.padEnd(w, '.'));
     spr(L, Math.round(oX(cx) - w / 2), Math.round(oY(by) - rows.length), rr, map);
   }
@@ -855,15 +934,15 @@
 
   // шапки: by — нижний край относительно центра головы, dx — сдвиг по горизонтали
   const HAT = {
-    cap: { by: -13, map: { r: '#e8505b', h: '#ff9aa2', d: '#a82c38' }, rows: [
+    cap: { by: -13, sc: 1.5, map: { r: '#e8505b', h: '#ff9aa2', d: '#a82c38' }, rows: [
       '......rrrrrrrrr......', '....rrrrhhrrrrrrr....', '...rrrrhrrrrrrrrrr...', '..rrrrrrrrrrrrrrrrr..', '..rrrrrrrrrrrrrrrrr..', 'ddddddddddddddddddddd', '.ddddddddddddddddddd.'] },
-    party: { by: -13, map: { y: '#ffd93d', p: '#ff6aa5', w: '#ffffff' }, rows: [
+    party: { by: -13, sc: 1.5, map: { y: '#ffd93d', p: '#ff6aa5', w: '#ffffff' }, rows: [
       '.....y.....', '....ppp....', '....pwp....', '...ppppp...', '...wwwww...', '..ppppppp..', '..ppwpwpp..', '.ppppppppp.', 'ppppppppppp'] },
-    crown: { by: -14, map: { y: '#ffcf3d', d: '#c98a10', r: '#ff4f6e', b: '#4fa8ff' }, rows: [
+    crown: { by: -14, sc: 1.5, map: { y: '#ffcf3d', d: '#c98a10', r: '#ff4f6e', b: '#4fa8ff' }, rows: [
       'y...y...y...y', 'yy.yyy.yyy.yy', 'yyyyyyyyyyyyy', 'yyryyybyyyryy', 'ddddddddddddd'] },
-    beanie: { by: -10, map: { b: '#4f83e8', h: '#9cc2ff', w: '#ffffff', L: '#cfe0ff' }, rows: [
+    beanie: { by: -10, sc: 1.45, map: { b: '#4f83e8', h: '#9cc2ff', w: '#ffffff', L: '#cfe0ff' }, rows: [
       '.........www.........', '........wwwww........', '.....bbbbbbbbbbb.....', '...bbbbbhbbbbbbbbb...', '..bbbbhbbbbbbbbbbbb..', '.bbbbbbbbbbbbbbbbbbb.', 'wwwwwwwwwwwwwwwwwwwww', 'wLwLwLwLwLwLwLwLwLwLw'] },
-    flower: { by: -12, dx: 16, map: { p: '#ff8ab8', y: '#ffe27a' }, rows: ['.pp.', 'pyyp', 'pyyp', '.pp.'] },
+    flower: { by: -12, sc: 1.6, dx: 16, map: { p: '#ff8ab8', y: '#ffe27a' }, rows: ['.pp.', 'pyyp', 'pyyp', '.pp.'] },
   };
   const HEARTG = { r: '#ff4f8b', h: '#ffd0e2' };
   const HEARTG_ROWS = ['.rrr.rrr.', 'rrrrrrrrr', 'rhrrrrrrr', 'rrrrrrrrr', '.rrrrrrr.', '..rrrrr..', '...rrr...', '....r....'];
@@ -876,54 +955,32 @@
       else if (id === 'round') { ring(L, ex, ey, 6, 5.5, '#e8b84a'); od(L, ex - 3, ey - 3, '#ffffff'); }
       else if (id === 'hearts') { spr(L, Math.round(oX(ex)) - 4, Math.round(oY(ey)) - 4, HEARTG_ROWS, HEARTG); }
     }
-    if (id === 'sunglasses') { or_(L, hx - 7, ey - 3, 14, 2, '#1d1d33'); or_(L, hx - 25, hy - 1.5, 5, 2, '#1d1d33'); or_(L, hx + 20, hy - 1.5, 5, 2, '#1d1d33'); }
+    if (id === 'sunglasses') { or_(L, hx - 7, ey - 3, 14, 2, '#1d1d33'); or_(L, hx - 21, hy - 1.5, 4, 2, '#1d1d33'); or_(L, hx + 17, hy - 1.5, 4, 2, '#1d1d33'); }
     if (id === 'round') or_(L, hx - 6.5, ey - 1, 13, 1, '#e8b84a');
   }
   function drawNeckWear(L, hx, hy, id) {
     if (id === 'scarf') {
-      or_(L, hx + 8, hy + 20, 6, 12, '#ef668b'); or_(L, hx + 8, hy + 26, 6, 2, '#fff0f7'); or_(L, hx + 8, hy + 30, 6, 2, '#fff0f7');
-      oe(L, hx, hy + 20, 19, 4.8, ['#ffc0d7', '#f477a4', '#bd426f'], { d: .1 });
-      for (let i = -15; i <= 15; i += 5) od(L, hx + i, hy + 20, '#fff0f7');
+      or_(L, hx + 6, hy + 20, 7, 14, '#e04848'); or_(L, hx + 6, hy + 26, 7, 1.5, '#fff0f0'); or_(L, hx + 6, hy + 30, 7, 1.5, '#fff0f0');
+      oe(L, hx, hy + 19.5, 18, 4.4, ['#ff8a8a', '#e04848', '#b02f2f'], { d: .1 });
+      for (let i = -14; i <= 14; i += 5) od(L, hx + i, hy + 19.5, '#fff0f0');
     } else if (id === 'bow') {
-      sprc(L, hx, hy + 24, ['rr.....rr', 'rrrr.rrrr', 'rrrrkrrrr', 'rrrr.rrrr', 'rr.....rr'], { r: '#ff5a8a', k: '#a8274f' });
+      sprc(L, hx, hy + 25, ['rr.....rr', 'rrrr.rrrr', 'rrrrkrrrr', 'rrrr.rrrr', 'rr.....rr'], { r: '#ff5a8a', k: '#a8274f' }, 1.7);
     } else if (id === 'bandana') {
-      sprc(L, hx, hy + 26, ['bbbbbbbbbbbbbbb', '.bbwbbbwbbbwbb.', '..bbbbbbbbbbb..', '...bbbwbbbbb...', '....bbbbbbb....', '.....bbbbb.....', '......bbb......'], { b: '#4f83e8', w: '#ffffff' });
+      sprc(L, hx, hy + 26, ['bbbbbbbbbbbbbbb', '.bbwbbbwbbbwbb.', '..bbbbbbbbbbb..', '...bbbwbbbbb...', '....bbbbbbb....', '.....bbbbb.....', '......bbb......'], { b: '#4f83e8', w: '#ffffff' }, 1.5);
     }
-  }
-  // Увеличенный масштаб одежды: аксессуары должны занимать размер головы/тела,
-  // а не выглядеть крошечными пикселями на выдре.
-  function sprcWear(L, cx, by, rows, map, scale = 1.5) {
-    const width = Math.max(...rows.map(r => r.length));
-    const expanded = [];
-    for (const row of rows) {
-      const pixels = row.padEnd(width, '.').split('').map(ch => ch === '.' ? '.' : ch.repeat(scale)).join('');
-      for (let n = 0; n < scale; n++) expanded.push(pixels);
-    }
-    sprc(L, cx, by, expanded, map);
   }
   function drawWear(L, hx, hy) {
     const w = WEAR || {};
     if (w.neck) drawNeckWear(L, hx, hy, w.neck);
     if (w.face) drawFaceWear(L, hx, hy, w.face);
     const h = w.hat && HAT[w.hat];
-    if (h) sprcWear(L, hx + (h.dx || 0), hy + h.by, h.rows, h.map, w.hat === 'flower' ? 2 : 2);
+    if (h) sprc(L, hx + (h.dx || 0), hy + h.by, h.rows, h.map, h.sc);
   }
-  function bodyBack(L, id) { if (id === 'cape') oe(L, OX, 68, 24, 20, ['#ff9dbb', '#ec6593', '#b94370'], { d: .08 }); }
+  function bodyBack(L, id) { if (id === 'cape') { oe(L, OX, 70, 26, 21, ['#ff7a7a', '#d93b3b', '#a72a2a'], { d: .08 }); or_(L, OX - 13, 53, 26, 4, '#ffd23d'); } }
   function bodyFront(L, id) {
-    if (id === 'tee') {
-      oe(L, OX, 73, 19.5, 16, ['#b9f5e3', '#69d8bd', '#35ad91'], { d: .1 });
-      of(L, OX, 61, 5, 3, '#69d8bd');
-      sprc(L, OX, 72, SPR.heart.rows, SPR.heart.map);
-    } else if (id === 'sweater') {
-      oe(L, OX, 73, 19.5, 16, ['#b8d4ff', '#7ba8f5', '#4777d7'], { d: .1 });
-      stripesEll(L, OX, 73, 19.5, 16, 5, '#fff0f7');
-      of(L, OX, 60, 5, 3, '#7ba8f5');
-    } else if (id === 'apron') {
-      oe(L, OX, 74, 16.5, 15.5, ['#ffe0eb', '#ffacd0', '#e879a6'], { d: .1 });
-      or_(L, OX - 11, 59, 3, 11, '#e879a6'); or_(L, OX + 8, 59, 3, 11, '#e879a6');
-      or_(L, OX - 7, 74, 14, 7, '#fff5fa');
-      of(L, OX, 63, 5, 3, '#ffacd0');
-    }
+    if (id === 'tee') { oe(L, OX, 66.5, 19, 18.5, ['#8fe8cc', '#4cc4a4', '#2f9c80'], { d: .1 }); os(L, OX - 4, 62, SPR.heart.rows, SPR.heart.map); }
+    else if (id === 'sweater') { oe(L, OX, 66.5, 19, 18.5, ['#7fb0ff', '#4f83e8', '#3560c4'], { d: .1 }); stripesEll(L, OX, 66.5, 19, 18.5, 4, '#e8f1ff'); }
+    else if (id === 'apron') { oe(L, OX, 71, 14, 14.5, ['#ffd3e0', '#ff9fbf', '#e06b95'], { d: .1 }); or_(L, OX - 11, 54, 3, 14, '#e06b95'); or_(L, OX + 8, 54, 3, 14, '#e06b95'); or_(L, OX - 6, 73, 12, 7, '#fff0f5'); }
   }
 
   // ---------- мебель: рисунки (низ по центру для пола, центр для стены) ----------
@@ -1035,7 +1092,7 @@
   const owns = (id) => !!(S && (S.owned || []).includes(id));
 
   // ---------- навигация: Главная / Меню и разделы меню ----------
-  const PANELS = ['menu', 'shop', 'wardrobe', 'quests', 'rewards', 'settings'];
+  const PANELS = ['menu', 'shop', 'wardrobe', 'quests', 'rewards', 'settings', 'admin'];
   function show(t) {
     const edit = t === 'edit'; if (edit) t = 'home';
     tab = t; setEdit(edit);
@@ -1045,7 +1102,7 @@
     $('actions').style.display = (home && !edit) ? '' : 'none';
     $('editbar').style.display = (home && edit) ? 'flex' : 'none';
     PANELS.forEach(p => $('panel-' + p).style.display = (p === t) ? 'block' : 'none');
-    if (t === 'shop') renderShop(); else if (t === 'wardrobe') renderWardrobe(); else if (t === 'settings') renderSettings();
+    if (t === 'shop') renderShop(); else if (t === 'wardrobe') renderWardrobe(); else if (t === 'settings') renderSettings(); else if (t === 'admin') renderAdmin();
     haptic('light');
   }
   function updatePanels() {
@@ -1121,6 +1178,37 @@
     if (r) { toast(r.say); haptic(r.ok ? 'ok' : 'err'); if (r.ok) $('nameinp').blur(); }
   });
   $('nameinp').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('namesave').click(); });
+
+  // ---------- админка (сервер всё равно проверяет, что ты админ) ----------
+  const A_FIELDS = ['happy', 'hunger', 'energy', 'coins', 'level', 'xp', 'name', 'room'];
+  function renderAdmin() { A_FIELDS.forEach(k => { $('a-' + k).value = ''; $('a-' + k).placeholder = (S && S[k] != null && k !== 'room') ? String(S[k]) : ''; }); }
+  async function adm(op, params) {
+    try {
+      const r = await api('/api/pet/admin', { op, params: params || {} });
+      if (r.state) render(r.state);
+      if (r.say) toast(r.say);
+      haptic(r.ok ? 'ok' : 'err');
+      return r;
+    } catch (e) {
+      if (String(e.message) === 'auth') toast('Нет доступа к админке'); else toast('Связь потерялась 📡');
+      return null;
+    }
+  }
+  $('a-apply').addEventListener('click', async () => {
+    const p = {}; A_FIELDS.forEach(k => { const v = $('a-' + k).value.trim(); if (v !== '') p[k] = v; });
+    if (await adm('set', p)) renderAdmin();
+  });
+  $('a-fill').addEventListener('click', () => adm('fill'));
+  document.querySelectorAll('[data-adm]').forEach(b => b.addEventListener('click', async () => {
+    const d = b.dataset, run = () => adm(d.adm, { hours: d.h, amount: d.amount, notify: d.n === '1' }).then(renderAdmin);
+    if (d.confirm) {
+      if (tg.showConfirm) tg.showConfirm(d.confirm, (ok) => ok && run()); else if (window.confirm(d.confirm)) run();
+    } else run();
+  }));
+  $('a-log').addEventListener('click', async () => {
+    const r = await adm('log'); if (!r || !r.log) return;
+    $('admlog').textContent = r.log.length ? r.log.map(l => l.at.slice(5, 16) + '  ' + l.who + '  ' + l.action + (l.ok ? '' : ' ✗') + (l.coins ? '  ' + (l.coins > 0 ? '+' : '') + l.coins + '🪙' : '')).join('\n') : 'Пока пусто';
+  });
 
   // ---------- выбор еды ----------
   function closeSheet() { $('sheet').classList.remove('show'); }
@@ -1234,7 +1322,7 @@
   window.addEventListener('resize', layout);
   setInterval(() => { const n = performance.now(); frame(n); if (tab === 'wardrobe') wardFrame(n); }, 100);
 
-  window.__pet = { otter, view };   // для отладки
+  window.__pet = { otter, view, drawOtter, newLayer };   // для отладки
 
   // ---------- старт ----------
   if (!tg.initData) {
