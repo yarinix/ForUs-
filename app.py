@@ -483,9 +483,34 @@ class WebAppHandler(BaseHTTPRequestHandler):
                 return
             names = {uid: user_name(uid) for uid in ALLOWED_USER_IDS}
             if path == "/api/pet/state":
-                result = {"ok": True, "state": pet.get_state(get_db, names, tg_user["id"], pet_key=pet_key_for_user(tg_user["id"]))}
-                if data.get("catalog"):       # каталог магазина нужен клиенту один раз при запуске
-                    result["catalog"] = pet.public_catalog()
+                caller_id = tg_user["id"]
+                if data.get("people"):
+                    # Показываем только людей с отдельным питомцем; у исходной пары питомец общий.
+                    own_key = pet_key_for_user(caller_id)
+                    people = []
+                    for uid in ALLOWED_USER_IDS:
+                        if uid == caller_id or pet_key_for_user(uid) == own_key:
+                            continue
+                        label = user_name(uid)
+                        if not label or label == "Пользователь":
+                            label = f"Гость {uid}"
+                        people.append({"id": uid, "name": label})
+                    result = {"ok": True, "people": people, "you": caller_id}
+                else:
+                    target_id = caller_id
+                    if data.get("view_user_id") is not None:
+                        try:
+                            target_id = int(data.get("view_user_id"))
+                        except (TypeError, ValueError):
+                            self._reply(400, b"Bad user id")
+                            return
+                        if target_id not in ALLOWED_USER_IDS:
+                            self._reply(403, b"Forbidden")
+                            return
+                    # В гостевом режиме только читаем состояние чужого питомца.
+                    result = {"ok": True, "state": pet.get_state(get_db, names, caller_id, pet_key=pet_key_for_user(target_id)), "you": caller_id, "viewing": target_id}
+                    if data.get("catalog"):       # каталог магазина нужен клиенту один раз при запуске
+                        result["catalog"] = pet.public_catalog()
             elif path == "/api/pet/admin":
                 if tg_user["id"] not in pet.ADMIN_IDS:      # только админ, по подписи Telegram
                     self._reply(403, b"Forbidden")
