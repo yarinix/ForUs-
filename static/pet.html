@@ -160,6 +160,26 @@
     background: #fff; color: #2a2140; font-weight: 800; font-size: 13.5px; line-height: 1.3; border-radius: 15px; padding: 10px 14px; box-shadow: 0 6px 18px rgba(0,0,0,.35); transition: opacity .2s, transform .2s; text-align: center; }
   #toast.show { opacity: 1; transform: translate(-50%, 0); }
   #who { cursor: pointer; }
+  #toast { white-space: pre-line; }
+  nav button { position: relative; }
+  nav button.dot::after { content: ''; position: absolute; top: 7px; right: 28%; width: 9px; height: 9px; border-radius: 50%; background: #ff5a6a; box-shadow: 0 0 0 2px #14224a; }
+  .qinfo { font-size: 12px; font-weight: 700; color: var(--dim); text-align: center; margin: -2px 0 12px; line-height: 1.4; }
+  .qinfo.ok { color: var(--ok); }
+  .qcat { display: flex; align-items: baseline; justify-content: space-between; margin: 16px 2px 7px; font-weight: 800; font-size: 15px; }
+  .qcat small { font-size: 11px; color: var(--dim); font-weight: 700; }
+  .q { background: rgba(8,16,40,.4); border: 1.5px solid var(--line); border-radius: 16px; padding: 11px 12px; margin-bottom: 8px; }
+  .q.done { border-color: rgba(61,220,132,.7); background: rgba(61,220,132,.1); }
+  .q.claimed { opacity: .55; }
+  .q .qt { font-weight: 800; font-size: 14px; line-height: 1.3; }
+  .q .qh { font-size: 11.5px; color: var(--dim); font-weight: 700; margin-top: 3px; }
+  .qbar { height: 9px; border-radius: 6px; background: rgba(255,255,255,.1); overflow: hidden; margin: 9px 0 8px; }
+  .qbar > div { height: 100%; border-radius: 6px; background: linear-gradient(90deg, #4f9bff, #7be0ff); }
+  .q.done .qbar > div { background: linear-gradient(90deg, #3ddc84, #8cf0b8); }
+  .qrow { display: flex; align-items: center; gap: 10px; }
+  .qrow .qp { font-weight: 800; font-size: 13px; min-width: 44px; }
+  .qrow .qr { flex: 1; font-size: 12px; font-weight: 800; color: var(--coin); }
+  .qrow .buy { width: auto; padding: 7px 14px; }
+
   #sleepbar { position: absolute; left: 8px; right: 8px; bottom: 10px; z-index: 3; display: none; align-items: center; gap: 10px; background: rgba(8,16,60,.82); border: 1.5px solid #4a6fd6; border-radius: 16px; padding: 9px 12px; box-shadow: 0 4px 14px rgba(0,0,0,.4); }
   #sleepbar.show { display: flex; }
   #sleeptxt { flex: 1; font-weight: 800; font-size: 13.5px; line-height: 1.3; }
@@ -172,12 +192,10 @@
   .chipbtn.danger { background: linear-gradient(180deg, #e0534f, #b8302c); }
   #admlog { font-size: 12px; color: var(--dim); line-height: 1.5; white-space: pre-wrap; }
   .panel h4 { margin: 14px 0 4px; font-size: 14px; }
-  #visitbar { display:flex; align-items:center; gap:8px; padding:8px 12px; background:rgba(30,48,91,.72); border-bottom:1px solid var(--line); }
-  #visitselect { flex:1; min-width:0; font:inherit; font-size:13px; font-weight:800; color:var(--text); background:rgba(8,16,40,.65); border:1.5px solid var(--line); border-radius:12px; padding:9px 10px; }
-  #visitbtn, #returnbtn { border:0; border-radius:12px; padding:9px 12px; font:inherit; font-size:12px; font-weight:900; color:white; background:linear-gradient(180deg,#647ce8,#4055b8); white-space:nowrap; }
-  #returnbtn { background:linear-gradient(180deg,#1f9f83,#14745f); display:none; }
-  #visitnote { display:none; padding:6px 12px; text-align:center; font-size:12px; font-weight:800; color:#d8e5ff; background:rgba(20,33,68,.75); }
-  #app.guest-mode > :not(#visitbar):not(#visitnote) { pointer-events:none; }
+  #visitnote { display:none; align-items:center; justify-content:space-between; gap:10px; padding:8px 12px; font-size:12.5px; font-weight:800; color:#d8e5ff; background:rgba(30,48,91,.82); border-bottom:1px solid var(--line); }
+  #visitnote.on { display:flex; }
+  #returnbtn { border:0; border-radius:12px; padding:9px 13px; font:inherit; font-size:12.5px; font-weight:900; color:white; background:linear-gradient(180deg,#1f9f83,#14745f); white-space:nowrap; }
+  #app.guest-mode > :not(#visitnote) { pointer-events:none; }
   #app.guest-mode #stats, #app.guest-mode #actions, #app.guest-mode #editbar, #app.guest-mode nav, #app.guest-mode .panel { display:none !important; }
   #app.guest-mode #stage { display:block !important; }
   #app.guest-mode .arrow, #app.guest-mode #sleepbar button { display:none !important; }
@@ -197,12 +215,7 @@
     </div>
     <div id="coins"><i class="coinic" data-icon="coin" data-k="3"></i><span id="coinv">0</span></div>
   </header>
-  <div id="visitbar">
-    <select id="visitselect" aria-label="Выбрать питомца"><option value="">Мой питомец</option></select>
-    <button id="visitbtn" type="button">🏡 В гости</button>
-    <button id="returnbtn" type="button">↩ К себе</button>
-  </div>
-  <div id="visitnote">👀 Ты в гостях — можно смотреть, но нельзя менять чужого питомца</div>
+  <div id="visitnote"><span id="visittext"></span><button id="returnbtn" type="button">↩ К себе</button></div>
 
   <div id="stats">
     <div class="pill" id="p-happy"><div class="fillbar"></div><span class="ico" data-icon="heart" data-k="3"></span><b id="v-happy">0/100</b></div>
@@ -227,7 +240,8 @@
       <button class="mcard" data-go="shop"><span data-icon="bag" data-k="4"></span>Магазин<small>еда, одежда, мебель</small></button>
       <button class="mcard" data-go="wardrobe"><span data-icon="shirt" data-k="4"></span>Гардероб<small>переодеть питомца</small></button>
       <button class="mcard" data-go="edit"><span data-icon="house" data-k="4"></span>Дом<small>расставить мебель</small></button>
-      <button class="mcard" data-go="quests"><span data-icon="list" data-k="4"></span>Задания<small>скоро</small></button>
+      <button class="mcard" data-go="quests"><span data-icon="list" data-k="4"></span>Задания<small id="qsub">ежедневные дела</small></button>
+      <button class="mcard" data-go="visit" id="visitcard" style="display:none"><span data-icon="paw" data-k="4"></span>В гости<small>посетить друга</small></button>
       <button class="mcard" data-go="rewards"><span data-icon="trophy" data-k="4"></span>Достижения<small>скоро</small></button>
       <button class="mcard" data-go="admin" id="admcard" style="display:none"><span data-icon="gear" data-k="4"></span>Админка<small>управление игрой</small></button>
       <button class="mcard" data-go="settings"><span data-icon="gear" data-k="4"></span>Настройки<small>имя питомца</small></button>
@@ -267,7 +281,7 @@
     <h4>Сон</h4>
     <div class="admbtns"><button class="chipbtn alt" data-adm="sleep" data-h="0.05">Уложить на 3 мин</button><button class="chipbtn alt" data-adm="sleep" data-h="1">Уложить на 1 ч</button><button class="chipbtn alt" data-adm="sleep" data-h="8">Уложить на 8 ч</button><button class="chipbtn alt" data-adm="wake" data-n="1">Разбудить + уведомление</button></div>
     <h4>Деньги и вещи</h4>
-    <div class="admbtns"><button class="chipbtn alt" data-adm="add_coins" data-amount="100">+100 монет</button><button class="chipbtn alt" data-adm="add_coins" data-amount="1000">+1000 монет</button><button class="chipbtn alt" data-adm="unlock_all">Открыть все вещи</button><button class="chipbtn alt" data-adm="clear_items">Убрать все вещи</button></div>
+    <div class="admbtns"><button class="chipbtn alt" data-adm="add_coins" data-amount="100">+100 монет</button><button class="chipbtn alt" data-adm="add_coins" data-amount="1000">+1000 монет</button><button class="chipbtn alt" data-adm="unlock_all">Открыть все вещи</button><button class="chipbtn alt" data-adm="clear_items">Убрать все вещи</button><button class="chipbtn alt" data-adm="quests_done">Выполнить задания дня</button><button class="chipbtn alt" data-adm="quests_reset">Сбросить прогресс заданий</button></div>
     <h4>Сброс</h4>
     <div class="admbtns"><button class="chipbtn danger" data-adm="reset_stats" data-confirm="Сбросить уровень, опыт и характеристики? Вещи и монеты останутся.">Сбросить персонажа</button><button class="chipbtn danger" data-adm="reset" data-confirm="Сбросить ВСЮ игру: уровень, монеты, вещи, имя?">Сбросить всю игру</button></div>
     <h4>Журнал действий</h4>
@@ -275,10 +289,13 @@
     <div id="admlog"></div>
   </section>
   <section class="panel" id="panel-quests">
-    <div class="top"><button class="back" data-go="menu">‹ Меню</button><h3>Задания</h3></div>
-    <p>Ежедневные дела для вас двоих. Например:</p>
-    <ul><li>Покормить питомца утром</li><li>Поиграть вместе</li><li>Уложить спать до полуночи</li></ul>
-    <span class="soon">скоро</span>
+    <div class="top"><button class="back" data-go="menu">‹ Меню</button><h3>Задания</h3><div class="wal" id="qtimer">⏳</div></div>
+    <div id="qbody"></div>
+  </section>
+  <section class="panel" id="panel-visit">
+    <div class="top"><button class="back" data-go="menu">‹ Меню</button><h3>В гости</h3></div>
+    <p>К кому зайти? В гостях можно только смотреть — менять чужого питомца нельзя.</p>
+    <div id="visitlist"></div>
   </section>
   <section class="panel" id="panel-rewards">
     <div class="top"><button class="back" data-go="menu">‹ Меню</button><h3>Достижения</h3></div>
@@ -366,6 +383,7 @@
     el.classList.toggle('low', v < 30);
   }
   function render(st, instant) {
+    if (!st.quests && S && S.quests) st.quests = S.quests;   // чужой питомец (гость) заданий не присылает
     S = st; if (st.now) { skew = st.now - Date.now() / 1000; S._at = Date.now(); }
     $('pname').textContent = st.name; $('lvl').textContent = 'Уровень ' + st.level; $('coinv').textContent = st.coins;
     $('xpfill').style.width = Math.min(100, st.xp / st.xp_need * 100) + '%';
@@ -375,48 +393,47 @@
     const wk = JSON.stringify(st.worn || {});
     if (wk !== wornKey) { wornKey = wk; drawAvatar(); }
     $('admcard').style.display = st.is_admin ? '' : 'none';
+    const ready = ((st.quests && st.quests.items) || []).filter(i => i.done && !i.claimed).length;
+    $('qsub').textContent = ready ? '🎁 наград: ' + ready : 'ежедневные дела';
+    document.querySelector('nav button[data-tab="menu"]').classList.toggle('dot', ready > 0);
     updateSleep();
     updatePanels();
   }
 
+  let PEOPLE = [];
   async function loadPeople() {
     if (peopleLoaded) return;
     try {
       const r = await api('/api/pet/state', { people: 1 });
-      const sel = $('visitselect');
-      (r.people || []).forEach(person => {
-        const op = document.createElement('option'); op.value = String(person.id); op.textContent = person.name + ' · 🦦';
-        sel.appendChild(op);
-      });
-      peopleLoaded = true;
-      $('visitbtn').style.display = sel.options.length > 1 ? '' : 'none';
+      PEOPLE = r.people || []; peopleLoaded = true;
+      $('visitcard').style.display = PEOPLE.length ? '' : 'none';
     } catch (e) {
       if (String(e.message) === 'auth') veil(AUTH_MSG);
     }
   }
+  // Режим гостя: питомца можно только смотреть. Вернуться — кнопка «К себе» в верхней полосе.
   function setGuestMode(targetId, label) {
     viewingUserId = targetId == null ? null : Number(targetId);
     const guest = viewingUserId !== null && viewingUserId !== myId;
     $('app').classList.toggle('guest-mode', guest);
-    $('visitselect').value = guest ? String(viewingUserId) : '';
-    $('visitbtn').style.display = $('visitselect').options.length > 1 ? '' : 'none';
-    $('visitbtn').textContent = guest ? '➡️ Перейти' : '🏡 В гости';
-    $('returnbtn').style.display = guest ? '' : 'none';
-    $('visitnote').style.display = guest ? 'block' : 'none';
+    $('visitnote').classList.toggle('on', guest);
     if (guest) {
-      $('visitnote').textContent = '👀 Ты в гостях у ' + (label || 'друга') + ' — можно смотреть, но нельзя менять чужого питомца';
+      $('visittext').textContent = '👀 Ты в гостях у ' + (label || 'друга');
       show('home');
     }
   }
-  async function visitSelected() {
-    const val = $('visitselect').value;
-    if (!val) { toast('Выбери, к кому хочешь зайти 🏡'); return; }
-    const opt = $('visitselect').selectedOptions[0];
-    setGuestMode(Number(val), opt ? opt.textContent.replace(/\s*·\s*🦦$/, '') : 'друга');
-    await refresh(true);
+  async function visitUser(id, label) { setGuestMode(id, label); await refresh(true); }
+  async function goHome() { setGuestMode(null); show('home'); await refresh(true); }
+  $('returnbtn').addEventListener('click', goHome);
+  function renderVisit() {
+    const box = $('visitlist'); box.textContent = '';
+    if (!PEOPLE.length) { box.appendChild(el('div', 'empty', 'Пока некого навестить 🏡')); return; }
+    PEOPLE.forEach(p => {
+      const b = el('button', 'srow'); b.appendChild(el('span', 'e', '🦦'));
+      b.appendChild(el('span', 'm', p.name)); b.appendChild(el('span', 'r', 'Зайти ›'));
+      b.addEventListener('click', () => visitUser(p.id, p.name)); box.appendChild(b);
+    });
   }
-  $('visitbtn').addEventListener('click', visitSelected);
-  $('returnbtn').addEventListener('click', async () => { setGuestMode(null); await refresh(true); });
 
   async function refresh(first) {
     try {
@@ -1154,7 +1171,7 @@
   const owns = (id) => !!(S && (S.owned || []).includes(id));
 
   // ---------- навигация: Главная / Меню и разделы меню ----------
-  const PANELS = ['menu', 'shop', 'wardrobe', 'quests', 'rewards', 'settings', 'admin'];
+  const PANELS = ['menu', 'shop', 'wardrobe', 'quests', 'visit', 'rewards', 'settings', 'admin'];
   function show(t) {
     const edit = t === 'edit'; if (edit) t = 'home';
     tab = t; setEdit(edit);
@@ -1165,10 +1182,11 @@
     $('editbar').style.display = (home && edit) ? 'flex' : 'none';
     PANELS.forEach(p => $('panel-' + p).style.display = (p === t) ? 'block' : 'none');
     if (t === 'shop') renderShop(); else if (t === 'wardrobe') renderWardrobe(); else if (t === 'settings') renderSettings(); else if (t === 'admin') renderAdmin();
+    else if (t === 'quests') renderQuests(); else if (t === 'visit') renderVisit();
     haptic('light');
   }
   function updatePanels() {
-    if (tab === 'shop') renderShop(); else if (tab === 'wardrobe') renderWardrobe();
+    if (tab === 'shop') renderShop(); else if (tab === 'wardrobe') renderWardrobe(); else if (tab === 'quests') renderQuests();
     else if (tab === 'home' && view.edit) renderEditList();
   }
   document.querySelectorAll('nav button').forEach(b => b.addEventListener('click', () => show(b.dataset.tab)));
@@ -1272,6 +1290,44 @@
     const r = await adm('log'); if (!r || !r.log) return;
     $('admlog').textContent = r.log.length ? r.log.map(l => l.at.slice(5, 16) + '  ' + l.who + '  ' + l.action + (l.ok ? '' : ' ✗') + (l.coins ? '  ' + (l.coins > 0 ? '+' : '') + l.coins + '🪙' : '')).join('\n') : 'Пока пусто';
   });
+
+  // ---------- задания ----------
+  let questBusy = false;
+  const fmtQLeft = (s) => { s = Math.max(0, Math.floor(s)); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60); return (h ? h + ' ч ' : '') + m + ' мин'; };
+  function updateQTimer() {
+    const Q = S && S.quests; if (!Q) return;
+    $('qtimer').textContent = '⏳ ' + fmtQLeft(Q.ends - (Date.now() / 1000 + skew));
+  }
+  function renderQuests() {
+    const box = $('qbody'); if (!box) return; box.textContent = '';
+    const Q = S && S.quests;
+    if (!Q || !CAT) { box.appendChild(el('div', 'empty', 'Загружаем задания…')); return; }
+    updateQTimer();
+    const total = Q.items.length, got = Q.items.filter(i => i.claimed).length, bi = CAT[Q.bonus.item];
+    box.appendChild(el('div', 'qinfo' + (Q.all_claimed ? ' ok' : ''), Q.all_claimed
+      ? 'Все задания дня выполнены — бонус получен 🎉'
+      : 'Забрано ' + got + ' из ' + total + '. Заберёшь все — бонус: 🪙' + Q.bonus.coins + ' + ' + Q.bonus.xp + ' XP' + (bi ? ' + ' + bi.e : '')));
+    [1, 2, 3, 4].forEach(cat => {
+      const items = Q.items.filter(i => i.cat === cat), meta = Q.cats[String(cat)]; if (!items.length || !meta) return;
+      const head = el('div', 'qcat', meta.e + ' ' + meta.n); head.appendChild(el('small', null, meta.d)); box.appendChild(head);
+      items.forEach(i => {
+        const d = el('div', 'q' + (i.claimed ? ' claimed' : i.done ? ' done' : ''));
+        d.appendChild(el('div', 'qt', i.text)); if (i.hint) d.appendChild(el('div', 'qh', i.hint));
+        const bar = el('div', 'qbar'), fill = el('div'); fill.style.width = Math.min(100, i.progress / i.target * 100) + '%'; bar.appendChild(fill); d.appendChild(bar);
+        const row = el('div', 'qrow'), it = i.item && CAT[i.item];
+        row.appendChild(el('span', 'qp', i.progress + '/' + i.target));
+        row.appendChild(el('span', 'qr', '🪙' + i.coins + ' · ' + i.xp + ' XP' + (it ? ' · ' + it.e : '')));
+        const b = el('button', 'buy' + (i.claimed ? ' off' : i.done ? '' : ' poor'), i.claimed ? 'Получено ✓' : i.done ? 'Забрать' : 'В процессе');
+        b.disabled = i.claimed || !i.done;
+        b.addEventListener('click', () => claimQuest(i.id)); row.appendChild(b); d.appendChild(row); box.appendChild(d);
+      });
+    });
+  }
+  async function claimQuest(id) {
+    if (questBusy) return; questBusy = true; haptic('light');
+    try { const r = await rpc('claim', { item: id }); if (r) { toast(r.say, 4500); haptic(r.ok ? 'ok' : 'err'); } } finally { questBusy = false; }
+  }
+  setInterval(() => { if (tab === 'quests') updateQTimer(); }, 30000);
 
   // ---------- выбор еды ----------
   function closeSheet() { $('sheet').classList.remove('show'); }
