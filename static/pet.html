@@ -125,6 +125,8 @@
   #wslots { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; margin-bottom: 12px; }
   .slot { font-size: 12px; font-weight: 800; color: var(--dim); background: rgba(8,16,40,.45); border: 1.5px solid var(--line); border-radius: 12px; padding: 6px 9px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .slot.on { color: #fff; border-color: rgba(90,160,255,.55); }
+  .sndrow { display: flex; align-items: center; gap: 10px; margin: 8px 0 4px; }
+  .sndrow input[type=range] { flex: 1; min-width: 0; accent-color: #3b86ff; }
   .field { display: flex; gap: 8px; margin: 10px 0 8px; }
   .field input { flex: 1; min-width: 0; font: inherit; font-weight: 800; font-size: 16px; color: var(--text); background: rgba(8,16,40,.55); border: 1.5px solid var(--line); border-radius: 14px; padding: 10px 12px; outline: none; user-select: text; -webkit-user-select: text; }
   .field input:focus { border-color: var(--blue2); }
@@ -263,6 +265,9 @@
     <p>Как зовут вашего питомца? Имя увидите вы оба.</p>
     <div class="field"><input id="nameinp" type="text" maxlength="16" placeholder="Имя питомца" autocomplete="off"><button class="chipbtn" id="namesave">Сохранить</button></div>
     <p>До 16 символов.</p>
+    <h4>Звук</h4>
+    <div class="sndrow"><button class="chipbtn" id="sndtoggle">🔊 Звуки: вкл</button><input id="sndvol" type="range" min="0" max="100" step="5" aria-label="Громкость"></div>
+    <p>Мягкие 8-битные звуки: еда, игра, сон, монеты, награды. Громкость можно подкрутить.</p>
   </section>
   <section class="panel" id="panel-admin">
     <div class="top"><button class="back" data-go="menu">‹ Меню</button><h3>Админка</h3></div>
@@ -332,6 +337,77 @@
   const call = (fn, ...a) => { try { return fn && fn.apply(tg, a); } catch (e) {} };
   call(tg.ready); call(tg.expand); call(tg.disableVerticalSwipes);
   call(tg.setHeaderColor, '#0c1633'); call(tg.setBackgroundColor, '#0c1633');
+  // ---------- звуки: всё синтезируется в браузере (без файлов), 8-битный «пиксельный» стиль ----------
+  const SFX = (() => {
+    let ctx = null, master = null, on = true, vol = 0.6;
+    try {
+      if (localStorage.getItem('pet_snd') === '0') on = false;
+      const w = parseFloat(localStorage.getItem('pet_vol')); if (w >= 0 && w <= 1) vol = w;
+    } catch (e) {}
+    function ensure() {
+      if (!on || vol <= 0) return null;
+      try {
+        if (!ctx) {
+          const C = window.AudioContext || window.webkitAudioContext; if (!C) return null;
+          ctx = new C(); master = ctx.createGain(); master.gain.value = vol * 0.5; master.connect(ctx.destination);
+        }
+        if (ctx.state === 'suspended') ctx.resume();
+      } catch (e) { return null; }
+      return ctx;
+    }
+    // нота: частота, старт (сек от «сейчас»), длина, форма волны, громкость, скольжение частоты
+    function tone(f, t, d, o) {
+      o = o || {}; const c = ctx, t0 = c.currentTime + t, g = c.createGain(), os = c.createOscillator();
+      os.type = o.type || 'square'; os.frequency.setValueAtTime(f, t0);
+      if (o.to) os.frequency.exponentialRampToValueAtTime(o.to, t0 + d);
+      const v = o.v == null ? 0.22 : o.v;
+      g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(v, t0 + 0.008); g.gain.exponentialRampToValueAtTime(0.0001, t0 + d);
+      os.connect(g); g.connect(master); os.start(t0); os.stop(t0 + d + 0.03);
+    }
+    function noise(t, d, o) {
+      o = o || {}; const c = ctx, t0 = c.currentTime + t, n = Math.max(1, Math.floor(c.sampleRate * d));
+      const buf = c.createBuffer(1, n, c.sampleRate), data = buf.getChannelData(0);
+      for (let i = 0; i < n; i++) data[i] = Math.random() * 2 - 1;
+      const src = c.createBufferSource(); src.buffer = buf;
+      const flt = c.createBiquadFilter(); flt.type = o.type || 'bandpass'; flt.frequency.setValueAtTime(o.f || 1800, t0);
+      if (o.to) flt.frequency.exponentialRampToValueAtTime(o.to, t0 + d);
+      flt.Q.value = o.q || 1.2;
+      const g = c.createGain(); g.gain.setValueAtTime(o.v == null ? 0.3 : o.v, t0); g.gain.exponentialRampToValueAtTime(0.0001, t0 + d);
+      src.connect(flt); flt.connect(g); g.connect(master); src.start(t0);
+    }
+    const seq = (notes, step, o) => notes.forEach((f, i) => tone(f, i * step, step * 1.6, o));
+    const LIB = {
+      click() { tone(1200, 0, 0.03, { v: 0.1 }); },
+      pet() { tone(659, 0, 0.09, { type: 'triangle', v: 0.25 }); tone(880, 0.07, 0.14, { type: 'triangle', v: 0.25 }); },
+      coin() { tone(988, 0, 0.07, { v: 0.16 }); tone(1319, 0.07, 0.22, { v: 0.16 }); },
+      feed() { for (let i = 0; i < 3; i++) noise(i * 0.13, 0.07, { f: 2400 - i * 300, q: 2, v: 0.5 }); tone(330, 0.42, 0.12, { type: 'triangle', v: 0.2 }); tone(494, 0.5, 0.18, { type: 'triangle', v: 0.2 }); },
+      play() { tone(250, 0, 0.18, { type: 'triangle', to: 720, v: 0.3 }); tone(720, 0.17, 0.2, { type: 'triangle', to: 380, v: 0.25 }); tone(520, 0.4, 0.1, { v: 0.12 }); tone(780, 0.48, 0.14, { v: 0.12 }); },
+      sleep() { seq([523, 440, 392, 330, 262], 0.28, { type: 'triangle', v: 0.2 }); },
+      wake() { seq([392, 494, 587, 784], 0.13, { type: 'triangle', v: 0.22 }); },
+      level() { seq([523, 659, 784, 1047], 0.1, { v: 0.15 }); tone(1047, 0.4, 0.5, { v: 0.15 }); tone(1319, 0.4, 0.5, { v: 0.1 }); },
+      buy() { tone(880, 0, 0.07, { v: 0.15 }); tone(1175, 0.08, 0.07, { v: 0.15 }); tone(1568, 0.16, 0.25, { v: 0.15 }); },
+      wear() { noise(0, 0.16, { f: 600, to: 3200, q: 0.8, v: 0.3 }); tone(784, 0.14, 0.12, { type: 'triangle', v: 0.18 }); },
+      place() { tone(180, 0, 0.12, { type: 'sine', to: 70, v: 0.5 }); noise(0, 0.05, { f: 400, v: 0.2 }); },
+      claim() { seq([659, 784, 988], 0.09, { v: 0.15 }); tone(1319, 0.3, 0.35, { v: 0.15 }); tone(988, 0.3, 0.35, { v: 0.1 }); },
+      no() { tone(220, 0, 0.12, { v: 0.18 }); tone(165, 0.12, 0.2, { v: 0.18 }); },
+      move() { noise(0, 0.05, { f: 500, q: 1.5, v: 0.35 }); noise(0.16, 0.05, { f: 420, q: 1.5, v: 0.35 }); noise(0.32, 0.05, { f: 500, q: 1.5, v: 0.3 }); },
+      ok() { tone(784, 0, 0.08, { type: 'triangle', v: 0.2 }); tone(1047, 0.08, 0.14, { type: 'triangle', v: 0.2 }); },
+      partner() { tone(880, 0, 0.12, { type: 'sine', v: 0.2 }); tone(1175, 0.14, 0.22, { type: 'sine', v: 0.2 }); },
+    };
+    return {
+      play(name, delay) {
+        const run = () => { if (!ensure() || !LIB[name]) return; try { LIB[name](); } catch (e) {} };
+        if (delay) setTimeout(run, delay); else run();
+      },
+      unlock() { ensure(); },
+      get on() { return on; }, get vol() { return vol; },
+      setOn(v) { on = !!v; try { localStorage.setItem('pet_snd', on ? '1' : '0'); } catch (e) {} if (on) ensure(); },
+      setVol(v) { vol = Math.max(0, Math.min(1, v)); try { localStorage.setItem('pet_vol', String(vol)); } catch (e) {} if (master) master.gain.value = vol * 0.5; else if (vol > 0) ensure(); },
+    };
+  })();
+  // браузер разрешает звук только после касания — «будим» звук при первом нажатии
+  ['pointerdown', 'touchstart', 'keydown'].forEach(ev => document.addEventListener(ev, () => SFX.unlock(), { passive: true }));
+
   const haptic = (k) => { const h = tg.HapticFeedback; if (!h) return; try { k === 'err' ? h.notificationOccurred('error') : k === 'ok' ? h.notificationOccurred('success') : h.impactOccurred('light'); } catch (e) {} };
 
   // ---------- связь с сервером: подпись Telegram уходит с каждым запросом ----------
@@ -350,7 +426,7 @@
   // ---------- состояние ----------
   let S = null, busy = false, acting = false, bubbleTimer = null, lookTimer = null, seenTs = 0, myId = null;
   let viewingUserId = null, peopleLoaded = false;
-  let skew = 0, wakeAsked = false;
+  let skew = 0, wakeAsked = false, lastWakeSfx = 0;
   let CAT = null, tab = 'home', wornKey = '', sel = null, drag = null, shopTab = 'food';
   const ACTIONS = { wake: 'разбудил(а)', feed: 'покормил(а)', play: 'поиграл(а) с', sleep: 'уложил(а) спать', pet: 'погладил(а)' };
 
@@ -384,7 +460,9 @@
   }
   function render(st, instant) {
     if (!st.quests && S && S.quests) st.quests = S.quests;   // чужой питомец (гость) заданий не присылает
-    S = st; if (st.now) { skew = st.now - Date.now() / 1000; S._at = Date.now(); }
+    const wasSleeping = !!(S && S.sleeping);
+    S = st; if (wasSleeping && !st.sleeping && Date.now() - lastWakeSfx > 3000) { SFX.play('wake'); lastWakeSfx = Date.now(); }
+    if (st.now) { skew = st.now - Date.now() / 1000; S._at = Date.now(); }
     $('pname').textContent = st.name; $('lvl').textContent = 'Уровень ' + st.level; $('coinv').textContent = st.coins;
     $('xpfill').style.width = Math.min(100, st.xp / st.xp_need * 100) + '%';
     setPill('p-happy', 'happy', st.happy); setPill('p-hunger', 'hunger', st.hunger); setPill('p-energy', 'energy', st.energy);
@@ -448,7 +526,7 @@
       if (viewingUserId === myId) setGuestMode(null);
       render(st, first);
       if (!viewingUserId && !first && st.last_ts && st.last_ts > seenTs && st.last_actor_id !== myId && st.last_action) {
-        say((st.last_actor || 'Партнёр') + ' ' + (ACTIONS[st.last_action] || 'играет с') + ' ' + (st.last_action === 'play' || !ACTIONS[st.last_action] ? 'питомцем' : 'питомца') + ' 💞');
+        SFX.play('partner'); say((st.last_actor || 'Партнёр') + ' ' + (ACTIONS[st.last_action] || 'играет с') + ' ' + (st.last_action === 'play' || !ACTIONS[st.last_action] ? 'питомцем' : 'питомца') + ' 💞');
       }
       seenTs = Math.max(seenTs, st.last_ts || 0);
       if (first) greet(st);
@@ -495,6 +573,7 @@
     try {
       const r = await api('/api/pet/action', { action: 'move', to });
       if (r.state) render(r.state);
+      SFX.play(r.ok ? 'move' : 'no');
       if (!r.ok && r.say) say(r.say);
     } catch (e) {
       if (String(e.message) === 'auth') veil(AUTH_MSG); else say('Связь с Бубликом потерялась, попробуй ещё раз 📡');
@@ -515,8 +594,12 @@
           const dc = r.state.coins - before.coins, dx = (r.state.level > before.level) ? 0 : r.state.xp - before.xp;
           if (dc) pop((dc > 0 ? '+' : '') + dc + ' 🪙');
           if (dx > 0) setTimeout(() => pop('+' + dx + ' XP'), 170);
+          if (dc > 0) SFX.play('coin', 260);
+          if (r.state.level > before.level) SFX.play('level', 500);
         }
       }
+      SFX.play(r.ok ? ({ pet: 'pet', feed: 'feed', play: 'play', sleep: 'sleep', wake: 'wake' }[name] || 'ok') : 'no');
+      if (r.ok && name === 'wake') lastWakeSfx = Date.now();
       say(r.say || '…');
       setLook(r.ok ? name : 'no', r.ok ? 2100 : 800);
       haptic(r.ok ? 'ok' : 'err');
@@ -1160,8 +1243,11 @@
   async function rpc(action, extra) {
     if (viewingUserId !== null && viewingUserId !== myId) { toast('В гостях можно только смотреть 👀'); return null; }
     try {
+      const before = S;
       const r = await api('/api/pet/action', Object.assign({ action }, extra || {}));
       if (r.state) { render(r.state); seenTs = Math.max(seenTs, r.state.last_ts || 0); }
+      SFX.play(r.ok ? ({ buy: 'buy', wear: 'wear', unwear: 'wear', place: 'place', unplace: 'place', claim: 'claim' }[action] || 'ok') : 'no');
+      if (r.ok && r.state && before && r.state.level > before.level) SFX.play('level', 650);
       return r;
     } catch (e) {
       if (String(e.message) === 'auth') veil(AUTH_MSG); else toast('Связь потерялась, попробуй ещё раз 📡');
@@ -1183,7 +1269,7 @@
     PANELS.forEach(p => $('panel-' + p).style.display = (p === t) ? 'block' : 'none');
     if (t === 'shop') renderShop(); else if (t === 'wardrobe') renderWardrobe(); else if (t === 'settings') renderSettings(); else if (t === 'admin') renderAdmin();
     else if (t === 'quests') renderQuests(); else if (t === 'visit') renderVisit();
-    haptic('light');
+    haptic('light'); SFX.play('click');
   }
   function updatePanels() {
     if (tab === 'shop') renderShop(); else if (tab === 'wardrobe') renderWardrobe(); else if (tab === 'quests') renderQuests();
@@ -1250,7 +1336,13 @@
   }
 
   // ---------- настройки: имя питомца ----------
-  function renderSettings() { if (S) $('nameinp').value = S.name; }
+  function renderSettings() {
+    if (S) $('nameinp').value = S.name;
+    $('sndtoggle').textContent = SFX.on ? '🔊 Звуки: вкл' : '🔇 Звуки: выкл'; $('sndvol').value = Math.round(SFX.vol * 100);
+  }
+  $('sndtoggle').addEventListener('click', () => { SFX.setOn(!SFX.on); renderSettings(); if (SFX.on) SFX.play('ok'); haptic('light'); });
+  $('sndvol').addEventListener('input', () => SFX.setVol(+$('sndvol').value / 100));
+  $('sndvol').addEventListener('change', () => SFX.play('coin'));
   $('namesave').addEventListener('click', async () => {
     const v = $('nameinp').value.trim();
     if (!v) { toast('Имя не может быть пустым ✏️'); return; }
