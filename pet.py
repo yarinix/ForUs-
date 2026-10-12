@@ -331,10 +331,10 @@ _COLUMNS = (
 )
 
 
-def _load_items(cur) -> dict:
+def _load_items(cur, pet_key=PET_KEY) -> dict:
     cur.execute(
         "SELECT item_id, qty, worn, room, x, y FROM pet_items WHERE pet_key = %s",
-        (PET_KEY,),
+        (pet_key,),
     )
     return {
         r[0]: {"qty": r[1], "worn": bool(r[2]), "room": r[3], "x": r[4], "y": r[5]}
@@ -342,11 +342,11 @@ def _load_items(cur) -> dict:
     }
 
 
-def _save_items(cur, st: dict) -> None:
+def _save_items(cur, st: dict, pet_key=PET_KEY) -> None:
     for iid in st.pop("_dirty", set()):
         it = st["items"].get(iid)
         if it is None or it["qty"] <= 0:
-            cur.execute("DELETE FROM pet_items WHERE pet_key=%s AND item_id=%s", (PET_KEY, iid))
+            cur.execute("DELETE FROM pet_items WHERE pet_key=%s AND item_id=%s", (pet_key, iid))
         else:
             cur.execute(
                 "INSERT INTO pet_items (pet_key, item_id, qty, worn, room, x, y)"
@@ -354,32 +354,32 @@ def _save_items(cur, st: dict) -> None:
                 " ON CONFLICT (pet_key, item_id) DO UPDATE SET"
                 " qty=EXCLUDED.qty, worn=EXCLUDED.worn, room=EXCLUDED.room,"
                 " x=EXCLUDED.x, y=EXCLUDED.y",
-                (PET_KEY, iid, it["qty"], it["worn"], it["room"], it["x"], it["y"]),
+                (pet_key, iid, it["qty"], it["worn"], it["room"], it["x"], it["y"]),
             )
 
 
-def _load(cur, lock: bool) -> dict:
+def _load(cur, lock: bool, pet_key=PET_KEY) -> dict:
     cur.execute(
         "INSERT INTO pet_state (pet_key, name, coins, updated_ts) VALUES (%s, %s, %s, %s)"
         " ON CONFLICT (pet_key) DO NOTHING",
-        (PET_KEY, DEFAULT_NAME, START_COINS, time.time()),
+        (pet_key, DEFAULT_NAME, START_COINS, time.time()),
     )
     cur.execute(
         f"SELECT {', '.join(_COLUMNS)} FROM pet_state WHERE pet_key = %s"
         + (FOR_UPDATE if lock else ""),
-        (PET_KEY,),
+        (pet_key,),
     )
     row = cur.fetchone()
     st = dict(zip(_COLUMNS, row))
-    st["items"] = _load_items(cur)
+    st["items"] = _load_items(cur, pet_key)
     return st
 
 
-def get_state(get_db, names=None, uid=None) -> dict:
+def get_state(get_db, names=None, uid=None, pet_key=PET_KEY) -> dict:
     """Текущее состояние (с учётом времени, без записи в базу, кроме первого создания)."""
     with get_db() as conn:
         with conn.cursor() as cur:
-            st = _load(cur, lock=False)
+            st = _load(cur, lock=False, pet_key=pet_key)
     now = time.time()
     _decay(st, now)
     return public_state(st, names, now, uid)
@@ -577,7 +577,7 @@ def _apply(st: dict, action: str, now: float, p: dict):
 CARE_ACTIONS = ("feed", "play", "sleep", "pet", "wake")   # только они показываются партнёру как «кто что сделал»
 
 
-def _write(cur, st: dict) -> None:
+def _write(cur, st: dict, pet_key=PET_KEY) -> None:
     cur.execute(
         "UPDATE pet_state SET name=%s, level=%s, xp=%s, coins=%s, hunger=%s, happy=%s,"
         " energy=%s, updated_ts=%s, last_pet_ts=%s, last_actor=%s,"
@@ -585,26 +585,26 @@ def _write(cur, st: dict) -> None:
         (st["name"], st["level"], st["xp"], st["coins"], st["hunger"], st["happy"],
          st["energy"], st["updated_ts"], st["last_pet_ts"], st["last_actor"],
          st["last_action"], st["last_ts"], st["room"], st.get("sleep_until") or 0,
-         bool(st.get("wake_pending")), PET_KEY),
+         bool(st.get("wake_pending")), pet_key),
     )
 
 
 def perform(get_db, action: str, user_id: int, names=None, to: str = None,
-            item: str = None, name: str = None, room: str = None, x=None, y=None) -> dict:
+            item: str = None, name: str = None, room: str = None, x=None, y=None, pet_key=PET_KEY) -> dict:
     """Выполняет действие игрока. Возвращает {"ok", "say", "state"}."""
     now = time.time()
     params = {"to": to, "item": item, "name": name, "room": room, "x": x, "y": y}
     with get_db() as conn:
         with conn.cursor() as cur:
-            st = _load(cur, lock=True)
+            st = _load(cur, lock=True, pet_key=pet_key)
             _decay(st, now)
             ok, say, coins_delta, xp_delta = _apply(st, action, now, params)
             say = say.replace("{name}", st["name"])
             if ok and action in CARE_ACTIONS:
                 st["last_actor"], st["last_action"], st["last_ts"] = user_id, action, now
             # Время и сниженные за отсутствие характеристики сохраняем в любом случае
-            _write(cur, st)
-            _save_items(cur, st)
+            _write(cur, st, pet_key)
+            _save_items(cur, st, pet_key)
             tag = str(action)
             if action == "move":
                 tag += f":{to}"
@@ -613,25 +613,25 @@ def perform(get_db, action: str, user_id: int, names=None, to: str = None,
             cur.execute(
                 "INSERT INTO pet_log (pet_key, user_id, action, ok, coins_delta, xp_delta)"
                 " VALUES (%s, %s, %s, %s, %s, %s)",
-                (PET_KEY, user_id, tag[:20], bool(ok), coins_delta, xp_delta),
+                (pet_key, user_id, tag[:20], bool(ok), coins_delta, xp_delta),
             )
     logging.info(f"🦦 {user_id}: {action} -> {'ок' if ok else 'отказ'}")
     return {"ok": ok, "say": say, "state": public_state(st, names, now, user_id)}
 
 
-def process_wakeups(get_db):
+def process_wakeups(get_db, pet_key=PET_KEY):
     """Вызывается фоновым циклом раз в минуту. Сохраняет пересчитанное состояние и
     возвращает имя питомца, если он только что проснулся и об этом ещё не сообщали."""
     now = time.time()
     with get_db() as conn:
         with conn.cursor() as cur:
-            st = _load(cur, lock=True)
+            st = _load(cur, lock=True, pet_key=pet_key)
             _decay(st, now)
             name = None
             if st.get("wake_pending"):
                 st["wake_pending"] = False
                 name = st["name"]
-            _write(cur, st)
+            _write(cur, st, pet_key)
     return name
 
 
@@ -644,13 +644,13 @@ def _fresh(st: dict, now: float) -> None:
               last_ts=None, room="home", sleep_until=0, wake_pending=False)
 
 
-def admin(get_db, user_id: int, op: str, p: dict, names=None) -> dict:
+def admin(get_db, user_id: int, op: str, p: dict, names=None, pet_key=PET_KEY) -> dict:
     now = time.time()
     msg = "Готово ✅"
     log = None
     with get_db() as conn:
         with conn.cursor() as cur:
-            st = _load(cur, lock=True)
+            st = _load(cur, lock=True, pet_key=pet_key)
             _decay(st, now)
             if op == "set":
                 for k in ("hunger", "happy", "energy"):
@@ -684,7 +684,7 @@ def admin(get_db, user_id: int, op: str, p: dict, names=None) -> dict:
             elif op == "reset":
                 _fresh(st, now)
                 st["name"] = DEFAULT_NAME
-                cur.execute("DELETE FROM pet_items WHERE pet_key=%s", (PET_KEY,))
+                cur.execute("DELETE FROM pet_items WHERE pet_key=%s", (pet_key,))
                 st["items"] = {}
                 msg = "Игра сброшена с нуля 🔄"
             elif op == "reset_stats":                # только персонаж, вещи остаются
@@ -693,7 +693,7 @@ def admin(get_db, user_id: int, op: str, p: dict, names=None) -> dict:
                 st.update(keep)
                 msg = "Характеристики сброшены 🔄"
             elif op == "clear_items":
-                cur.execute("DELETE FROM pet_items WHERE pet_key=%s", (PET_KEY,))
+                cur.execute("DELETE FROM pet_items WHERE pet_key=%s", (pet_key,))
                 st["items"] = {}
             elif op == "unlock_all":
                 for iid, c in CATALOG.items():
@@ -704,7 +704,7 @@ def admin(get_db, user_id: int, op: str, p: dict, names=None) -> dict:
             elif op == "log":
                 cur.execute(
                     "SELECT user_id, action, ok, coins_delta, created_at FROM pet_log"
-                    " WHERE pet_key=%s ORDER BY id DESC LIMIT 30", (PET_KEY,))
+                    " WHERE pet_key=%s ORDER BY id DESC LIMIT 30", (pet_key,))
                 names = names or {}
                 log = [{"who": names.get(r[0], str(r[0])), "action": r[1], "ok": bool(r[2]),
                         "coins": r[3], "at": str(r[4])[:19]} for r in cur.fetchall()]
@@ -713,11 +713,11 @@ def admin(get_db, user_id: int, op: str, p: dict, names=None) -> dict:
                 return {"ok": False, "say": "Неизвестная команда админки"}
             if op != "log":
                 st["updated_ts"] = now
-                _write(cur, st)
-                _save_items(cur, st)
+                _write(cur, st, pet_key)
+                _save_items(cur, st, pet_key)
                 cur.execute(
                     "INSERT INTO pet_log (pet_key, user_id, action, ok) VALUES (%s, %s, %s, %s)",
-                    (PET_KEY, user_id, ("admin:" + op)[:20], True))
+                    (pet_key, user_id, ("admin:" + op)[:20], True))
     logging.info(f"🛠 админ {user_id}: {op}")
     out = {"ok": True, "say": msg, "state": public_state(st, names, now, user_id)}
     if log is not None:
