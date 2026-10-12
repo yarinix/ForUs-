@@ -350,7 +350,7 @@ def init(cur) -> None:
             target INT NOT NULL,
             progress INT NOT NULL DEFAULT 0,
             by_user TEXT NOT NULL DEFAULT '{}',
-            both BOOLEAN NOT NULL DEFAULT FALSE,
+            needs_both BOOLEAN NOT NULL DEFAULT FALSE,
             done BOOLEAN NOT NULL DEFAULT FALSE,
             claimed BOOLEAN NOT NULL DEFAULT FALSE,
             coins INT NOT NULL DEFAULT 0,
@@ -422,7 +422,7 @@ def ensure_daily(cur, pet_key: str, day: str, users: list, owned=None) -> None:
             continue
         for r in _generate(day, cat, owner, owned):
             cur.execute(
-                "INSERT INTO pet_quests (pet_key, day, qkey, cat, tmpl, ev, owner, target, both, coins, xp, item)"
+                "INSERT INTO pet_quests (pet_key, day, qkey, cat, tmpl, ev, owner, target, needs_both, coins, xp, item)"
                 " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
                 " ON CONFLICT (pet_key, day, qkey) DO NOTHING",
                 (pet_key, day, r["qkey"], r["cat"], r["tmpl"], r["ev"], r["owner"], r["target"],
@@ -445,7 +445,7 @@ def _is_done(target: int, progress: int, both: bool, by: dict, users: list) -> b
 def bump(cur, pet_key: str, day: str, uid: int, events: dict, users: list) -> list:
     """Прибавляет прогресс всем подходящим заданиям. Возвращает [(cat, tmpl, owner, target)] только что выполненных."""
     cur.execute(
-        "SELECT qkey, cat, tmpl, owner, ev, target, progress, by_user, both FROM pet_quests"
+        "SELECT qkey, cat, tmpl, owner, ev, target, progress, by_user, needs_both FROM pet_quests"
         " WHERE pet_key = %s AND day = %s AND done = FALSE" + FOR_UPDATE, (pet_key, day))
     finished = []
     for qkey, cat, tmpl, owner, ev, target, progress, by_user, both in cur.fetchall():
@@ -480,7 +480,7 @@ def view(cur, pet_key: str, day: str, uid: int, users: list, names: dict, pet_na
     partner = names.get(others[0]) if others else None
     partner = partner or "партнёр"
     cur.execute(
-        "SELECT qkey, cat, tmpl, target, progress, both, done, claimed, coins, xp, item, owner, by_user FROM pet_quests"
+        "SELECT qkey, cat, tmpl, target, progress, needs_both, done, claimed, coins, xp, item, owner, by_user FROM pet_quests"
         " WHERE pet_key = %s AND day = %s AND (owner IS NULL OR owner = %s) ORDER BY cat, qkey", (pet_key, day, uid))
     items = []
     for qkey, cat, tmpl, target, progress, both, done, claimed, coins, xp, item, owner, by_user in cur.fetchall():
