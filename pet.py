@@ -15,6 +15,8 @@
 import logging
 import random
 import time
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 # В PostgreSQL строка блокируется на время действия, чтобы два одновременных
 # нажатия (два игрока) не затёрли друг друга.
@@ -27,9 +29,18 @@ NAME_MAX = 16
 
 # Выдра никогда не «умирает»: характеристики не падают ниже этих значений
 FLOORS = {"hunger": 15, "happy": 15, "energy": 20}
-# Падение в час (пока никто не заходит)
-DECAY_PER_HOUR = {"hunger": 3.0, "happy": 2.0, "energy": 1.0}
-MAX_DECAY_HOURS = 48
+# Падение в час — идёт и когда никто не в игре (считается по реальным часам).
+# Во сне сытость и радость тратятся вдвое медленнее, а энергия растёт.
+DECAY_PER_HOUR = {"hunger": 2.0, "happy": 1.5, "energy": 2.0}
+SLEEP_DECAY_FACTOR = 0.5
+NIGHT_ENERGY_FACTOR = 1.5      # ночью (по местным часам) энергия тратится быстрее
+MAX_DECAY_HOURS = 72
+SLEEP_MIN_H, SLEEP_MAX_H = 2.0, 8.0   # длина сна зависит от усталости
+SLEEP_NEEDS_BELOW = 85                # выше этой энергии спать не хочется
+
+TZ = "Asia/Omsk"                      # app.py подставляет BOT_TIMEZONE
+ADMIN_IDS = []                        # app.py подставляет id админов (PET_ADMIN_IDS)
+NIGHT_FROM, NIGHT_TO = 22, 7          # ночь: с 22:00 до 7:00
 
 # Комнаты: гостиная (home) соединена с кухней и спальней
 ROOMS = ("home", "kitchen", "bedroom")
@@ -95,9 +106,13 @@ SAY = {
     "feed": ["Ам-ам-ам! Вкуснотища! 🐟", "Хрум-хрум! Спасибо за угощение!", "Хрум! А можно ещё?"],
     "play": ["Ура! Давай ещё! 🎾", "Лови мячик! Плюх-плюх!", "Поиграем?! Ура-ура!"],
     "sleep": ["Зевает… Спокойной ночи 💤", "{name} свернулся клубочком и сопит…", "Сопит… Zzz"],
+    "wake": ["{name} потягивается и открывает глазки ☀️"],
     "pet": ["Хвостик виляет! 💕", "Мурлыкает от удовольствия!", "{name} прижимается к руке"],
 }
 REFUSE = {
+    "asleep": "{name} спит 💤 Не будите — или разбудите в спальне.",
+    "wake_room": "Будить можно в спальне 🛏",
+    "not_asleep": "{name} не спит ☀️",
     "feed_full": "{name} совсем не голоден, отложит угощение на потом 🙈",
     "feed_poor": "Не хватает монет на еду. Поиграйте с питомцем — заработаете!",
     "feed_none": "Такой еды нет в запасе. Загляните в Меню → Магазин 🛍",
@@ -138,9 +153,15 @@ def init_tables(get_db):
                     room TEXT NOT NULL DEFAULT 'home'
                 );
             """)
-            # для таблицы, созданной первой версией игры
+            # для таблицы, созданной прошлыми версиями игры
             cur.execute(
                 "ALTER TABLE pet_state ADD COLUMN IF NOT EXISTS room TEXT NOT NULL DEFAULT 'home'"
+            )
+            cur.execute(
+                "ALTER TABLE pet_state ADD COLUMN IF NOT EXISTS sleep_until DOUBLE PRECISION NOT NULL DEFAULT 0"
+            )
+            cur.execute(
+                "ALTER TABLE pet_state ADD COLUMN IF NOT EXISTS wake_pending BOOLEAN NOT NULL DEFAULT FALSE"
             )
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS pet_log (
@@ -187,17 +208,64 @@ def _int(v, default):
         return default
 
 
+def local_hour(now: float) -> float:
+    d = datetime.fromtimestamp(now, ZoneInfo(TZ))
+    return d.hour + d.minute / 60.0
+
+
+def is_night(now: float) -> bool:
+    h = local_hour(now)
+    return h >= NIGHT_FROM or h < NIGHT_TO
+
+
+def _awake_step(st: dict, t0: float, t1: float) -> None:
+    """Бодрствование: всё медленно тратится (энергия ночью — быстрее)."""
+    # шагаем по 30 минут, чтобы ночной коэффициент считался честно
+    t = t0
+    while t < t1:
+        t_next = min(t1, t + 1800)
+        hours = (t_next - t) / 3600.0
+        for key, per_hour in DECAY_PER_HOUR.items():
+            if key == "energy" and is_night(t):
+                per_hour *= NIGHT_ENERGY_FACTOR
+            if st[key] > FLOORS[key]:
+                st[key] = max(FLOORS[key], st[key] - per_hour * hours)
+        t = t_next
+
+
 def _decay(st: dict, now: float) -> None:
-    """Медленно снижает характеристики за время отсутствия (но не ниже порога)."""
-    hours = max(0.0, min(MAX_DECAY_HOURS, (now - st["updated_ts"]) / 3600.0))
-    for key, per_hour in DECAY_PER_HOUR.items():
-        floor = FLOORS[key]
-        if st[key] > floor:
-            st[key] = max(floor, st[key] - per_hour * hours)
+    """Пересчёт характеристик за прошедшее время — работает и без захода в игру.
+
+    Сон: энергия линейно растёт до 100 к моменту пробуждения. Когда срок сна
+    вышел, питомец просыпается (wake_pending — сигнал отправить уведомление).
+    """
+    t0 = st["updated_ts"]
+    if now - t0 > MAX_DECAY_HOURS * 3600:
+        t0 = now - MAX_DECAY_HOURS * 3600
+    until = st.get("sleep_until") or 0
+    if until > t0:                                   # был сон
+        t1 = min(now, until)
+        total = until - t0
+        frac = max(0.0, min(1.0, (t1 - t0) / total)) if total > 0 else 1.0
+        st["energy"] = st["energy"] + (100.0 - st["energy"]) * frac
+        hours = (t1 - t0) / 3600.0
+        for key in ("hunger", "happy"):
+            if st[key] > FLOORS[key]:
+                st[key] = max(FLOORS[key], st[key] - DECAY_PER_HOUR[key] * SLEEP_DECAY_FACTOR * hours)
+        t0 = t1
+        if now >= until:
+            st["energy"] = 100.0
+            st["sleep_until"] = 0
+            st["wake_pending"] = True
+            until = 0
+    if not (st.get("sleep_until") or 0) and t0 < now:
+        _awake_step(st, t0, now)
     st["updated_ts"] = now
 
 
 def _mood(st: dict) -> str:
+    if st.get("sleep_until"):
+        return "sleeping"
     low = min(st["hunger"], st["happy"], st["energy"])
     if low == st["hunger"] and low < 35:
         return "hungry"
@@ -212,8 +280,9 @@ def public_catalog() -> dict:
     return CATALOG
 
 
-def public_state(st: dict, names=None) -> dict:
+def public_state(st: dict, names=None, now: float = None, uid=None) -> dict:
     names = names or {}
+    now = now or time.time()
     inv, owned, worn, placed = {}, [], {}, {}
     for iid, it in (st.get("items") or {}).items():
         c = CATALOG.get(iid)
@@ -246,12 +315,19 @@ def public_state(st: dict, names=None) -> dict:
         "owned": owned,      # купленные одежда и мебель
         "worn": worn,        # надето: {слот: id}
         "placed": placed,    # мебель в комнатах: {id: {room, x, y}}
+        "sleeping": bool(st.get("sleep_until")),
+        "sleep_until": st.get("sleep_until") or 0,
+        "now": now,                       # серверное время — клиент считает по нему остаток сна
+        "hour": round(local_hour(now), 2),  # местный час (BOT_TIMEZONE) — для дня и ночи
+        "night": is_night(now),
+        "is_admin": bool(uid and uid in ADMIN_IDS),
     }
 
 
 _COLUMNS = (
     "name", "level", "xp", "coins", "hunger", "happy", "energy",
     "updated_ts", "last_pet_ts", "last_actor", "last_action", "last_ts", "room",
+    "sleep_until", "wake_pending",
 )
 
 
@@ -299,13 +375,14 @@ def _load(cur, lock: bool) -> dict:
     return st
 
 
-def get_state(get_db, names=None) -> dict:
+def get_state(get_db, names=None, uid=None) -> dict:
     """Текущее состояние (с учётом времени, без записи в базу, кроме первого создания)."""
     with get_db() as conn:
         with conn.cursor() as cur:
             st = _load(cur, lock=False)
-    _decay(st, time.time())
-    return public_state(st, names)
+    now = time.time()
+    _decay(st, now)
+    return public_state(st, names, now, uid)
 
 
 def _clean_name(raw) -> str:
@@ -328,6 +405,17 @@ def _apply(st: dict, action: str, now: float, p: dict):
     items = st["items"]
     to = p.get("to")
     iid = p.get("item") or ""
+
+    asleep = bool(st.get("sleep_until"))
+    if action == "wake":
+        if not asleep:
+            return False, REFUSE["not_asleep"], 0, 0
+        st["sleep_until"] = 0
+        st["wake_pending"] = False
+        st["happy"] = _clamp(st["happy"] - 3)
+        return True, random.choice(SAY["wake"]), 0, 0
+    if asleep and action in ("move", "feed", "play", "sleep", "pet"):
+        return False, REFUSE["asleep"], 0, 0
 
     if action == "move":
         if to not in ROOMS:
@@ -439,21 +527,26 @@ def _apply(st: dict, action: str, now: float, p: dict):
             return False, REFUSE["play_room"], 0, 0
         if st["energy"] < 15:
             return False, REFUSE["play_tired"], 0, 0
-        st["energy"] = _clamp(st["energy"] - 15)
-        st["happy"] = _clamp(st["happy"] + 20)
-        st["hunger"] = _clamp(st["hunger"] - 8)
-        st["coins"] += 4
-        coins_delta = 4
+        st["energy"] = _clamp(st["energy"] - 10)
+        st["happy"] = _clamp(st["happy"] + 15)
+        st["hunger"] = _clamp(st["hunger"] - 3)
+        st["coins"] += 6
+        coins_delta = 6
         xp_delta = 10
 
     elif action == "sleep":
         if room != "bedroom":
             return False, REFUSE["sleep_room"], 0, 0
-        if st["energy"] >= 90:
+        if st["energy"] >= SLEEP_NEEDS_BELOW:
             return False, REFUSE["sleep_rested"], 0, 0
-        st["energy"] = _clamp(st["energy"] + 40)
-        st["hunger"] = _clamp(st["hunger"] - 5)
+        hours = SLEEP_MIN_H + (SLEEP_MAX_H - SLEEP_MIN_H) * (100.0 - st["energy"]) / 100.0
+        st["sleep_until"] = now + hours * 3600
+        st["wake_pending"] = False
         xp_delta = 2
+        st["xp"] += xp_delta
+        h, m = int(hours), int(round((hours - int(hours)) * 60))
+        left = (f"{h} ч " if h else "") + (f"{m} мин" if m else "")
+        return True, random.choice(SAY["sleep"]) + f" Проспит около {left.strip()}.", 0, xp_delta
 
     elif action == "pet":
         st["happy"] = _clamp(st["happy"] + 6)
@@ -481,7 +574,19 @@ def _apply(st: dict, action: str, now: float, p: dict):
     return True, say, coins_delta, xp_delta
 
 
-CARE_ACTIONS = ("feed", "play", "sleep", "pet")   # только они показываются партнёру как «кто что сделал»
+CARE_ACTIONS = ("feed", "play", "sleep", "pet", "wake")   # только они показываются партнёру как «кто что сделал»
+
+
+def _write(cur, st: dict) -> None:
+    cur.execute(
+        "UPDATE pet_state SET name=%s, level=%s, xp=%s, coins=%s, hunger=%s, happy=%s,"
+        " energy=%s, updated_ts=%s, last_pet_ts=%s, last_actor=%s,"
+        " last_action=%s, last_ts=%s, room=%s, sleep_until=%s, wake_pending=%s WHERE pet_key=%s",
+        (st["name"], st["level"], st["xp"], st["coins"], st["hunger"], st["happy"],
+         st["energy"], st["updated_ts"], st["last_pet_ts"], st["last_actor"],
+         st["last_action"], st["last_ts"], st["room"], st.get("sleep_until") or 0,
+         bool(st.get("wake_pending")), PET_KEY),
+    )
 
 
 def perform(get_db, action: str, user_id: int, names=None, to: str = None,
@@ -498,14 +603,7 @@ def perform(get_db, action: str, user_id: int, names=None, to: str = None,
             if ok and action in CARE_ACTIONS:
                 st["last_actor"], st["last_action"], st["last_ts"] = user_id, action, now
             # Время и сниженные за отсутствие характеристики сохраняем в любом случае
-            cur.execute(
-                "UPDATE pet_state SET name=%s, level=%s, xp=%s, coins=%s, hunger=%s, happy=%s,"
-                " energy=%s, updated_ts=%s, last_pet_ts=%s, last_actor=%s,"
-                " last_action=%s, last_ts=%s, room=%s WHERE pet_key=%s",
-                (st["name"], st["level"], st["xp"], st["coins"], st["hunger"], st["happy"],
-                 st["energy"], st["updated_ts"], st["last_pet_ts"], st["last_actor"],
-                 st["last_action"], st["last_ts"], st["room"], PET_KEY),
-            )
+            _write(cur, st)
             _save_items(cur, st)
             tag = str(action)
             if action == "move":
@@ -518,4 +616,110 @@ def perform(get_db, action: str, user_id: int, names=None, to: str = None,
                 (PET_KEY, user_id, tag[:20], bool(ok), coins_delta, xp_delta),
             )
     logging.info(f"🦦 {user_id}: {action} -> {'ок' if ok else 'отказ'}")
-    return {"ok": ok, "say": say, "state": public_state(st, names)}
+    return {"ok": ok, "say": say, "state": public_state(st, names, now, user_id)}
+
+
+def process_wakeups(get_db):
+    """Вызывается фоновым циклом раз в минуту. Сохраняет пересчитанное состояние и
+    возвращает имя питомца, если он только что проснулся и об этом ещё не сообщали."""
+    now = time.time()
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            st = _load(cur, lock=True)
+            _decay(st, now)
+            name = None
+            if st.get("wake_pending"):
+                st["wake_pending"] = False
+                name = st["name"]
+            _write(cur, st)
+    return name
+
+
+# ---------------------------------------------------------------------------
+# АДМИН-ПАНЕЛЬ (доступ проверяет app.py по подписи Telegram и ADMIN_IDS)
+# ---------------------------------------------------------------------------
+def _fresh(st: dict, now: float) -> None:
+    st.update(level=1, xp=0, coins=START_COINS, hunger=80.0, happy=80.0, energy=80.0,
+              updated_ts=now, last_pet_ts=0, last_actor=None, last_action=None,
+              last_ts=None, room="home", sleep_until=0, wake_pending=False)
+
+
+def admin(get_db, user_id: int, op: str, p: dict, names=None) -> dict:
+    now = time.time()
+    msg = "Готово ✅"
+    log = None
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            st = _load(cur, lock=True)
+            _decay(st, now)
+            if op == "set":
+                for k in ("hunger", "happy", "energy"):
+                    if p.get(k) not in (None, ""):
+                        st[k] = _clamp(float(_int(p[k], st[k])))
+                if p.get("coins") not in (None, ""):
+                    st["coins"] = max(0, min(999999, _int(p["coins"], st["coins"])))
+                if p.get("level") not in (None, ""):
+                    st["level"] = max(1, min(999, _int(p["level"], st["level"])))
+                if p.get("xp") not in (None, ""):
+                    st["xp"] = max(0, min(999999, _int(p["xp"], st["xp"])))
+                if p.get("room") in ROOMS:
+                    st["room"] = p["room"]
+                if p.get("name") not in (None, ""):
+                    nm = _clean_name(p["name"])
+                    if nm:
+                        st["name"] = nm
+            elif op == "add_coins":
+                st["coins"] = max(0, min(999999, st["coins"] + _int(p.get("amount"), 0)))
+            elif op == "fill":                       # все характеристики на максимум
+                st["hunger"] = st["happy"] = st["energy"] = 100.0
+            elif op == "sleep":
+                hours = max(0.05, min(24.0, float(p.get("hours") or 1)))
+                st["room"] = "bedroom"
+                st["sleep_until"] = now + hours * 3600
+                st["wake_pending"] = False
+                msg = f"Спит {hours:g} ч 💤"
+            elif op == "wake":
+                st["sleep_until"] = 0
+                st["wake_pending"] = bool(p.get("notify"))
+            elif op == "reset":
+                _fresh(st, now)
+                st["name"] = DEFAULT_NAME
+                cur.execute("DELETE FROM pet_items WHERE pet_key=%s", (PET_KEY,))
+                st["items"] = {}
+                msg = "Игра сброшена с нуля 🔄"
+            elif op == "reset_stats":                # только персонаж, вещи остаются
+                keep = {k: st[k] for k in ("name", "coins")}
+                _fresh(st, now)
+                st.update(keep)
+                msg = "Характеристики сброшены 🔄"
+            elif op == "clear_items":
+                cur.execute("DELETE FROM pet_items WHERE pet_key=%s", (PET_KEY,))
+                st["items"] = {}
+            elif op == "unlock_all":
+                for iid, c in CATALOG.items():
+                    if c["k"] != "food" and iid not in st["items"]:
+                        it = _new_item(); it["qty"] = 1
+                        st["items"][iid] = it
+                        _touch(st, iid)
+            elif op == "log":
+                cur.execute(
+                    "SELECT user_id, action, ok, coins_delta, created_at FROM pet_log"
+                    " WHERE pet_key=%s ORDER BY id DESC LIMIT 30", (PET_KEY,))
+                names = names or {}
+                log = [{"who": names.get(r[0], str(r[0])), "action": r[1], "ok": bool(r[2]),
+                        "coins": r[3], "at": str(r[4])[:19]} for r in cur.fetchall()]
+                msg = ""
+            else:
+                return {"ok": False, "say": "Неизвестная команда админки"}
+            if op != "log":
+                st["updated_ts"] = now
+                _write(cur, st)
+                _save_items(cur, st)
+                cur.execute(
+                    "INSERT INTO pet_log (pet_key, user_id, action, ok) VALUES (%s, %s, %s, %s)",
+                    (PET_KEY, user_id, ("admin:" + op)[:20], True))
+    logging.info(f"🛠 админ {user_id}: {op}")
+    out = {"ok": True, "say": msg, "state": public_state(st, names, now, user_id)}
+    if log is not None:
+        out["log"] = log
+    return out
