@@ -264,7 +264,7 @@ def daily_view(stats: dict, today: int, names: dict = None) -> dict:
         state = "claimed" if (n < s or (n == s and claimed)) else "today" if n == s else "future"
         days.append({"day": d + 1, "coins": r["coins"], "xp": r["xp"], "item": r["item"], "state": state})
     by = stats.get("daily_by") if claimed else None
-    return {"can_claim": not claimed, "streak": s, "best": max(stats.get("streak_max", 0), s), "day": (s - 1) % 7 + 1,
+    return {"can_claim": not claimed, "today": today, "streak": s, "best": max(stats.get("streak_max", 0), s), "day": (s - 1) % 7 + 1,
             "week": week, "boost": round(100 * WEEK_BOOST * min(week, WEEK_BOOST_MAX)), "total": stats.get("daily_total", 0),
             "by": (names or {}).get(by) if by else None, "days": days}
 
