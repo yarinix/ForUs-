@@ -204,7 +204,7 @@ REFUSE = {
     "play_tired": "{name} слишком устал для игр. Пусть поспит 💤",
     "feed_room": "Есть можно только на кухне 🍽",
     "play_room": "Играть можно только в гостиной или во дворе 🎾",
-    "sleep_room": "Спать можно только в спальне 🛏",
+    "sleep_room": "Спать можно в спальне или в поставленной палатке на улице ⛺",
     "move_far": "Туда не пройти напрямую: сначала зайдите в гостиную 🚪",
     "sleep_rested": "{name} бодр и совсем не хочет спать ☀️",
     "no_item": "Такой вещи не существует 🤔",
@@ -675,11 +675,14 @@ def _apply(st: dict, action: str, now: float, p: dict):
         if st["energy"] < 15:
             return False, REFUSE["play_tired"], 0, 0
         st["energy"] = _clamp(st["energy"] - 6)
-        st["happy"] = _clamp(st["happy"] + 8)
+        st["happy"] = _clamp(st["happy"] + 5)
         st["hunger"] = _clamp(st["hunger"] - 4)
-        coins_delta = random.randint(*FORAGE_COINS)
-        st["coins"] += coins_delta
-        xp_delta = 12
+        if random.random() < 0.60:
+            coins_delta = random.randint(*FORAGE_COINS)
+            st["coins"] += coins_delta
+            xp_delta = 12
+        else:
+            xp_delta = 2
 
     elif action == "angle":
         if room != "lake":
@@ -687,17 +690,19 @@ def _apply(st: dict, action: str, now: float, p: dict):
         if st["energy"] < 15:
             return False, REFUSE["play_tired"], 0, 0
         st["energy"] = _clamp(st["energy"] - 5)
-        st["happy"] = _clamp(st["happy"] + 8)
+        st["happy"] = _clamp(st["happy"] + 5)
         st["hunger"] = _clamp(st["hunger"] - 3)
-        st["coins"] += 5
-        coins_delta = 5
-        xp_delta = 12
-        caught = random.random() < 0.4
-        if caught:                                   # улов — рыбка в запас для кормления
+        caught = random.random() < 0.45
+        if caught:
+            st["coins"] += 5
+            coins_delta = 5
+            xp_delta = 12
             fish = items.setdefault("fish", _new_item())
             if fish["qty"] < MAX_FOOD:
                 fish["qty"] += 1
                 _touch(st, "fish")
+        else:
+            xp_delta = 2
 
     elif action == "play":
         if room not in ("home", "yard"):
@@ -712,7 +717,8 @@ def _apply(st: dict, action: str, now: float, p: dict):
         xp_delta = 10
 
     elif action == "sleep":
-        if room != "bedroom":
+        tent_ready = room in OUTDOOR and bool((items.get("tent") or {}).get("room") == room)
+        if room != "bedroom" and not tent_ready:
             return False, REFUSE["sleep_room"], 0, 0
         if st["energy"] >= SLEEP_NEEDS_BELOW:
             return False, REFUSE["sleep_rested"], 0, 0
@@ -723,7 +729,8 @@ def _apply(st: dict, action: str, now: float, p: dict):
         st["xp"] += xp_delta
         h, m = int(hours), int(round((hours - int(hours)) * 60))
         left = (f"{h} ч " if h else "") + (f"{m} мин" if m else "")
-        return True, random.choice(SAY["sleep"]) + f" Проспит около {left.strip()}.", 0, xp_delta
+        place_text = " в палатке" if tent_ready else ""
+        return True, random.choice(SAY["sleep"]) + place_text + f" Проспит около {left.strip()}.", 0, xp_delta
 
     elif action == "pet":
         st["happy"] = _clamp(st["happy"] + 6)
@@ -746,8 +753,10 @@ def _apply(st: dict, action: str, now: float, p: dict):
         leveled = True
 
     say = random.choice(SAY[action])
-    if action == "angle" and caught:
-        say = "Поймалась рыбка! 🐟 Она уже в запасе для кормления"
+    if action == "angle":
+        say = "Поймалась рыбка! 🐟 Она уже в запасе для кормления" if caught else "Сегодня без улова… Попробуем ещё раз? 🎣"
+    if action == "forage":
+        say = "Нашёл грибочки и ягоды! 🍄" if coins_delta else "Сегодня грибочки не нашлись… В следующий раз повезёт! 🍃"
     if leveled:
         say = f"🎉 Новый уровень: {st['level']}! +10 монет. " + say
     return True, say, coins_delta, xp_delta
