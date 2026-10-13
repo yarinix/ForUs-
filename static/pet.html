@@ -986,8 +986,37 @@
     });
   }
 
+  // ---------- ДЕНЬ И НОЧЬ В ДОМЕ ----------
+  // Раньше комнаты рисовались один раз, поэтому окно всегда показывало день (а в спальне — всегда ночь).
+  // Теперь каждая комната строится в двух вариантах: день (view.rooms) и ночь (view.roomsN). Отличаются только окно
+  // и пятно света на полу. В кадре (drawRoom) ночной слой накладывается на дневной с прозрачностью по реальному времени,
+  // так что на закате и рассвете окно плавно темнеет и светлеет.
+  function dayWindow(R, wx, wy, ww, wh) {       // день: голубое небо, холмы, облака
+    band(R, wx, wy, ww, wh, ['#8ed3ff', '#b6e5ff', '#e2f6ff']);
+    [[8, 9, 16, 12], [22, 11, 22, 14], [34, 9, 12, 10]].forEach(([x, y, w, h]) => ell(R, wx + x, wy + wh - 4 + (y - 10) * .2, w / 2 + 3, h / 2 + 5, ['#7fd08a', '#4fae5b', '#3f9a4d', '#2f7a3a']));
+    ell(R, wx + 26, wy + 8, 8, 3, ['#ffffff', '#e8f6ff']); ell(R, wx + 14, wy + 12, 6, 2.4, ['#ffffff', '#e8f6ff']);
+  }
+  function nightWindow(R, wx, wy, ww, wh) {     // ночь: тёмное небо, звёзды, месяц и силуэты холмов (размеры считаются от окна)
+    band(R, wx, wy, ww, wh, ['#1c2a6e', '#2a3f95', '#41609f']);
+    for (const [fx, fy_] of [[.18, .15], [.41, .35], [.76, .2], [.88, .5], [.29, .6], [.65, .7], [.82, .1], [.12, .4]]) {
+      const x = wx + Math.round(fx * ww), y = wy + Math.round(fy_ * wh); dot(R, x, y, '#fff8c4');
+      if ((x + y) % 4 === 0) { dot(R, x + 1, y, '#fff8c4'); dot(R, x, y + 1, '#fff8c4'); }
+    }
+    const r = Math.max(4, Math.min(7, Math.round(ww * .2))), mx = wx + Math.round(ww * .7), my = wy + Math.round(wh * .28);
+    ell(R, mx, my, r, r, ['#fff9d4', '#ffe98a', '#f0cf5a']); ell(R, mx + r * .43, my - r * .28, r - 1, r - 1, ['#2a3f95', '#2a3f95']);   // месяц
+    ell(R, wx + ww * .3, wy + wh, ww * .45, wh * .14 + 2, ['#24387a', '#1a2a5c', '#142148']); ell(R, wx + ww * .78, wy + wh, ww * .4, wh * .1 + 2, ['#24387a', '#1a2a5c', '#142148']);
+  }
+  // пятно света из окна на стене и полу: солнечное днём, лунное ночью; cover — как далеко оно тянется по полу
+  function lightPatch(R, wx, wy, ww, wh, H, fy, night, cover) {
+    const wallC = night ? '#9fa6ee' : '#fff6cf', floorC = night ? '#c59a9a' : '#e2b27a';
+    for (let y = wy + wh; y < H; y++) for (let x = wx; x < R.w; x++) {
+      const along = (y - (wy + wh)), left = wx + along * 0.55 - 2, right = wx + ww + along * 1.0 + 2;
+      if (x > left && x < right && ((x + y) & 1) === 0 && along < (H - wy - wh) * cover) dot(R, x, y, y < fy ? wallC : floorC);
+    }
+  }
+
   // ---------- гостиная ----------
-  function buildHome(W, H, fy, baseY) {
+  function buildHome(W, H, fy, baseY, night = false) {   // night: ночной вариант (окно и свет на полу)
     const R = newLayer(W, H);
     band(R, 0, 0, W, fy, ['#fbe8c2', '#f8dfae', '#f1cf94']);
     for (let x = 4; x < W; x += 10) for (let y = 0; y < fy - 14; y += 2) if (((x + y) >> 1) % 2 === 0) dot(R, x, y, '#f7dcab');
@@ -995,14 +1024,9 @@
     for (let x = 6; x < W; x += 14) { rect(R, x, fy - 12, 10, 9, '#c78f55'); rect(R, x, fy - 12, 10, 1, '#e3b278'); }
     drawFloor(R, W, H, fy, WOOD[0], WOOD[1], WOOD[3], 'wood');
     const wx = 5, wy = 12, ww = 36, wh = Math.min(40, fy - 28);
-    band(R, wx, wy, ww, wh, ['#8ed3ff', '#b6e5ff', '#e2f6ff']);
-    [[8, 9, 16, 12], [22, 11, 22, 14], [34, 9, 12, 10]].forEach(([x, y, w, h]) => ell(R, wx + x, wy + wh - 4 + (y - 10) * .2, w / 2 + 3, h / 2 + 5, ['#7fd08a', '#4fae5b', '#3f9a4d', '#2f7a3a']));
-    ell(R, wx + 26, wy + 8, 8, 3, ['#ffffff', '#e8f6ff']); ell(R, wx + 14, wy + 12, 6, 2.4, ['#ffffff', '#e8f6ff']);
+    if (night) nightWindow(R, wx, wy, ww, wh); else dayWindow(R, wx, wy, ww, wh);   // вид за окном по времени суток
     windowFrame(R, wx, wy, ww, wh, '#8f5630', '#f08a4b', '#e0703a');
-    for (let y = wy + wh; y < H; y++) for (let x = wx; x < W; x++) {
-      const along = (y - (wy + wh)), left = wx + along * 0.55 - 2, right = wx + ww + along * 1.0 + 2;
-      if (x > left && x < right && ((x + y) & 1) === 0 && along < (H - wy - wh) * 0.7) dot(R, x, y, y < fy ? '#fff6cf' : '#e2b27a');
-    }
+    lightPatch(R, wx, wy, ww, wh, H, fy, night, 0.7);                               // пятно света: солнце днём, луна ночью
     const sx0 = Math.round(W * 0.50), sy = fy - 33, sw = W - sx0 - 4;
     prop(R, T => {
       rect(T, sx0, sy, sw, 3, '#a2693a'); rect(T, sx0 + 4, sy + 3, 3, 5, '#7e4d2a'); rect(T, sx0 + sw - 8, sy + 3, 3, 5, '#7e4d2a');
@@ -1026,7 +1050,7 @@
   }
 
   // ---------- кухня ----------
-  function buildKitchen(W, H, fy, baseY) {
+  function buildKitchen(W, H, fy, baseY, night = false) {
     const R = newLayer(W, H);
     band(R, 0, 0, W, fy, ['#ecf8ee', '#d9efde', '#c5e3cf']);
     for (let x = 3; x < W; x += 9) for (let y = 1; y < fy - 40; y += 3) if (((x + y) % 2) === 0) dot(R, x, y, '#cfe9d6');
@@ -1035,8 +1059,11 @@
     for (let y = cy - 20; y < cy; y += 5) for (let x = 38; x < W - 28; x += 5) { rect(R, x, y, 4, 4, ((x + y) / 5 | 0) % 2 ? '#9fd8d2' : '#e8fbf7'); }
     // окно
     const wx = 6, wy = 16, ww = 24, wh = 26;
-    band(R, wx, wy, ww, wh, ['#9ddcff', '#c6ecff', '#effaff']);
-    ell(R, wx + 12, wy + wh - 2, 12, 8, ['#8fd68c', '#5fb866', '#3f9a4d']); ell(R, wx + 14, wy + 6, 6, 2.3, ['#ffffff', '#e8f6ff']);
+    if (night) nightWindow(R, wx, wy, ww, wh);                                      // вид за окном по времени суток
+    else {
+      band(R, wx, wy, ww, wh, ['#9ddcff', '#c6ecff', '#effaff']);
+      ell(R, wx + 12, wy + wh - 2, 12, 8, ['#8fd68c', '#5fb866', '#3f9a4d']); ell(R, wx + 14, wy + 6, 6, 2.3, ['#ffffff', '#e8f6ff']);
+    }
     windowFrame(R, wx, wy, ww, wh, '#b9824f', '#ff9aa8', '#f07c8e');
     // плинтус и пол (плитка)
     rect(R, 0, fy - 4, W, 4, '#9fd8d2'); rect(R, 0, fy - 1, W, 1, '#4a8a86');
@@ -1078,24 +1105,18 @@
   }
 
   // ---------- спальня ----------
-  function buildBedroom(W, H, fy, baseY) {
+  function buildBedroom(W, H, fy, baseY, night = false) {
     const R = newLayer(W, H);
     band(R, 0, 0, W, fy, ['#8f84d6', '#7f74c8', '#6e63b8']);
     for (let x = 5; x < W; x += 11) for (let y = 3; y < fy - 14; y += 8) { dot(R, x, y, '#c9c1f5'); if ((x + y) % 3 === 0) { dot(R, x + 1, y, '#c9c1f5'); dot(R, x, y + 1, '#c9c1f5'); } }
     rect(R, 0, fy - 15, W, 15, '#6a4f7e'); rect(R, 0, fy - 15, W, 1, '#8f72a6'); rect(R, 0, fy - 1, W, 1, '#3a2a48');
     for (let x = 6; x < W; x += 14) { rect(R, x, fy - 12, 10, 9, '#5d4470'); rect(R, x, fy - 12, 10, 1, '#7a5e90'); }
     drawFloor(R, W, H, fy, '#a8745e', '#966450', '#6a4437', 'wood');
-    // ночное окно
+    // окно: днём — дневное небо, ночью — звёздное; свет на полу солнечный или лунный
     const wx = 5, wy = 12, ww = 34, wh = Math.min(40, fy - 28);
-    band(R, wx, wy, ww, wh, ['#1c2a6e', '#2a3f95', '#41609f']);
-    for (const [a, b] of [[6, 6], [14, 14], [26, 8], [30, 20], [10, 24], [22, 28], [28, 4], [4, 16]]) { dot(R, wx + a, wy + b, '#fff8c4'); if ((a + b) % 4 === 0) { dot(R, wx + a + 1, wy + b, '#fff8c4'); dot(R, wx + a, wy + b + 1, '#fff8c4'); } }
-    ell(R, wx + 24, wy + 11, 7, 7, ['#fff9d4', '#ffe98a', '#f0cf5a']); ell(R, wx + 27, wy + 9, 6, 6, ['#2a3f95', '#2a3f95']);
+    if (night) nightWindow(R, wx, wy, ww, wh); else dayWindow(R, wx, wy, ww, wh);
     windowFrame(R, wx, wy, ww, wh, '#4e3763', '#9a62d9', '#7e48c0');
-    // лунный свет на полу
-    for (let y = wy + wh; y < H; y++) for (let x = wx; x < W; x++) {
-      const along = (y - (wy + wh)), left = wx + along * 0.55 - 2, right = wx + ww + along * 1.0 + 2;
-      if (x > left && x < right && ((x + y) & 1) === 0 && along < (H - wy - wh) * 0.6) dot(R, x, y, y < fy ? '#9fa6ee' : '#c59a9a');
-    }
+    lightPatch(R, wx, wy, ww, wh, H, fy, night, 0.6);
     // кровать справа
     const bx = W - 50, by = fy - 4;
     prop(R, T => {
@@ -1305,10 +1326,18 @@
     sc.style.width = (W * K) + 'px'; sc.style.height = (H * K) + 'px'; sc.style.left = Math.floor((r.width - W * K) / 2) + 'px'; sc.style.top = Math.floor((r.height - H * K) / 2) + 'px';
     const fy = Math.round(H * 0.5), baseY = fy + Math.round((H - fy) * 0.5);
     view.baseY = baseY; view.fy = fy; view.ox = Math.round(W * 0.47); view.oxOut = Math.round(W * 0.58);
-    view.rooms = { home: buildHome(W, H, fy, baseY), kitchen: buildKitchen(W, H, fy, baseY), bedroom: buildBedroom(W, H, fy, baseY), yard: buildYard(W, H, fy, baseY), forest: buildForest(W, H, fy, baseY), lake: buildLake(W, H, fy, baseY) };
+    view.rooms = { home: buildHome(W, H, fy, baseY, false), kitchen: buildKitchen(W, H, fy, baseY, false), bedroom: buildBedroom(W, H, fy, baseY, false), yard: buildYard(W, H, fy, baseY), forest: buildForest(W, H, fy, baseY), lake: buildLake(W, H, fy, baseY) };
+    view.roomsN = { home: buildHome(W, H, fy, baseY, true), kitchen: buildKitchen(W, H, fy, baseY, true), bedroom: buildBedroom(W, H, fy, baseY, true) };   // ночные варианты домашних комнат
   }
 
   const ease = (p) => p < .5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
+  // drawRoom — рисует комнату name со сдвигом dx. Для домашних комнат поверх дневного слоя кладётся ночной,
+  // прозрачность = насколько сейчас темно по реальному времени (dayAlpha: 0 днём … 0.36 ночью).
+  function drawRoom(name, dx) {
+    sx.drawImage(view.rooms[name].c, dx, 0);
+    const N = view.roomsN && view.roomsN[name], k = Math.min(1, dayAlpha() / 0.36);
+    if (N && k > 0.01) { sx.globalAlpha = k; sx.drawImage(N.c, dx, 0); sx.globalAlpha = 1; }
+  }
   function frame(now) {
     if (!view.rooms.home) return;
     let look = otter.dataset.look;
@@ -1316,11 +1345,11 @@
     if (out) drawSky(sx, now, gameHour(), view.W, view.fy);
     if (tr) {
       const p = Math.min(1, (now - tr.t0) / tr.dur), e = ease(p), dx = Math.round(tr.dir * view.W * e);
-      sx.drawImage(view.rooms[tr.from].c, dx, 0); sx.drawImage(view.rooms[tr.to].c, dx - tr.dir * view.W, 0);
+      drawRoom(tr.from, dx); drawRoom(tr.to, dx - tr.dir * view.W);
       view.fx = [[tr.from, dx], [tr.to, dx - tr.dir * view.W]];
       look = 'walk';
       if (p >= 1) { view.trans = null; view.cur = tr.to; onRoomShown(); }
-    } else { sx.drawImage(view.rooms[view.cur].c, 0, 0); view.fx = [[view.cur, 0]]; }
+    } else { drawRoom(view.cur, 0); view.fx = [[view.cur, 0]]; }
     for (const [r, dx] of view.fx) drawItems(r, dx, false, now);
     const blink = (Math.floor(now / 160) % 31) === 0;
     const hop = look === 'play' ? -Math.round(Math.abs(Math.sin(now / 130)) * 7) : look === 'walk' ? -(Math.floor(now / 150) % 2) : (look === 'sleep' || look === 'sleepy' ? (Math.floor(now / 900) % 2) : (Math.floor(now / 650) % 2));
