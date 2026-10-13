@@ -7,7 +7,8 @@
 Что умеет сервер:
   move / feed / play / sleep / pet — как раньше (feed теперь принимает item — id еды);
   buy      — купить вещь из каталога (еда копится в запасе, одежда и мебель покупаются один раз);
-  wear / unwear — надеть / снять одежду (в каждом слоте одна вещь);
+  wear / unwear — надеть / снять одежду (слоты: голова, верх, костюм, аксессуар, спина — в каждом одна вещь;
+                  костюм и «верх» вместе не носятся);
   place / unplace — поставить мебель в комнату (room, x, y) / убрать в кладовую;
   rename   — сменить имя питомца.
 """
@@ -55,10 +56,36 @@ MAX_FOOD = 20               # сколько штук одной еды можн
 MAX_PER_ROOM = 8            # сколько предметов мебели помещается в одну комнату
 
 # ---------------------------------------------------------------------------
+# РЕДКОСТЬ ОДЕЖДЫ. Цена вещи зависит только от редкости: чтобы поменять цены, правьте эту таблицу.
+#   common — обычное, rare — редкое, epic — эпическое, legendary — легендарное
+# ---------------------------------------------------------------------------
+RARITY = {
+    "common":    {"n": "Обычное",     "p": 30},
+    "rare":      {"n": "Редкое",      "p": 90},
+    "epic":      {"n": "Эпическое",   "p": 220},
+    "legendary": {"n": "Легендарное", "p": 500},
+}
+# Слоты одежды (в каждом носится одна вещь) и эмодзи слота — он же показывается в наградах за задания
+SLOTS = {"head": "🎩", "top": "👕", "suit": "🥋", "acc": "📿", "back": "🎒"}
+# Какие слоты нельзя носить одновременно: костюм занимает место «верха»
+CONFLICTS = {"top": ("suit",), "suit": ("top",)}
+
+
+def _wear(name: str, slot: str, rarity: str, legacy: bool = False, price: int = None) -> dict:
+    """Запись каталога для одежды. Цена берётся из редкости; у старых вещей (legacy) остаётся их прежняя цена."""
+    it = {"k": "wear", "n": name, "s": slot, "r": rarity, "e": SLOTS[slot],
+          "p": price if price is not None else RARITY[rarity]["p"]}
+    if legacy:
+        it["legacy"] = True
+    return it
+
+
+# ---------------------------------------------------------------------------
 # КАТАЛОГ МАГАЗИНА. Цены и эффекты — только здесь; клиент получает копию для показа.
 #   k  — вид: food / wear / furn         n — название       p — цена
 #   food: e — эмодзи, hu — сытость, hp — радость, en — энергия, xp — опыт
-#   wear: s — слот (hat / face / neck / body)
+#   wear: s — слот (head / top / suit / acc / back), r — редкость (common / rare / epic / legendary),
+#         цена зависит от редкости (таблица RARITY ниже), legacy — снята с продажи, но у купивших остаётся
 #   furn: pl — floor (стоит на полу) или wall (висит на стене)
 # Рисунки вещей лежат в клиенте (pet.html) под теми же id.
 # ---------------------------------------------------------------------------
@@ -70,22 +97,44 @@ CATALOG = {
     "oyster": {"k": "food", "n": "Устрицы",  "p": 16, "e": "🦪", "hu": 40, "hp": 8,  "en": 8, "xp": 12},
     "cake":   {"k": "food", "n": "Тортик",   "p": 18, "e": "🍰", "hu": 25, "hp": 25, "xp": 14},
     "sushi":  {"k": "food", "n": "Суши-сет", "p": 22, "e": "🍣", "hu": 60, "hp": 10, "xp": 16},
-    # --- одежда ---
-    "flower":     {"k": "wear", "n": "Цветочек",        "p": 20,  "s": "hat"},
-    "party":      {"k": "wear", "n": "Праздничный колпак", "p": 25, "s": "hat"},
-    "cap":        {"k": "wear", "n": "Кепка",           "p": 30,  "s": "hat"},
-    "beanie":     {"k": "wear", "n": "Шапочка",         "p": 35,  "s": "hat"},
-    "crown":      {"k": "wear", "n": "Корона",          "p": 150, "s": "hat"},
-    "round":      {"k": "wear", "n": "Круглые очки",    "p": 40,  "s": "face"},
-    "sunglasses": {"k": "wear", "n": "Тёмные очки",     "p": 45,  "s": "face"},
-    "hearts":     {"k": "wear", "n": "Очки-сердечки",   "p": 60,  "s": "face"},
-    "bandana":    {"k": "wear", "n": "Бандана",         "p": 25,  "s": "neck"},
-    "scarf":      {"k": "wear", "n": "Шарфик",          "p": 30,  "s": "neck"},
-    "bow":        {"k": "wear", "n": "Бабочка",         "p": 35,  "s": "neck"},
-    "apron":      {"k": "wear", "n": "Фартук",          "p": 35,  "s": "body"},
-    "tee":        {"k": "wear", "n": "Футболка",        "p": 40,  "s": "body"},
-    "sweater":    {"k": "wear", "n": "Свитер",          "p": 60,  "s": "body"},
-    "cape":       {"k": "wear", "n": "Плащ героя",      "p": 100, "s": "body"},
+    # --- одежда: 5 слотов × 3 вещи (рисунки лежат в pet.html под теми же id) ---
+    # голова
+    "bucket":   _wear("Панамка",             "head", "common"),
+    "chef":     _wear("Колпак повара",       "head", "rare"),
+    "halo":     _wear("Золотой нимб",        "head", "legendary"),
+    # верх
+    "hoodie":   _wear("Худи",                "top",  "common"),
+    "aloha":    _wear("Гавайская рубашка",   "top",  "rare"),
+    "armor":    _wear("Рыцарская кираса",    "top",  "epic"),
+    # костюм (занимает место «верха» — вместе не носятся)
+    "pajamas":  _wear("Пижама со звёздами",  "suit", "rare"),
+    "pirate":   _wear("Костюм пирата",       "suit", "epic"),
+    "robe":     _wear("Королевская мантия",  "suit", "legendary"),
+    # аксессуар
+    "shells":   _wear("Ожерелье из ракушек", "acc",  "common"),
+    "monocle":  _wear("Монокль с цепочкой",  "acc",  "rare"),
+    "amulet":   _wear("Кристальный амулет",  "acc",  "legendary"),
+    # спина
+    "backpack": _wear("Рюкзачок",            "back", "common"),
+    "jetpack":  _wear("Ракетный ранец",      "back", "epic"),
+    "wings":    _wear("Ангельские крылья",   "back", "legendary"),
+    # --- старая одежда: снята с продажи, но у кого уже куплена — остаётся в гардеробе (слоты переведены на новые) ---
+    # Чтобы вернуть вещь в магазин, уберите у неё legacy (последние два параметра) и поставьте цену по редкости.
+    "flower":     _wear("Цветочек",           "head", "common", True, 20),
+    "party":      _wear("Праздничный колпак", "head", "common", True, 25),
+    "cap":        _wear("Кепка",              "head", "common", True, 30),
+    "beanie":     _wear("Шапочка",            "head", "common", True, 35),
+    "crown":      _wear("Корона",             "head", "epic",   True, 150),
+    "round":      _wear("Круглые очки",       "acc",  "rare",   True, 40),
+    "sunglasses": _wear("Тёмные очки",        "acc",  "rare",   True, 45),
+    "hearts":     _wear("Очки-сердечки",      "acc",  "rare",   True, 60),
+    "bandana":    _wear("Бандана",            "acc",  "common", True, 25),
+    "scarf":      _wear("Шарфик",             "acc",  "common", True, 30),
+    "bow":        _wear("Бабочка",            "acc",  "common", True, 35),
+    "apron":      _wear("Фартук",             "top",  "common", True, 35),
+    "tee":        _wear("Футболка",           "top",  "rare",   True, 40),
+    "sweater":    _wear("Свитер",             "top",  "rare",   True, 60),
+    "cape":       _wear("Плащ героя",         "back", "epic",   True, 100),
     # --- мебель ---
     "cactus":    {"k": "furn", "n": "Кактус",         "p": 25,  "pl": "floor"},
     "pouf":      {"k": "furn", "n": "Пуф",            "p": 35,  "pl": "floor"},
@@ -132,6 +181,7 @@ REFUSE = {
     "not_owned": "Сначала нужно купить эту вещь 🛍",
     "room_full": "В этой комнате уже тесновато — уберите что-нибудь 🛋",
     "bad_name": "Имя должно быть от 1 до 16 символов ✏️",
+    "legacy": "Эту вещь больше не продают 🏷",
 }
 
 
@@ -440,6 +490,8 @@ def _apply(st: dict, action: str, now: float, p: dict):
         c = CATALOG.get(iid)
         if not c:
             return False, REFUSE["no_item"], 0, 0
+        if c.get("legacy"):                      # старая одежда больше не продаётся (клиент её и не показывает)
+            return False, REFUSE["legacy"], 0, 0
         if c["k"] == "food":
             if items.get(iid, {}).get("qty", 0) >= MAX_FOOD:
                 return False, REFUSE["stock_full"], 0, 0
@@ -451,7 +503,8 @@ def _apply(st: dict, action: str, now: float, p: dict):
         it = items.setdefault(iid, _new_item())
         it["qty"] += 1
         _touch(st, iid)
-        return True, f"Куплено: {c['n']} 🛍", -c["p"], 0
+        label = f"{c['n']} · {RARITY[c['r']]['n'].lower()}" if c["k"] == "wear" else c["n"]   # у одежды в сообщении видна редкость
+        return True, f"Куплено: {label} 🛍", -c["p"], 0
 
     # ---------- одежда ----------
     if action in ("wear", "unwear"):
@@ -464,13 +517,20 @@ def _apply(st: dict, action: str, now: float, p: dict):
             it["worn"] = False
             _touch(st, iid)
             return True, f"Снято: {c['n']}", 0, 0
-        for oid, o in items.items():           # в слоте может быть только одна вещь
-            if o["worn"] and oid != iid and CATALOG.get(oid, {}).get("s") == c["s"]:
+        # в слоте может быть только одна вещь; плюс снимаем вещи несовместимых слотов (костюм ↔ верх)
+        blocked = {c["s"], *CONFLICTS.get(c["s"], ())}
+        removed = []
+        for oid, o in items.items():
+            oc = CATALOG.get(oid, {})
+            if o["worn"] and oid != iid and oc.get("s") in blocked:
                 o["worn"] = False
                 _touch(st, oid)
+                if oc.get("s") != c["s"]:
+                    removed.append(oc["n"])
         it["worn"] = True
         _touch(st, iid)
-        return True, f"Надето: {c['n']} ✨", 0, 0
+        extra = f" (снято: {', '.join(removed)})" if removed else ""
+        return True, f"Надето: {c['n']} ✨{extra}", 0, 0
 
     # ---------- мебель ----------
     if action in ("place", "unplace"):
@@ -822,7 +882,7 @@ def admin(get_db, user_id: int, op: str, p: dict, names=None, pet_key=PET_KEY) -
                 st["items"] = {}
             elif op == "unlock_all":
                 for iid, c in CATALOG.items():
-                    if c["k"] != "food" and iid not in st["items"]:
+                    if c["k"] != "food" and not c.get("legacy") and iid not in st["items"]:
                         it = _new_item(); it["qty"] = 1
                         st["items"][iid] = it
                         _touch(st, iid)
