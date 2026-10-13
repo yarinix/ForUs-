@@ -428,6 +428,11 @@
       move() { noise(0, 0.05, { f: 500, q: 1.5, v: 0.35 }); noise(0.16, 0.05, { f: 420, q: 1.5, v: 0.35 }); noise(0.32, 0.05, { f: 500, q: 1.5, v: 0.3 }); },
       ok() { tone(784, 0, 0.08, { type: 'triangle', v: 0.2 }); tone(1047, 0.08, 0.14, { type: 'triangle', v: 0.2 }); },
       door() { noise(0, 0.2, { f: 300, to: 900, q: 3, v: 0.3 }); tone(180, 0.02, 0.22, { type: 'sawtooth', to: 140, v: 0.07 }); noise(0.32, 0.08, { f: 200, v: 0.4 }); },
+      cast() { noise(0, 0.28, { f: 500, to: 3200, q: 1, v: 0.28 }); },
+      splash() { noise(0, 0.14, { f: 1400, to: 300, q: 0.9, v: 0.3 }); tone(650, 0, 0.1, { type: 'sine', to: 220, v: 0.2 }); },
+      bite() { tone(1400, 0, 0.04, { type: 'square', v: 0.12 }); tone(1100, 0.05, 0.05, { type: 'square', v: 0.1 }); },
+      catch() { noise(0, 0.12, { f: 1000, to: 300, v: 0.25 }); seq([659, 784, 988, 1319], 0.08, { v: 0.14 }); },
+      miss() { tone(392, 0, 0.14, { type: 'triangle', v: 0.16 }); tone(294, 0.14, 0.24, { type: 'triangle', v: 0.16 }); },
       forage() { noise(0, 0.1, { f: 3000, q: 0.8, v: 0.3 }); noise(0.13, 0.1, { f: 2500, q: 0.8, v: 0.3 }); noise(0.26, 0.09, { f: 3300, q: 0.8, v: 0.25 }); tone(660, 0.4, 0.08, { type: 'triangle', v: 0.2 }); tone(990, 0.48, 0.16, { type: 'triangle', v: 0.2 }); },
       angle() { noise(0, 0.28, { f: 400, to: 3000, q: 1, v: 0.3 }); tone(600, 0.4, 0.14, { type: 'sine', to: 180, v: 0.3 }); noise(0.4, 0.1, { f: 900, to: 300, v: 0.25 }); tone(784, 0.8, 0.1, { type: 'triangle', v: 0.15 }); tone(1047, 0.9, 0.2, { type: 'triangle', v: 0.15 }); },
       unlock() { seq([392, 523, 659, 784, 1047], 0.11, { type: 'triangle', v: 0.2 }); tone(1047, 0.6, 0.6, { v: 0.12 }); tone(1319, 0.6, 0.6, { v: 0.1 }); },
@@ -726,6 +731,9 @@
     try {
       const r = await api('/api/pet/action', Object.assign({ action: name }, extra || {}));
       const before = S;
+      const fishUp = r.ok && name === 'angle' && r.state && before && ((r.state.inv || {}).fish || 0) > ((before.inv || {}).fish || 0);
+      const fishAnim = r.ok && name === 'angle' && view.cur === 'lake' && view.water;
+      if (fishAnim) await playFishing(fishUp);
       if (r.state) {
         render(r.state); seenTs = Math.max(seenTs, r.state.last_ts || 0);
         if (r.ok && before) {
@@ -736,11 +744,10 @@
           if (r.state.level > before.level) SFX.play('level', 500);
         }
       }
-      SFX.play(r.ok ? ({ pet: 'pet', feed: 'feed', play: 'play', sleep: 'sleep', wake: 'wake', forage: 'forage', angle: 'angle' }[name] || 'ok') : 'no');
+      SFX.play(r.ok ? ({ pet: 'pet', feed: 'feed', play: 'play', sleep: 'sleep', wake: 'wake', forage: 'forage', angle: fishAnim ? (fishUp ? 'catch' : 'miss') : 'angle' }[name] || 'ok') : 'no');
       if (r.ok && name === 'wake') lastWakeSfx = Date.now();
       say(r.say || '…');
       onAch(r);
-      const fishUp = r.ok && name === 'angle' && before && ((r.state.inv || {}).fish || 0) > ((before.inv || {}).fish || 0);
       setLook(r.ok ? ({ forage: 'walk', angle: fishUp ? 'feed' : 'idle' }[name] || name) : 'no', r.ok ? 2100 : 800);
       haptic(r.ok ? 'ok' : 'err');
     } catch (e) {
@@ -864,7 +871,7 @@
   // слой 84×92, ноги стоят на y=86, центр по x = 42
   const OW = 84, OH = 92, OX = 42, OB = 86;
   // выдра рисуется в своём масштабе (otS) относительно точки (OX, OB)
-  let otS = 0.8;
+  let otS = 0.8, wearK = 1, BACKV = false;   // wearK — масштаб спрайтов одежды при уменьшенной выдре, BACKV — выдра спиной к экрану
   const oX = (x) => OX + (x - OX) * otS, oY = (y) => OB + (y - OB) * otS;
   const oe = (L, cx, cy, rx, ry, ramp, o) => ell(L, oX(cx), oY(cy), rx * otS, ry * otS, ramp, o);
   const of = (L, cx, cy, rx, ry, col) => flat(L, oX(cx), oY(cy), rx * otS, ry * otS, col);
@@ -909,24 +916,27 @@
     drawWear(L, hx, hy);
   }
 
-  function drawOtter(t, look, blink, ov) {
+  function drawOtter(t, look, blink, ov, opt) {
+    opt = opt || {}; const keepS = otS, keepK = wearK, keepB = BACKV;
+    if (opt.s) { otS = opt.s; wearK = opt.s / 0.8; }
+    BACKV = !!opt.back;
     WEAR = ov || (S && S.worn) || {};   // что надето: из состояния или из ov (так рисуются превью вещей в магазине)
     CLK = t; LK = look;                // время и поза нужны анимированным вещам
     const L = newLayer(OW, OH), fast = look === 'pet' || look === 'play' || look === 'walk';
     const wag = Math.floor(t / (fast ? 140 : 480)) % 2, step = Math.floor(t / 150) % 2;
     // хвост (короткий, плоский, торчит вправо)
     const tp = [[56, 84], [62, 86], [68, 85], [73, 81]];
-    for (let i = 0; i < tp.length - 1; i++) for (let f = 0; f < 1; f += 0.34) {
+    if (!BACKV) for (let i = 0; i < tp.length - 1; i++) for (let f = 0; f < 1; f += 0.34) {
       const k = i + f, x = tp[i][0] + (tp[i + 1][0] - tp[i][0]) * f, y = tp[i][1] + (tp[i + 1][1] - tp[i][1]) * f;
       oe(L, x, y - (k > 1.5 ? wag * (k - 1.5) * 2.4 : 0), 5.4 - k * .6, 3.8 - k * .3, FURD, { d: .06 });
     }
     // тело и пузико
-    bodyBack(L, WEAR.back);                          // слот «Спина»: рюкзак, ранец, крылья, плащ — позади туловища
+    if (!BACKV) bodyBack(L, WEAR.back);              // слот «Спина»: рюкзак, ранец, крылья, плащ — позади туловища
     oe(L, OX, 67, 18.5, 19.5, FUR, { d: .08 });
-    oe(L, OX, 70, 11.8, 14.5, BELLY, { d: .08 });
+    if (!BACKV) oe(L, OX, 70, 11.8, 14.5, BELLY, { d: .08 }); else oe(L, OX, 85, 7, 3.6, FURD, { d: .06 });   // со спины: нет пузика, виден хвостик
     const outfit = WEAR.suit || WEAR.top;            // костюм закрывает «верх»
-    bodyFront(L, outfit);                            // слоты «Верх» / «Костюм»
-    backFront(L, WEAR.back);                         // лямки рюкзака — поверх одежды
+    if (BACKV) backOutfit(L, outfit); else bodyFront(L, outfit);   // слоты «Верх» / «Костюм»
+    if (BACKV) bodyBack(L, WEAR.back); else backFront(L, WEAR.back);   // со спины рюкзак, крылья и плащ видны целиком; иначе лямки рюкзака — поверх одежды
     const fit = OUTFIT[outfit], armR = (fit && fit.sleeve) || FURD, footR = (fit && fit.feet) || FURD;   // рукава и обувь костюма (иначе — мех)
     // ноги
     const lf = look === 'walk' && step ? 3 : 0, rf = look === 'walk' && !step ? 3 : 0;
@@ -941,7 +951,7 @@
     } else {
       oe(L, OX - 18, 69, 4, 7.6, armR, { d: .06 }); oe(L, OX + 18, 69, 4, 7.6, armR, { d: .06 });
     }
-    drawHead(L, OX, 34, look === 'walk' ? 'idle' : look, blink);
+    if (BACKV) drawHeadBack(L, OX, 34); else drawHead(L, OX, 34, look === 'walk' ? 'idle' : look, blink);
     // эффекты
     if (look === 'feed') {
       const b = Math.floor(t / 300) % 2;
@@ -963,6 +973,7 @@
     }
     outline(L, OTT_OUT);
     legendFx(L, t);                                  // искорки легендарных вещей (после обводки, чтобы не темнели)
+    otS = keepS; wearK = keepK; BACKV = keepB;
     return L;
   }
 
@@ -1357,6 +1368,8 @@
     for (const [r, dx] of view.fx) drawItems(r, dx, false, now);
     const blink = (Math.floor(now / 160) % 31) === 0;
     const hop = look === 'play' ? -Math.round(Math.abs(Math.sin(now / 130)) * 7) : look === 'walk' ? -(Math.floor(now / 150) % 2) : (look === 'sleep' || look === 'sleepy' ? (Math.floor(now / 900) % 2) : (Math.floor(now / 650) % 2));
+    if (view.fish) { if (now - view.fish.t0 > view.fish.dur) view.fish = null; else look = (view.fish.hit && now - view.fish.t0 > 3900) ? 'feed' : 'idle'; }
+    const OSC = out ? 0.64 : 0.8, kk = OSC / 0.8; view.otsCur = OSC;
     let ox = out ? view.oxOut : view.ox, alpha = 1, doorOpen = false;
     const en = view.enter;
     if (en && view.cur === 'yard' && !tr && view.door) {
@@ -1365,13 +1378,15 @@
     }
     view.curOx = ox;
     if (doorOpen) { const d = view.door; sx.fillStyle = '#2e1a10'; sx.fillRect(d.x, d.y, d.w, d.h); sx.fillStyle = '#7a4a28'; sx.fillRect(d.x + 3, d.y + (d.h >> 1), d.w - 6, d.h >> 1); sx.fillStyle = '#b8723a'; sx.fillRect(d.x, d.y, 4, d.h); }
-    sx.globalAlpha = alpha * 0.28 / 0.28; sx.fillStyle = 'rgba(40,20,20,.28)'; for (let i = -19; i <= 19; i++) { const h = Math.round(Math.sqrt(1 - (i / 20) ** 2) * 3); sx.fillRect(ox + i, view.baseY - 1 - h + 3, 1, h * 2 - 1); }
+    sx.globalAlpha = alpha * 0.28 / 0.28; sx.fillStyle = 'rgba(40,20,20,.28)'; const hw = Math.round(19 * kk); for (let i = -hw; i <= hw; i++) { const h = Math.round(Math.sqrt(1 - (i / (hw + 1)) ** 2) * 3); sx.fillRect(ox + i, view.baseY - 1 - h + 3, 1, h * 2 - 1); }
     const tentSleeping = !!(S && S.sleeping && out && S.placed && S.placed.tent && S.placed.tent.room === view.cur);
     if (!tentSleeping) {
-      const O = drawOtter(now, look, blink);
+      const backV = !!view.fish && !(view.fish.hit && now - view.fish.t0 > 3900);
+    const O = drawOtter(now, look, blink, null, { s: out ? OSC : 0, back: backV });
       sx.drawImage(O.c, ox - OX, view.baseY - OB + 4 + hop);
     }
     sx.globalAlpha = 1;
+    if (view.fish && view.cur === 'lake' && !tr) drawFishing(sx, now, ox);
     for (const [r, dx] of view.fx) drawItems(r, dx, true, now);
     if (look === 'play' && (view.cur === 'home' || view.cur === 'yard')) {
       const by = view.baseY - 4 - Math.round(Math.abs(Math.sin(now / 160)) * 26), bx = ox + 34;
@@ -1389,7 +1404,8 @@
   }
   // положение и размеры выдры в «пикселях игры» — для касания
   function otterHit(lx, ly) {
-    return Math.abs(lx - (view.curOx != null ? view.curOx : view.ox)) < 23 && ly > view.baseY - OB + 4 + oY(14) && ly < view.baseY + 4;
+    const s = view.otsCur || 0.8;
+    return Math.abs(lx - (view.curOx != null ? view.curOx : view.ox)) < 23 * s / 0.8 && ly > view.baseY + 4 + (14 - OB) * s && ly < view.baseY + 4;
   }
 
   // ---------- реальное время: день и ночь по часам BOT_TIMEZONE (час приходит с сервера) ----------
@@ -1455,7 +1471,7 @@
     return out;
   }
   function sprc(L, cx, by, rows, map, sc) {
-    rows = scaleRows(rows, sc);
+    rows = scaleRows(rows, wearK === 1 ? sc : (sc || 1) * wearK);
     const w = Math.max(...rows.map(r => r.length)), rr = rows.map(r => r.padEnd(w, '.'));
     spr(L, Math.round(oX(cx) - w / 2), Math.round(oY(by) - rows.length), rr, map);
   }
@@ -1730,11 +1746,40 @@
   function drawWear(L, hx, hy) {
     const w = WEAR || {}, fit = OUTFIT[w.suit];
     if (fit && fit.head) fit.head(L, hx, hy);
-    if (w.acc) { if (ACC[w.acc]) ACC[w.acc](L, hx, hy); else { drawNeckWear(L, hx, hy, w.acc); drawFaceWear(L, hx, hy, w.acc); } }   // старые шарфики/очки рисуют прежние функции
+    if (w.acc && BACKV) backAcc(L, hx, hy, w.acc);
+    else if (w.acc) { if (ACC[w.acc]) ACC[w.acc](L, hx, hy); else { drawNeckWear(L, hx, hy, w.acc); drawFaceWear(L, hx, hy, w.acc); } }   // старые шарфики/очки рисуют прежние функции
     const h = w.head && (HEAD[w.head] || HAT[w.head]);
     if (h) sprc(L, hx + (h.dx || 0), hy + h.by - (h.bob ? Math.floor(CLK / 700) % 2 * 1.3 : 0), h.rows, h.map, h.sc);   // bob — покачивание нимба
   }
   // Всё, что лежит ЗА спиной (рисуется до туловища, выглядывает по бокам): рюкзак, ранец, крылья, плащ.
+  // ---------- вид со спины (рыбалка: выдра смотрит на озеро) ----------
+  const BACKACC = { scarf: '#e04848', bandana: '#4f83e8', shells: '#f6e6c8', amulet: '#7fe8ff', bow: '#ff5a8a' };
+  function backAcc(L, hx, hy, id) { const c = BACKACC[id]; if (c) oe(L, hx, hy + 18.5, 17, 3.4, [c, c], { d: 0 }); }
+  function drawHeadBack(L, hx, hy) {
+    oe(L, hx - 19, hy - 14, 5.2, 5.2, FUR, { d: .08 }); oe(L, hx + 19, hy - 14, 5.2, 5.2, FUR, { d: .08 });
+    oe(L, hx, hy, 25, 19, FUR, { d: .08 });
+    for (const [a, b] of [[-8, -10], [-3, -12], [3, -11], [9, -9], [-12, -2], [12, -3], [0, -4], [-6, 3], [7, 4], [-14, 6], [14, 7], [-2, 9]]) { od(L, hx + a, hy + b, '#8d5636'); od(L, hx + a + 1, hy + b, '#8d5636'); }
+    drawWear(L, hx, hy);
+  }
+  // одежда со спины: берём рисунок спереди, убираем мелкие детали (сердечки, пуговицы, карманы) — остаются основные цвета вещи
+  const BACKO = {};
+  const hexInt = (h) => parseInt(h.slice(1), 16);
+  function backOutfit(L, id) {
+    if (!id) return;
+    const key = id + '|' + otS; let B = BACKO[key];
+    if (!B) {
+      const T = newLayer(OW, OH); bodyFront(T, id);
+      const img = T.x.getImageData(0, 0, OW, OH), d = img.data, bm = new Map(BELLY.map(h => [hexInt(h), hexInt(FUR[2])]));
+      const cols = new Int32Array(OW * OH).fill(-1), cnt = new Map(); let total = 0;
+      for (let i = 0; i < OW * OH; i++) if (d[i * 4 + 3]) { let c = (d[i * 4] << 16) | (d[i * 4 + 1] << 8) | d[i * 4 + 2]; if (bm.has(c)) c = bm.get(c); cols[i] = c; cnt.set(c, (cnt.get(c) || 0) + 1); total++; }
+      let keep = [...cnt].filter(([, n]) => n >= total * 0.04).map(([c]) => c);
+      if (keep.length < 2) keep = [...cnt].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([c]) => c);
+      const near = (c) => { let best = keep[0], bd = 1e9; for (const k of keep) { const dr = (c >> 16) - (k >> 16), dg = ((c >> 8) & 255) - ((k >> 8) & 255), db = (c & 255) - (k & 255), dd = dr * dr + dg * dg + db * db; if (dd < bd) { bd = dd; best = k; } } return best; };
+      for (let i = 0; i < OW * OH; i++) if (cols[i] >= 0) { const c = keep.includes(cols[i]) ? cols[i] : near(cols[i]); d[i * 4] = c >> 16; d[i * 4 + 1] = (c >> 8) & 255; d[i * 4 + 2] = c & 255; d[i * 4 + 3] = 255; }
+      T.x.putImageData(img, 0, 0); B = BACKO[key] = T;
+    }
+    L.x.drawImage(B.c, 0, 0);
+  }
   function bodyBack(L, id) { const b = BACK[id]; if (b) b.behind(L); else legacyBack(L, id); }
   // Лямки рюкзака и ранца — поверх одежды на груди (вызывается после bodyFront).
   function backFront(L, id) { const b = BACK[id]; if (b && b.front) b.front(L); }
@@ -2181,12 +2226,14 @@
       if (o.id === 'aquarium') {
         // Плавание без заметного короткого цикла: сложенные волны дают каждой рыбке свой маршрут.
         const t = now / 1000;
-        const swim = (baseX, baseY, phase, rangeX, rangeY) => ({
-          x: x + baseX + Math.round(Math.sin(t * 0.63 + phase) * rangeX + Math.sin(t * 0.29 + phase * 1.7) * rangeX * 0.28),
-          y: y + baseY + Math.round(Math.sin(t * 0.91 + phase * 1.3) * rangeY + Math.sin(t * 0.37 + phase) * rangeY * 0.35)
-        });
-        const f1 = swim(5, 7, 0.8, 5, 2);
-        const f2 = swim(17, 13, 3.4, 4, 2);
+        // Рыбки ограничены стеклом аквариума (внутри x 4..29, y 5..18), чтобы никогда не выплывать за границы.
+        const swim = (baseX, baseY, phase, rangeX, rangeY, fw, fh) => {
+          const dx = Math.round(Math.sin(t * 0.63 + phase) * rangeX + Math.sin(t * 0.29 + phase * 1.7) * rangeX * 0.28);
+          const dy = Math.round(Math.sin(t * 0.91 + phase * 1.3) * rangeY + Math.sin(t * 0.37 + phase) * rangeY * 0.35);
+          return { x: x + Math.max(4, Math.min(30 - fw, baseX + dx)), y: y + Math.max(5, Math.min(19 - fh, baseY + dy)) };
+        };
+        const f1 = swim(13, 9, 0.8, 6, 2, 7, 5);
+        const f2 = swim(17, 14, 3.4, 4, 2, 5, 3);
         spr({ x: sx, w: 0, h: 0 }, f1.x, f1.y, ['..oo...', '.oooooo', 'oookoo.', '.oooooo', '..oo...'], { o: '#ffb15c', k: OUT });
         spr({ x: sx, w: 0, h: 0 }, f2.x, f2.y, ['.bbb.', 'bbkbb', '.bbb.'], { b: '#8aa7ff', k: OUT });
         // Пузыри возникают нерегулярно и в разных местах.
@@ -2336,6 +2383,68 @@
     if (!r || !r.ach_new || !r.ach_new.length) return;
     const t = r.ach_new.map(a => a.e + ' ' + a.n).join('\n');
     setTimeout(() => { toast('🏆 Достижение!\n' + t, 4200); SFX.play('ach'); }, 700);
+  }
+
+  // ---------- анимация рыбалки: замах, заброс, поплавок, поклёвка, вытягивание ----------
+  function pxLine(g, x0, y0, x1, y1, col) {
+    x0 = Math.round(x0); y0 = Math.round(y0); x1 = Math.round(x1); y1 = Math.round(y1);
+    const dx = Math.abs(x1 - x0), dy = Math.abs(y1 - y0), sxs = x0 < x1 ? 1 : -1, sys = y0 < y1 ? 1 : -1; let e = dx - dy;
+    g.fillStyle = col;
+    for (let n = 0; n < 300; n++) { g.fillRect(x0, y0, 1, 1); if (x0 === x1 && y0 === y1) break; const e2 = 2 * e; if (e2 > -dy) { e -= dy; x0 += sxs; } if (e2 < dx) { e += dx; y0 += sys; } }
+  }
+  function pxRing(g, cx, cy, r, a) {
+    g.fillStyle = 'rgba(255,255,255,' + a.toFixed(2) + ')';
+    for (let k = 0; k < 24; k++) { const an = k / 24 * 6.2832; g.fillRect(Math.round(cx + Math.cos(an) * r), Math.round(cy + Math.sin(an) * r * 0.35), 1, 1); }
+  }
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const FISH_DUR = 4400;
+  function playFishing(hit) {
+    return new Promise(res => {
+      view.fish = { t0: performance.now(), hit, dur: FISH_DUR };
+      say('Закидываю удочку… 🎣', 2400);
+      SFX.play('cast', 450); SFX.play('splash', 1000); SFX.play('bite', 2900); SFX.play('bite', 3060);
+      setTimeout(() => haptic('light'), 2900);
+      setTimeout(res, FISH_DUR);
+    });
+  }
+  function drawFishing(g, now, ox) {
+    const F = view.fish, t = now - F.t0, w = view.water; if (!w) return;
+    const os_ = view.otsCur || 0.8, kk = os_ / 0.8, hx = ox + Math.round(18 * os_), hy = view.baseY + 4 - Math.round(17 * os_), bx = Math.min(view.W - 10, ox + 34), by = Math.round((w.y0 + w.y1) / 2) + 3;
+    // кончик удилища
+    let tx = hx + 15, ty = hy - 17;
+    if (t < 500) { const k = ease(t / 500); tx = lerp(hx + 12, hx - 6, k); ty = lerp(hy - 19, hy - 22, k); }
+    else if (t < 800) { const k = ease((t - 500) / 300); tx = lerp(hx - 6, hx + 16, k); ty = lerp(hy - 22, hy - 14, k); }
+    else if (t < 2900) { tx = hx + 16; ty = hy - 14 + Math.round(Math.sin(t / 420)); }
+    else if (t < 3350) { tx = hx + 16; ty = hy - 14 + Math.round(Math.abs(Math.sin(t / 50)) * 3); }
+    else { const k = ease(Math.min(1, (t - 3350) / 350)); tx = lerp(hx + 16, hx + 10, k); ty = lerp(hy - 14, hy - 24, k); }
+    pxLine(g, hx, hy, tx, ty, '#8f5e35'); pxLine(g, hx, hy - 1, tx, ty - 1, '#c99358'); g.fillStyle = '#6e4527'; g.fillRect(hx - 1, hy - 1, 3, 3);
+    const bob = (x, y, dip) => { g.fillStyle = '#ffffff'; g.fillRect(x - 1, y - 2 + dip, 3, 2); g.fillStyle = '#e8505b'; g.fillRect(x - 1, y + dip, 3, 2); };
+    const thread = (x, y) => { pxLine(g, tx, ty, x, y - 2, 'rgba(244,247,255,.9)'); };
+    if (t < 500) { pxLine(g, tx, ty, tx, ty + 9, 'rgba(244,247,255,.9)'); g.fillStyle = '#e8505b'; g.fillRect(tx, ty + 9, 2, 2); }
+    else if (t < 1000) {
+      const k = ease((t - 500) / 500), x = lerp(tx, bx, k), y = lerp(ty, by, k) - Math.sin(Math.PI * k) * 16;
+      thread(x, y); bob(Math.round(x), Math.round(y), 0);
+    } else if (t < 3350) {
+      const bit = t > 2900, dip = bit ? Math.round(Math.abs(Math.sin(t / 45)) * 3) : Math.round(Math.sin(t / 300));
+      const my = by + dip; pxLine(g, tx, ty, (tx + bx) / 2, Math.max(ty, my) + 2, 'rgba(244,247,255,.9)'); pxLine(g, (tx + bx) / 2, Math.max(ty, my) + 2, bx, my - 2, 'rgba(244,247,255,.9)');
+      bob(bx, by, dip);
+      const rt = t - 1000; for (let i = 0; i < 3; i++) { const ph = ((rt - i * 650) % 2000) / 2000; if (rt - i * 650 > 0 && ph < 0.6) pxRing(g, bx, by + 2, 2 + ph * 14, 0.8 * (1 - ph / 0.6)); }
+      if (t < 1250) { g.fillStyle = '#ffffff'; for (const [a, b] of [[-3, -3], [3, -4], [-1, -6], [1, -5], [-5, -1], [5, -1]]) g.fillRect(bx + a, by + b - Math.round((t - 1000) / 80), 1, 1); }
+      if (bit) { g.fillStyle = '#e8505b'; const ey_ = view.baseY + 4 - Math.round(76 * os_) - 12; g.fillRect(ox, ey_, 2, 6); g.fillRect(ox, ey_ + 8, 2, 2); }
+    } else {
+      const k = Math.min(1, (t - 3350) / 1000);
+      if (F.hit) {
+        const x = lerp(bx, ox + 2, k), y = lerp(by, view.baseY - 12 - Math.round(10 * kk), k) - Math.sin(Math.PI * k) * 26;
+        pxLine(g, tx, ty, x, y, 'rgba(244,247,255,.9)');
+        spr({ x: g }, Math.round(x) - 5, Math.round(y) - 3, ['...bbb...o', '.bbbbbbbbo', 'bbkbbbbbo.', 'bLLLLLbbbo', '.bbbbbbbbo', '....bbb...'], { b: '#ff9a3c', L: '#ffd08a', k: '#2a1722', o: '#ff9a3c' });
+        if (k < 0.2) pxRing(g, bx, by + 2, 3 + k * 30, 0.9);
+        if (k > 0.85) { g.fillStyle = '#fff6a8'; for (const [a, b] of [[-7, -6], [7, -8], [0, -12], [-10, -1], [10, 0]]) g.fillRect(ox + a, view.baseY - 12 - Math.round(10 * kk) + b, 1, 1); }
+      } else {
+        const x = lerp(bx, tx, ease(k)), y = lerp(by, ty + 10, ease(k)) - Math.sin(Math.PI * k) * 6;
+        pxLine(g, tx, ty, x, y, 'rgba(244,247,255,.9)'); g.fillStyle = '#c9d4e0'; g.fillRect(Math.round(x), Math.round(y), 1, 3); g.fillRect(Math.round(x) + 1, Math.round(y) + 2, 1, 1);
+        if (k > 0.6) { g.fillStyle = '#ffffff'; const ey_ = view.baseY + 4 - Math.round(76 * os_) - 10; g.fillRect(ox - 3, ey_, 1, 1); g.fillRect(ox, ey_, 1, 1); g.fillRect(ox + 3, ey_, 1, 1); }
+      }
+    }
   }
 
   // ---------- достижения ----------
