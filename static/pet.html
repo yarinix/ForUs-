@@ -188,6 +188,13 @@
   .dday.claimed { opacity: .55; }
   .dday.claimed::after { content: '✓'; position: absolute; top: 4px; right: 8px; font-size: 13px; font-weight: 900; color: var(--ok); }
   .dday.today { --rc: var(--coin); border-color: var(--coin); box-shadow: 0 0 0 1px var(--coin) inset, 0 0 14px rgba(255,207,61,.35); animation: legend 2.4s ease-in-out infinite; }
+  /* окно бонуса дня: всплывает при первом заходе за день */
+  #dailypop { position: fixed; inset: 0; background: rgba(4,8,22,.74); display: none; align-items: center; justify-content: center; padding: 16px; z-index: 8; }
+  #dailypop.on { display: flex; }
+  #dpopcard { width: 100%; max-width: 420px; max-height: 92dvh; overflow: auto; background: linear-gradient(180deg, var(--card2), var(--card)); border: 1.5px solid var(--coin); border-radius: 22px; padding: 16px 14px calc(env(safe-area-inset-bottom, 0px) + 14px); box-shadow: 0 0 28px rgba(255,207,61,.28); }
+  #dpopcard h3 { margin: 0 0 4px; text-align: center; font-size: 18px; }
+  #dpopbtns { display: flex; gap: 8px; margin-top: 12px; }
+  #dpopbtns .chipbtn { flex: 1; padding: 11px 14px; }
   .dnote { font-size: 12px; font-weight: 700; color: var(--dim); text-align: center; line-height: 1.45; margin: 10px 4px 0; }
   .qcat { display: flex; align-items: baseline; justify-content: space-between; margin: 16px 2px 7px; font-weight: 800; font-size: 15px; }
   .qcat small { font-size: 11px; color: var(--dim); font-weight: 700; }
@@ -380,6 +387,7 @@
   </nav>
 </div>
 <div id="veil"><div id="veiltxt"></div></div>
+<div id="dailypop"><div id="dpopcard"><h3>🎁 Бонус дня</h3><div id="dpopbody"></div><div id="dpopbtns"><button class="chipbtn alt" id="dpopclose" type="button">Позже</button></div></div></div>
 <div id="sheet"><div id="sheetbox"><div id="sheettitle"></div><div id="sheetlist"></div>
   <div id="sheetbtns"><button class="chipbtn alt" id="sheetshop">🛍 В магазин</button><button class="chipbtn alt" id="sheetclose">Закрыть</button></div></div></div>
 <div id="toast"></div>
@@ -611,7 +619,7 @@
     const D = st.daily, dc = !!(D && D.can_claim);          // можно ли сегодня забрать ежедневный бонус
     $('dsub').textContent = D ? (dc ? '🎁 забери награду' : '🔥 серия ' + D.streak) : 'награда за вход';
     document.querySelector('nav button[data-tab="menu"]').classList.toggle('dot', ready > 0 || ar > 0 || dc);
-    if (dc && !dailyNudged && !isGuest()) { dailyNudged = true; setTimeout(() => toast('🎁 Бонус дня ждёт в меню!', 3500), 1200); }   // напоминаем один раз за запуск
+    maybeDailyPop(D);                                        // первый заход за день: всплывает окно с наградами
     if (!isGuest()) {                                  // вкладка идёт за питомцем: на улице — «Локация», дома — «Главная»
       const o = outdoor(st.room), un = hasForest(st);
       if (tab === 'home' && o) show('loc', { quiet: true, noMove: true });
@@ -1999,6 +2007,7 @@
   }
   // updatePanels() — зовётся при каждом новом состоянии с сервера: обновляет открытый сейчас раздел (магазин, гардероб, задания)
   function updatePanels() {
+    if ($('dailypop').classList.contains('on')) { if (S && S.daily && S.daily.can_claim) fillDaily($('dpopbody'), true); else closeDailyPop(); }   // бонус забрали (в том числе партнёр) — окно не нужно
     if (tab === 'shop') renderShop(); else if (tab === 'wardrobe') renderWardrobe(); else if (tab === 'quests') renderQuests();
     else if (tab === 'rewards') renderAch(); else if (tab === 'daily') renderDaily(); else if (tab === 'loc') { renderLoc(); if (view.edit) renderEditList(); }
     else if (tab === 'home' && view.edit) renderEditList();
@@ -2401,16 +2410,18 @@
   // ЕЖЕДНЕВНЫЙ БОНУС. Всё считает сервер (pet_ach.py → daily_view): серию, награды дней и «можно ли забрать сегодня».
   // Клиент только рисует календарь из 7 дней и по кнопке просит действие claim_daily.
   // =====================================================================
-  let dailyBusy = false, dailyNudged = false;   // dailyNudged — напомнили о бонусе уже один раз за этот запуск
-  // renderDaily — экран «Бонус дня»: строка-статус, календарь текущей недели серии (4 + 3 дня), кнопка «Забрать», правила.
-  // Состояния дня: claimed (✓, приглушён), today (золотая рамка), future. Подарок дня показывается эмодзи из каталога еды.
-  function renderDaily() {
-    const box = $('dbody'); if (!box) return; box.textContent = '';
+  let dailyBusy = false, dailyPopShown = false;   // dailyPopShown — окно бонуса уже показывали в этом запуске
+  // fillDaily(box, popup) — рисует содержимое бонуса дня в контейнер box: строка-статус, календарь текущей недели серии (4 + 3 дня),
+  // кнопка «Забрать» и правила. Один и тот же рисунок идёт и на экран «Бонус дня» (popup = false), и в окно, которое всплывает
+  // при первом заходе за день (popup = true: без длинных правил). Состояния дня: claimed (✓, приглушён), today (золотая рамка), future.
+  // Подарок дня показывается эмодзи из каталога еды.
+  function fillDaily(box, popup) {
+    box.textContent = '';
     const D = S && S.daily;
     if (!D || !CAT) { box.appendChild(el('div', 'empty', 'Загружаем бонус…')); return; }
     $('dstreak').textContent = '🔥 ' + D.streak;
     box.appendChild(el('div', 'qinfo' + (D.can_claim ? ' ok' : ''), D.can_claim
-      ? '🎁 Бонус дня ждёт: день ' + D.day + ' из 7'
+      ? '🔥 Серия: ' + D.streak + ' · сегодня день ' + D.day + ' из 7'
       : '✅ Сегодня бонус получен' + (D.by ? ' · ' + D.by : '') + '. Завтра будет день ' + (D.day % 7 + 1)));
     const grid = el('div', 'dgrid');
     D.days.forEach(d => {
@@ -2424,13 +2435,35 @@
     box.appendChild(grid);
     if (D.can_claim) { const b = el('button', 'buy', '🎁 Забрать бонус'); b.addEventListener('click', claimDaily); box.appendChild(b); }
     box.appendChild(el('div', 'dnote', D.boost ? 'Бонус серии: +' + D.boost + '% к монетам и опыту' : 'Каждая пройденная неделя серии добавляет +25% к монетам и опыту (до +100%)'));
+    if (popup) return;
     box.appendChild(el('div', 'dnote', 'Заходите каждый день: награда растёт. Пропустите день — серия начнётся заново.'));
     box.appendChild(el('div', 'dnote', 'Лучшая серия: ' + D.best + ' · бонусов забрано: ' + D.total));
   }
+  // renderDaily — экран «Бонус дня» в меню
+  function renderDaily() { const box = $('dbody'); if (box) fillDaily(box, false); }
+
+  // ---------- окно бонуса дня: всплывает при первом заходе за день ----------
+  // Условия показа (maybeDailyPop, вызывается из render): бонус сегодня ещё не забран, это не гостевой режим и на этом
+  // устройстве окно сегодня ещё не показывали. «Сегодня» — номер дня с сервера (D.today, по BOT_TIMEZONE), он хранится в localStorage
+  // отдельно для общего и админского питомца. Если закрыть окно кнопкой «Позже», до завтра оно не вернётся: бонус всё равно ждёт
+  // в Меню → «Бонус дня» (на «Меню» горит красная точка).
+  function openDailyPop() { fillDaily($('dpopbody'), true); $('dailypop').classList.add('on'); SFX.play('ach'); haptic('ok'); }
+  function closeDailyPop() { $('dailypop').classList.remove('on'); }
+  function maybeDailyPop(D) {
+    if (!D || !D.can_claim || isGuest() || dailyPopShown) return;
+    const key = 'otter_dailypop_' + (testMode ? 'admin' : 'main');
+    let seen = null; try { seen = localStorage.getItem(key); } catch (e) { /* без хранилища покажем один раз за запуск */ }
+    if (seen !== null && String(seen) === String(D.today)) return;
+    dailyPopShown = true;
+    try { localStorage.setItem(key, String(D.today)); } catch (e) { /* ничего страшного */ }
+    setTimeout(() => { if (S && S.daily && S.daily.can_claim) openDailyPop(); }, 900);   // чуть позже, чтобы сначала нарисовалась сцена
+  }
+  $('dpopclose').addEventListener('click', closeDailyPop);
+  $('dailypop').addEventListener('click', (e) => { if (e.target === $('dailypop')) closeDailyPop(); });
   // claimDaily — «Забрать бонус»: действие claim_daily на сервер; в ответе новое состояние и, возможно, новые достижения (серия)
   async function claimDaily() {
     if (dailyBusy) return; dailyBusy = true; haptic('light');
-    try { const r = await rpc('claim_daily'); if (r) { toast(r.say, 4500); haptic(r.ok ? 'ok' : 'err'); onAch(r); } } finally { dailyBusy = false; }
+    try { const r = await rpc('claim_daily'); if (r) { closeDailyPop(); toast(r.say, 4500); haptic(r.ok ? 'ok' : 'err'); onAch(r); } } finally { dailyBusy = false; }
   }
   function onAch(r) {
     if (!r || !r.ach_new || !r.ach_new.length) return;
