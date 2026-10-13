@@ -83,7 +83,7 @@
   .act:active, .act.press { transform: translateY(3px); box-shadow: 0 1px 0 rgba(4,10,30,.7); }
 
   /* нижняя навигация */
-  nav { display: grid; grid-template-columns: repeat(2, 1fr); background: rgba(8,16,40,.72); border: 1.5px solid var(--line); border-radius: 22px; padding: 5px; }
+  nav { display: grid; grid-template-columns: repeat(3, 1fr); background: rgba(8,16,40,.72); border: 1.5px solid var(--line); border-radius: 22px; padding: 5px; }
   nav button { font: inherit; font-size: 11.5px; font-weight: 800; color: var(--dim); background: none; border: 0; border-radius: 17px; padding: 7px 0 6px; display: flex; flex-direction: column; align-items: center; gap: 2px; }
   nav button span { font-size: 20px; line-height: 1; filter: grayscale(.5); }
   nav button.on { color: #fff; background: linear-gradient(180deg, #3b86ff, #2563d8); box-shadow: 0 3px 10px rgba(47,123,255,.45); }
@@ -207,11 +207,23 @@
   #visitnote { display:none; align-items:center; justify-content:space-between; gap:10px; padding:8px 12px; font-size:12.5px; font-weight:800; color:#d8e5ff; background:rgba(30,48,91,.82); border-bottom:1px solid var(--line); }
   #visitnote.on { display:flex; }
   #returnbtn { border:0; border-radius:12px; padding:9px 13px; font:inherit; font-size:12.5px; font-weight:900; color:white; background:linear-gradient(180deg,#1f9f83,#14745f); white-space:nowrap; }
+  #testnote { display:none; align-items:center; justify-content:space-between; gap:10px; padding:8px 12px; font-size:12.5px; font-weight:800; color:#fff3d6; background:rgba(122,72,18,.88); border-bottom:1px solid #d99a28; }
+  #testnote.on { display:flex; }
+  #testexit { border:0; border-radius:12px; padding:9px 13px; font:inherit; font-size:12.5px; font-weight:900; color:white; background:linear-gradient(180deg,#1f9f83,#14745f); white-space:nowrap; }
   #app.guest-mode > :not(#visitnote) { pointer-events:none; }
   #app.guest-mode #stats, #app.guest-mode #actions, #app.guest-mode #editbar, #app.guest-mode nav, #app.guest-mode .panel { display:none !important; }
   #app.guest-mode #stage { display:block !important; }
   #app.guest-mode .arrow, #app.guest-mode #sleepbar button { display:none !important; }
 
+  #locedit { position: absolute; left: 8px; bottom: 8px; z-index: 3; display: none; font-size: 12.5px; padding: 8px 12px; box-shadow: 0 4px 12px rgba(0,0,0,.4); }
+  .locprev { width: 100%; height: 150px; object-fit: cover; object-position: 50% 70%; border-radius: 16px; margin-bottom: 10px; border: 1.5px solid var(--line); }
+  .lochead { font-weight: 900; font-size: 20px; margin: 2px 0 4px; }
+  .locrow { display: flex; align-items: center; gap: 12px; padding: 7px 4px; }
+  .locrow .e { font-size: 24px; width: 30px; text-align: center; }
+  .locrow .m { font-weight: 800; font-size: 14px; } .locrow .m small { display: block; font-size: 11.5px; color: var(--dim); font-weight: 700; margin-top: 1px; }
+  .arow { display: flex; gap: 11px; align-items: flex-start; }
+  .arow .ae { font-size: 30px; line-height: 1.1; width: 36px; text-align: center; flex: 0 0 auto; }
+  .arow .ab { flex: 1; min-width: 0; }
   @media (max-height: 640px) { #avatar { width: 42px; height: 42px; } .act .em { width: 36px; height: 36px; font-size: 22px; } }
   @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 </style>
@@ -228,6 +240,7 @@
     <div id="coins"><i class="coinic" data-icon="coin" data-k="3"></i><span id="coinv">0</span></div>
   </header>
   <div id="visitnote"><span id="visittext"></span><button id="returnbtn" type="button">↩ К себе</button></div>
+  <div id="testnote"><span>🧪 Проверка: админский питомец. Полина его не видит.</span><button id="testexit" type="button">↩ К общему</button></div>
 
   <div id="stats">
     <div class="pill" id="p-happy"><div class="fillbar"></div><span class="ico" data-icon="heart" data-k="3"></span><b id="v-happy">0/100</b></div>
@@ -241,6 +254,7 @@
     <div id="roomname">Гостиная</div>
     <button class="arrow" id="arL" style="left:6px"><span data-icon="arrL" data-k="4"></span><small>Кухня</small></button>
     <button class="arrow" id="arR" style="right:6px"><span data-icon="arrR" data-k="4"></span><small>Спальня</small></button>
+    <button class="chipbtn" id="locedit" type="button">🛠 Обустроить</button>
     <div id="bubble"></div>
     <div id="sleepbar"><div id="sleeptxt"></div><button class="chipbtn alt" id="wakebtn">Разбудить</button></div>
   </div>
@@ -254,7 +268,7 @@
       <button class="mcard" data-go="edit"><span data-icon="house" data-k="4"></span>Дом<small>расставить мебель</small></button>
       <button class="mcard" data-go="quests"><span data-icon="list" data-k="4"></span>Задания<small id="qsub">ежедневные дела</small></button>
       <button class="mcard" data-go="visit" id="visitcard" style="display:none"><span data-icon="paw" data-k="4"></span>В гости<small>посетить друга</small></button>
-      <button class="mcard" data-go="rewards"><span data-icon="trophy" data-k="4"></span>Достижения<small>скоро</small></button>
+      <button class="mcard" data-go="rewards"><span data-icon="trophy" data-k="4"></span>Достижения<small id="asub">награды за заботу</small></button>
       <button class="mcard" data-go="admin" id="admcard" style="display:none"><span data-icon="gear" data-k="4"></span>Админка<small>управление игрой</small></button>
       <button class="mcard" data-go="settings"><span data-icon="gear" data-k="4"></span>Настройки<small>имя питомца</small></button>
     </div>
@@ -282,7 +296,10 @@
   </section>
   <section class="panel" id="panel-admin">
     <div class="top"><button class="back" data-go="menu">‹ Меню</button><h3>Админка</h3></div>
-    <p>Видна только тебе. Пустые поля не меняются.</p>
+    <p>Видна только тебе. Пустые поля не меняются. Все кнопки действуют на того питомца, с которым ты сейчас играешь.</p>
+    <h4>Проверка</h4>
+    <p id="a-testhint">Отдельный админский питомец: он только твой, Полина его не видит и не может навестить. Общий питомец остаётся как был.</p>
+    <div class="admbtns"><button class="chipbtn" id="a-test" type="button">🧪 Проверка</button></div>
     <div class="adm">
       <label>Радость<input id="a-happy" type="number" inputmode="numeric" min="0" max="100"></label>
       <label>Сытость<input id="a-hunger" type="number" inputmode="numeric" min="0" max="100"></label>
@@ -291,13 +308,15 @@
       <label>Уровень<input id="a-level" type="number" inputmode="numeric" min="1"></label>
       <label>Опыт<input id="a-xp" type="number" inputmode="numeric" min="0"></label>
       <label>Имя<input id="a-name" type="text" maxlength="16"></label>
-      <label>Комната<select id="a-room"><option value="">—</option><option value="kitchen">Кухня</option><option value="home">Гостиная</option><option value="bedroom">Спальня</option></select></label>
+      <label>Комната<select id="a-room"><option value="">—</option><option value="kitchen">Кухня</option><option value="home">Гостиная</option><option value="bedroom">Спальня</option><option value="yard">Двор</option><option value="forest">Лес</option><option value="lake">Озеро</option></select></label>
     </div>
     <div class="admbtns"><button class="chipbtn" id="a-apply">Применить значения</button><button class="chipbtn alt" id="a-fill">Всё на 100</button></div>
     <h4>Сон</h4>
     <div class="admbtns"><button class="chipbtn alt" data-adm="sleep" data-h="0.05">Уложить на 3 мин</button><button class="chipbtn alt" data-adm="sleep" data-h="1">Уложить на 1 ч</button><button class="chipbtn alt" data-adm="sleep" data-h="8">Уложить на 8 ч</button><button class="chipbtn alt" data-adm="wake" data-n="1">Разбудить + уведомление</button></div>
     <h4>Деньги и вещи</h4>
     <div class="admbtns"><button class="chipbtn alt" data-adm="add_coins" data-amount="100">+100 монет</button><button class="chipbtn alt" data-adm="add_coins" data-amount="1000">+1000 монет</button><button class="chipbtn alt" data-adm="unlock_all">Открыть все вещи</button><button class="chipbtn alt" data-adm="clear_items">Убрать все вещи</button><button class="chipbtn alt" data-adm="quests_done">Выполнить задания дня</button><button class="chipbtn alt" data-adm="quests_reset">Сбросить прогресс заданий</button></div>
+    <h4>Локация и достижения</h4>
+    <div class="admbtns"><button class="chipbtn alt" data-adm="loc_unlock">Открыть «Лес»</button><button class="chipbtn alt" data-adm="loc_lock">Закрыть «Лес»</button><button class="chipbtn alt" data-adm="ach_all">Выполнить все достижения</button><button class="chipbtn danger" data-adm="ach_reset" data-confirm="Сбросить счётчики и полученные награды достижений?">Сбросить достижения</button></div>
     <h4>Сброс</h4>
     <div class="admbtns"><button class="chipbtn danger" data-adm="reset_stats" data-confirm="Сбросить уровень, опыт и характеристики? Вещи и монеты останутся.">Сбросить персонажа</button><button class="chipbtn danger" data-adm="reset" data-confirm="Сбросить ВСЮ игру: уровень, монеты, вещи, имя?">Сбросить всю игру</button></div>
     <h4>Журнал действий</h4>
@@ -313,10 +332,13 @@
     <p>К кому зайти? В гостях можно только смотреть — менять чужого питомца нельзя.</p>
     <div id="visitlist"></div>
   </section>
+  <section class="panel" id="panel-loc">
+    <div class="top"><h3>Локация</h3><div class="wal">🪙 <span id="loccoins">0</span></div></div>
+    <div id="locbody"></div>
+  </section>
   <section class="panel" id="panel-rewards">
-    <div class="top"><button class="back" data-go="menu">‹ Меню</button><h3>Достижения</h3></div>
-    <p>Награды за общую заботу и подарки за новые уровни.</p>
-    <span class="soon">скоро</span>
+    <div class="top"><button class="back" data-go="menu">‹ Меню</button><h3>Достижения</h3><div class="wal" id="acount">0 / 0</div></div>
+    <div id="abody"></div>
   </section>
 
   <div id="actions">
@@ -325,13 +347,14 @@
   </div>
 
   <div id="editbar">
-    <div class="eh"><b>🛋 Расстановка мебели</b><button class="chipbtn" id="editdone">Готово</button></div>
+    <div class="eh"><b id="edittitle">🛋 Расстановка мебели</b><button class="chipbtn" id="editdone">Готово</button></div>
     <div id="editlist"></div>
     <div class="erow"><div id="edithint"></div><button class="chipbtn alt" id="editstore">В кладовую</button></div>
   </div>
 
   <nav>
     <button data-tab="home" class="on"><span data-icon="paw" data-k="3"></span>Главная</button>
+    <button data-tab="loc"><span data-icon="tree" data-k="3"></span>Локация</button>
     <button data-tab="menu"><span data-icon="list" data-k="3"></span>Меню</button>
   </nav>
 </div>
@@ -360,7 +383,7 @@
       try {
         if (!ctx) {
           const C = window.AudioContext || window.webkitAudioContext; if (!C) return null;
-          ctx = new C(); master = ctx.createGain(); master.gain.value = vol * 0.5; master.connect(ctx.destination);
+          ctx = new C(); ctx.onstatechange = () => sync(); master = ctx.createGain(); master.gain.value = vol * 0.5; master.connect(ctx.destination);
         }
         if (ctx.state === 'suspended') ctx.resume();
       } catch (e) { return null; }
@@ -403,17 +426,87 @@
       no() { tone(220, 0, 0.12, { v: 0.18 }); tone(165, 0.12, 0.2, { v: 0.18 }); },
       move() { noise(0, 0.05, { f: 500, q: 1.5, v: 0.35 }); noise(0.16, 0.05, { f: 420, q: 1.5, v: 0.35 }); noise(0.32, 0.05, { f: 500, q: 1.5, v: 0.3 }); },
       ok() { tone(784, 0, 0.08, { type: 'triangle', v: 0.2 }); tone(1047, 0.08, 0.14, { type: 'triangle', v: 0.2 }); },
+      door() { noise(0, 0.2, { f: 300, to: 900, q: 3, v: 0.3 }); tone(180, 0.02, 0.22, { type: 'sawtooth', to: 140, v: 0.07 }); noise(0.32, 0.08, { f: 200, v: 0.4 }); },
+      forage() { noise(0, 0.1, { f: 3000, q: 0.8, v: 0.3 }); noise(0.13, 0.1, { f: 2500, q: 0.8, v: 0.3 }); noise(0.26, 0.09, { f: 3300, q: 0.8, v: 0.25 }); tone(660, 0.4, 0.08, { type: 'triangle', v: 0.2 }); tone(990, 0.48, 0.16, { type: 'triangle', v: 0.2 }); },
+      angle() { noise(0, 0.28, { f: 400, to: 3000, q: 1, v: 0.3 }); tone(600, 0.4, 0.14, { type: 'sine', to: 180, v: 0.3 }); noise(0.4, 0.1, { f: 900, to: 300, v: 0.25 }); tone(784, 0.8, 0.1, { type: 'triangle', v: 0.15 }); tone(1047, 0.9, 0.2, { type: 'triangle', v: 0.15 }); },
+      unlock() { seq([392, 523, 659, 784, 1047], 0.11, { type: 'triangle', v: 0.2 }); tone(1047, 0.6, 0.6, { v: 0.12 }); tone(1319, 0.6, 0.6, { v: 0.1 }); },
+      ach() { seq([784, 988, 1175, 1568], 0.08, { v: 0.14 }); tone(1568, 0.34, 0.5, { v: 0.12 }); },
       partner() { tone(880, 0, 0.12, { type: 'sine', v: 0.2 }); tone(1175, 0.14, 0.22, { type: 'sine', v: 0.2 }); },
     };
+    // ---------- фон природы: ветер, шелест листвы, птицы днём, сверчки и сова ночью, вода у озера ----------
+    let want = null, amb = null, nightFn = () => false, birdT = null, nbuf = null;
+    function noiseBuf() {
+      if (nbuf) return nbuf;
+      const n = Math.floor(ctx.sampleRate * 4), b = ctx.createBuffer(1, n, ctx.sampleRate), d = b.getChannelData(0); let l = 0, mx = 0.001;
+      for (let i = 0; i < n; i++) { l = (l + 0.03 * (Math.random() * 2 - 1)) / 1.03; d[i] = l; if (Math.abs(l) > mx) mx = Math.abs(l); }
+      for (let i = 0; i < n; i++) d[i] = d[i] / mx * 0.9;
+      return (nbuf = b);
+    }
+    const ZONE = { yard: [0.5, 0.6, 0], forest: [0.85, 1, 0], lake: [0.55, 0.5, 1] };
+    function ambZone(zone) {
+      const z = ZONE[zone] || ZONE.forest, t = ctx.currentTime;
+      amb.wind.g.gain.setTargetAtTime(0.55 * z[0], t, 0.8); amb.leaves.g.gain.setTargetAtTime(0.06 * z[1], t, 0.8); amb.water.g.gain.setTargetAtTime(0.02 + 0.2 * z[2], t, 0.8);
+      amb.zone = zone;
+    }
+    function ambStart(zone) {
+      const t = ctx.currentTime, bus = ctx.createGain(), srcs = [];
+      bus.gain.setValueAtTime(0.0001, t); bus.gain.linearRampToValueAtTime(1, t + 2); bus.connect(master);
+      const mk = (type, f, q, gain) => {
+        const s = ctx.createBufferSource(); s.buffer = noiseBuf(); s.loop = true;
+        const fl = ctx.createBiquadFilter(); fl.type = type; fl.frequency.value = f; fl.Q.value = q;
+        const g = ctx.createGain(); g.gain.value = gain; s.connect(fl); fl.connect(g); g.connect(bus); s.start(0, Math.random() * 3); srcs.push(s); return { g, fl };
+      };
+      const lfo = (param, rate, depth) => { const o = ctx.createOscillator(), d = ctx.createGain(); o.frequency.value = rate; d.gain.value = depth; o.connect(d); d.connect(param); o.start(); srcs.push(o); };
+      const wind = mk('lowpass', 480, 0.7, 0.4), leaves = mk('bandpass', 3600, 0.5, 0.05), water = mk('bandpass', 650, 0.9, 0.1);
+      lfo(wind.g.gain, 0.09, 0.22); lfo(wind.fl.frequency, 0.06, 180); lfo(leaves.g.gain, 0.17, 0.035); lfo(water.g.gain, 0.45, 0.05);
+      amb = { bus, srcs, wind, leaves, water, zone: null };
+      ambZone(zone); birdT = setTimeout(birdLoop, 700);
+    }
+    function ambStop() {
+      clearTimeout(birdT); if (!amb) return; const a = amb; amb = null;
+      try { const t = ctx.currentTime; a.bus.gain.cancelScheduledValues(t); a.bus.gain.setTargetAtTime(0, t, 0.15); } catch (e) {}
+      setTimeout(() => a.srcs.forEach(s => { try { s.stop(); } catch (e) {} try { s.disconnect(); } catch (e) {} }), 900);
+    }
+    function sync() {
+      if (want && on && vol > 0 && !document.hidden) {
+        if (!ensure() || ctx.state !== 'running') return;       // ждём первого касания
+        if (!amb) ambStart(want); else if (amb.zone !== want) ambZone(want);
+      } else ambStop();
+    }
+    function chirp() {
+      const k = Math.floor(Math.random() * 4), f = 2200 + Math.random() * 2200;
+      if (k === 0) { tone(f, 0, 0.07, { type: 'sine', to: f * 1.35, v: 0.1 }); tone(f * 1.1, 0.11, 0.07, { type: 'sine', to: f * 1.5, v: 0.1 }); }
+      else if (k === 1) { for (let i = 0; i < 6; i++) tone(f + (i % 2) * 500, i * 0.045, 0.04, { type: 'sine', v: 0.08 }); }
+      else if (k === 2) tone(f * 1.4, 0, 0.22, { type: 'sine', to: f * 0.8, v: 0.1 });
+      else [1, 1.25, 1].forEach((m, i) => tone(f * m, i * 0.09, 0.08, { type: 'sine', v: 0.09 }));
+    }
+    function birdLoop() {
+      if (!amb) return; let wait;
+      try {
+        const z = amb.zone;
+        if (nightFn()) {
+          for (let i = 0; i < 3; i++) tone(4100 + Math.random() * 300, i * 0.075, 0.05, { type: 'sine', v: 0.06 });
+          if (z === 'forest' && Math.random() < 0.15) { tone(420, 0.3, 0.3, { type: 'sine', to: 360, v: 0.14 }); tone(400, 0.8, 0.4, { type: 'sine', to: 320, v: 0.14 }); }
+          wait = 700 + Math.random() * 900;
+        } else {
+          chirp(); if (z === 'lake' && Math.random() < 0.25) { noise(0.5, 0.12, { f: 900, to: 300, v: 0.25 }); tone(700, 0.5, 0.1, { type: 'sine', to: 300, v: 0.12 }); }
+          wait = (z === 'forest' ? 900 : z === 'yard' ? 1500 : 2800) + Math.random() * 3200;
+        }
+      } catch (e) { wait = 3000; }
+      birdT = setTimeout(birdLoop, wait);
+    }
+    document.addEventListener('visibilitychange', () => sync());
     return {
       play(name, delay) {
         const run = () => { if (!ensure() || !LIB[name]) return; try { LIB[name](); } catch (e) {} };
         if (delay) setTimeout(run, delay); else run();
       },
-      unlock() { ensure(); },
+      unlock() { ensure(); if (want) sync(); },
+      ambient(zone) { want = zone || null; sync(); },
+      setNight(f) { nightFn = f; },
       get on() { return on; }, get vol() { return vol; },
-      setOn(v) { on = !!v; try { localStorage.setItem('pet_snd', on ? '1' : '0'); } catch (e) {} if (on) ensure(); },
-      setVol(v) { vol = Math.max(0, Math.min(1, v)); try { localStorage.setItem('pet_vol', String(vol)); } catch (e) {} if (master) master.gain.value = vol * 0.5; else if (vol > 0) ensure(); },
+      setOn(v) { on = !!v; try { localStorage.setItem('pet_snd', on ? '1' : '0'); } catch (e) {} if (on) ensure(); sync(); },
+      setVol(v) { vol = Math.max(0, Math.min(1, v)); try { localStorage.setItem('pet_vol', String(vol)); } catch (e) {} if (master) master.gain.value = vol * 0.5; else if (vol > 0) ensure(); sync(); },
     };
   })();
   // браузер разрешает звук только после касания — «будим» звук при первом нажатии
@@ -425,7 +518,7 @@
   async function api(path, body) {
     const res = await fetch(path, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(Object.assign({ init_data: tg.initData || '' }, body || {})),
+      body: JSON.stringify(Object.assign({ init_data: tg.initData || '', test: testMode ? 1 : 0 }, body || {})),   // test — режим «Проверка»: сервер возьмёт админского питомца
     });
     if (res.status === 403) throw new Error('auth');
     if (!res.ok) throw new Error('http ' + res.status);
@@ -437,9 +530,10 @@
   // ---------- состояние ----------
   let S = null, busy = false, acting = false, bubbleTimer = null, lookTimer = null, seenTs = 0, myId = null;
   let viewingUserId = null, peopleLoaded = false;
+  let testMode = false;     // «Проверка»: играем с админским питомцем (не общим); сервер проверяет, что ты админ
   let skew = 0, wakeAsked = false, lastWakeSfx = 0;
   let CAT = null, tab = 'home', wornKey = '', sel = null, drag = null, shopTab = 'food';
-  const ACTIONS = { wake: 'разбудил(а)', feed: 'покормил(а)', play: 'поиграл(а) с', sleep: 'уложил(а) спать', pet: 'погладил(а)' };
+  const ACTIONS = { forage: 'ходил(а) за грибами с', angle: 'рыбачил(а) с', go_out: 'вывел(а) гулять', go_in: 'позвал(а) домой', unlock: 'открыл(а) локацию для', wake: 'разбудил(а)', feed: 'покормил(а)', play: 'поиграл(а) с', sleep: 'уложил(а) спать', pet: 'погладил(а)' };
 
   function say(text, ms = 3300) {
     const b = $('bubble'); b.textContent = text; b.classList.add('show');
@@ -470,6 +564,7 @@
     el.classList.toggle('low', v < 30);
   }
   function render(st, instant) {
+    if (!st.ach && S && S.ach) st.ach = S.ach;
     if (!st.quests && S && S.quests) st.quests = S.quests;   // чужой питомец (гость) заданий не присылает
     const wasSleeping = !!(S && S.sleeping);
     S = st; if (wasSleeping && !st.sleeping && Date.now() - lastWakeSfx > 3000) { SFX.play('wake'); lastWakeSfx = Date.now(); }
@@ -484,7 +579,14 @@
     $('admcard').style.display = st.is_admin ? '' : 'none';
     const ready = ((st.quests && st.quests.items) || []).filter(i => i.done && !i.claimed).length;
     $('qsub').textContent = ready ? '🎁 наград: ' + ready : 'ежедневные дела';
-    document.querySelector('nav button[data-tab="menu"]').classList.toggle('dot', ready > 0);
+    const A = st.ach, ar = A ? A.ready : 0;
+    $('asub').textContent = A ? (ar ? '🎁 наград: ' + ar : A.done + ' из ' + A.total) : 'награды за заботу';
+    document.querySelector('nav button[data-tab="menu"]').classList.toggle('dot', ready > 0 || ar > 0);
+    if (!isGuest()) {                                  // вкладка идёт за питомцем: на улице — «Локация», дома — «Главная»
+      const o = outdoor(st.room), un = hasForest(st);
+      if (tab === 'home' && o) show('loc', { quiet: true, noMove: true });
+      else if (tab === 'loc') { if (un && !o) show('home', { quiet: true, noMove: true }); else if (!un && $('stage').style.display !== 'none') show('loc', { quiet: true, noMove: true }); }
+    }
     updateSleep();
     updatePanels();
   }
@@ -512,8 +614,27 @@
     }
   }
   async function visitUser(id, label) { setGuestMode(id, label); await refresh(true); }
-  async function goHome() { setGuestMode(null); show('home'); await refresh(true); }
+  async function goHome() { setGuestMode(null); show('home', { quiet: true, noMove: true }); await refresh(true); }
   $('returnbtn').addEventListener('click', goHome);
+
+  // ---------- «ПРОВЕРКА»: админский питомец ----------
+  // setTestMode(true)  — переходим к админскому питомцу (отдельная запись на сервере, общий питомец с Полиной не трогаем);
+  // setTestMode(false) — возвращаемся к общему. Состояние берём заново, как при первом запуске.
+  async function setTestMode(on) {
+    if (testMode === on) return;
+    testMode = on; peopleLoaded = false; seenTs = 0;
+    setGuestMode(null);                                             // из гостей выходим, если были
+    $('testnote').classList.toggle('on', on);
+    $('visitcard').style.display = 'none';                          // «Навестить» вернётся после loadPeople
+    $('a-test').textContent = on ? '↩ К общему питомцу' : '🧪 Проверка';
+    $('a-testhint').textContent = on ? 'Сейчас ты с админским питомцем: всё, что делаешь (покупки, сброс, монеты), касается только его.'
+      : 'Отдельный админский питомец: он только твой, Полина его не видит и не может навестить. Общий питомец остаётся как был.';
+    show('home', { quiet: true, noMove: true });
+    await refresh(true);
+    toast(on ? '🧪 Админский питомец. Полина его не видит' : 'Вернулись к общему питомцу 🦦');
+  }
+  $('a-test').addEventListener('click', () => setTestMode(!testMode));
+  $('testexit').addEventListener('click', () => setTestMode(false));
   function renderVisit() {
     const box = $('visitlist'); box.textContent = '';
     if (!PEOPLE.length) { box.appendChild(el('div', 'empty', 'Пока некого навестить 🏡')); return; }
@@ -537,7 +658,7 @@
       if (viewingUserId === myId) setGuestMode(null);
       render(st, first);
       if (!viewingUserId && !first && st.last_ts && st.last_ts > seenTs && st.last_actor_id !== myId && st.last_action) {
-        SFX.play('partner'); say((st.last_actor || 'Партнёр') + ' ' + (ACTIONS[st.last_action] || 'играет с') + ' ' + (st.last_action === 'play' || !ACTIONS[st.last_action] ? 'питомцем' : 'питомца') + ' 💞');
+        SFX.play('partner'); say((st.last_actor || 'Партнёр') + ' ' + (ACTIONS[st.last_action] || 'играет с') + ' ' + (['play', 'forage', 'angle'].includes(st.last_action) || !ACTIONS[st.last_action] ? 'питомцем' : 'питомца') + ' 💞');
       }
       seenTs = Math.max(seenTs, st.last_ts || 0);
       if (first) greet(st);
@@ -551,13 +672,13 @@
   }
 
   // ---------- комнаты ----------
-  const ORDER = ['kitchen', 'home', 'bedroom'];
+  const ORDER = ['kitchen', 'home', 'bedroom'], ORDER_OUT = ['yard', 'forest', 'lake'];
   function syncRoom(room, instant) {
     if (!room || !ROOMS[room]) return;
     if (view.trans) { view.pendingRoom = room; return; }
     if (view.cur === room) { applyRoomUI(); return; }
-    if (instant || !view.rooms.home) { view.cur = room; applyRoomUI(); return; }
-    const dir = ORDER.indexOf(room) < ORDER.indexOf(view.cur) ? 1 : -1;   // 1: идём влево, мир едет вправо
+    if (instant || !view.rooms.home || outdoor(room) !== outdoor(view.cur)) { view.cur = room; applyRoomUI(); return; }
+    const OR = outdoor(room) ? ORDER_OUT : ORDER, dir = OR.indexOf(room) < OR.indexOf(view.cur) ? 1 : -1;   // 1: идём влево, мир едет вправо
     view.trans = { from: view.cur, to: room, dir, t0: performance.now(), dur: 650 };
     applyRoomUI();
   }
@@ -573,9 +694,10 @@
     [['left', 'arL'], ['right', 'arR']].forEach(([side, id]) => {
       const el = $(id), to = r[side];
       el.style.display = (to && !view.trans && !(S && S.sleeping)) ? '' : 'none';
-      if (to) { el.dataset.to = to; el.querySelector('small').textContent = ROOMS[to].title; }
+      if (to) { el.dataset.to = to; el.querySelector('small').textContent = (side === 'left' && r.leftLabel) || ROOMS[to].title; }
     });
     const a = $('mainact'); a.dataset.a = r.act; a.querySelector('.lbl').textContent = r.label; a.querySelector('small').textContent = r.sub;
+    updateLocBtn(); syncAmbient();
     a.style.visibility = (view.trans || (S && S.sleeping)) ? 'hidden' : 'visible';
     const em = a.querySelector('.em'); if (em.dataset.cur !== r.icon) { em.dataset.cur = r.icon; em.textContent = ''; em.appendChild(icon(r.icon, 4)); }
   }
@@ -584,14 +706,15 @@
     try {
       const r = await api('/api/pet/action', { action: 'move', to });
       if (r.state) render(r.state);
-      SFX.play(r.ok ? 'move' : 'no');
+      SFX.play(r.ok ? 'move' : 'no'); onAch(r);
       if (!r.ok && r.say) say(r.say);
     } catch (e) {
       if (String(e.message) === 'auth') veil(AUTH_MSG); else say('Связь с Бубликом потерялась, попробуй ещё раз 📡');
     } finally { busy = false; }
   }
-  $('arL').addEventListener('click', () => move($('arL').dataset.to));
+  $('arL').addEventListener('click', () => { const to = $('arL').dataset.to; if (outdoor(view.cur) && !outdoor(to)) goIn(); else move(to); });
   $('arR').addEventListener('click', () => move($('arR').dataset.to));
+  function syncAmbient() { SFX.ambient(tab === 'loc' && !isGuest() && view && outdoor(view.cur) && !view.trans ? view.cur : null); }
 
   async function act(name, btn, extra) {
     if (viewingUserId !== null && viewingUserId !== myId) { toast('В гостях можно только смотреть 👀'); return; }
@@ -609,10 +732,12 @@
           if (r.state.level > before.level) SFX.play('level', 500);
         }
       }
-      SFX.play(r.ok ? ({ pet: 'pet', feed: 'feed', play: 'play', sleep: 'sleep', wake: 'wake' }[name] || 'ok') : 'no');
+      SFX.play(r.ok ? ({ pet: 'pet', feed: 'feed', play: 'play', sleep: 'sleep', wake: 'wake', forage: 'forage', angle: 'angle' }[name] || 'ok') : 'no');
       if (r.ok && name === 'wake') lastWakeSfx = Date.now();
       say(r.say || '…');
-      setLook(r.ok ? name : 'no', r.ok ? 2100 : 800);
+      onAch(r);
+      const fishUp = r.ok && name === 'angle' && before && ((r.state.inv || {}).fish || 0) > ((before.inv || {}).fish || 0);
+      setLook(r.ok ? ({ forage: 'walk', angle: fishUp ? 'feed' : 'idle' }[name] || name) : 'no', r.ok ? 2100 : 800);
       haptic(r.ok ? 'ok' : 'err');
     } catch (e) {
       if (String(e.message) === 'auth') veil(AUTH_MSG);
@@ -717,6 +842,9 @@
     bag: { rows: ['..hhhh..', '.h....h.', '.h....h.', 'rrrrrrrr', 'rrrrrrrr', 'rrrYYrrr', 'rrrrrrrr', 'rrrrrrrr'], map: { r: '#ff7a59', h: '#ffffff', Y: '#ffe27a' } },
     shirt: { rows: ['.ww...ww.', 'wwww.wwww', 'wwwwwwwww', '.wwwwwww.', '.wwwwwww.', '.wwwwwww.'], map: { w: '#8fc4ff' } },
     gear: { rows: ['....g....', '.gg.g.gg.', '.ggggggg.', '..gg.gg..', 'ggg...ggg', '..gg.gg..', '.ggggggg.', '.gg.g.gg.', '....g....'], map: { g: '#cfe0ff' } },
+    tree: { rows: ['....g....', '...ggg...', '..ggggg..', '...ggg...', '..ggggg..', '.ggggggg.', '....b....', '....b....'], map: { g: '#4eaa56', b: '#a9683a' } },
+    mush: { rows: ['..rrrr..', '.rwrrwr.', 'rrrrrrrr', '..ssss..', '..ssss..', '..ssss..'], map: { r: '#e8505b', w: '#ffffff', s: '#f6e6c8' } },
+    rod: { rows: ['.......bb', '......b.b', '.....b..l', '....b...l', '...b....l', '..b.....l', '.b......h', 'b.......h'], map: { b: '#c99358', l: '#e8eef5', h: '#ff5a6a' } },
     coin: { rows: ['..yyyy..', '.yhyyyy.', 'yhyyddyy', 'yhyydyyy', 'yyyydyyy', 'yyyddyyy', '.yyyyyy.', '..yyyy..'], map: { y: '#ffcf3d', h: '#fff3a8', d: '#d89a12' } },
   };
   function icon(name, k) {
@@ -993,13 +1121,179 @@
     return R;
   }
 
+  // ---------- улица: небо (меняется по часам), общие куски и три сцены ----------
+  const mulberry = (s) => () => { s |= 0; s = (s + 0x6D2B79F5) | 0; let t = Math.imul(s ^ (s >>> 15), 1 | s); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  const GREEN = { bright: ['#6fd06a', '#58bd5a', '#3f9a4d'], dark: ['#3f9a58', '#2f8048', '#22663a'], far: ['#7fbf9b', '#6fb08c', '#5f9e7e'], deep: ['#2f8a52', '#25724a', '#1b5a3c'] };
+  const hexOf = (c) => [parseInt(c.slice(1, 3), 16), parseInt(c.slice(3, 5), 16), parseInt(c.slice(5, 7), 16)];
+  const mixc = (a, b, t) => { const A = hexOf(a), B = hexOf(b); return '#' + A.map((v, i) => Math.round(v + (B[i] - v) * t).toString(16).padStart(2, '0')).join(''); };
+  const SKYK = [[0, '#0b1440', '#1b2a66'], [5, '#0e1a4e', '#2a3a80'], [6.5, '#5a6aae', '#ff9f7a'], [8, '#4f9ae8', '#bfe4ff'], [17.5, '#4f9ae8', '#bfe4ff'], [19, '#6a5ab8', '#ff8a5c'], [20.5, '#222a6a', '#6a4a9a'], [22, '#0b1440', '#1b2a66'], [24, '#0b1440', '#1b2a66']];
+  function skyAt(h) {
+    for (let i = 0; i < SKYK.length - 1; i++) { const a = SKYK[i], b = SKYK[i + 1]; if (h >= a[0] && h <= b[0]) { const t = (h - a[0]) / (b[0] - a[0]); return [mixc(a[1], b[1], t), mixc(a[2], b[2], t)]; } }
+    return [SKYK[0][1], SKYK[0][2]];
+  }
+  const SKYSPR = (() => {
+    const sun = newLayer(21, 21); flat(sun, 10, 10, 10, 10, '#fff0a8'); ell(sun, 10, 10, 6.5, 6.5, ['#fffbd8', '#ffe45a', '#ffc93a'], { d: .05 });
+    const moon = newLayer(15, 15); ell(moon, 7, 7, 6.3, 6.3, ['#fffbe6', '#efe9c0', '#d9d2a0'], { d: .05 }); dot(moon, 5, 5, '#cfc89a'); dot(moon, 9, 8, '#cfc89a'); dot(moon, 6, 9, '#cfc89a');
+    const cloud = newLayer(34, 13); flat(cloud, 9, 9, 8, 3.4, '#dfeaf8'); flat(cloud, 18, 8, 10, 4, '#dfeaf8'); flat(cloud, 26, 9, 7, 3.2, '#dfeaf8');
+    flat(cloud, 9, 8, 7, 3, '#ffffff'); flat(cloud, 17, 6, 8, 4, '#ffffff'); flat(cloud, 25, 8, 6, 3, '#ffffff'); flat(cloud, 14, 8, 11, 3, '#ffffff');
+    const r = mulberry(5), stars = []; for (let i = 0; i < 30; i++) stars.push([r(), r() * 0.85, r() * 6.3]);
+    return { sun, moon, cloud, stars };
+  })();
+  function drawSky(g, now, h, W, fy) {
+    const [top, hor] = skyAt(h), n = Math.min(1, dayAlphaAt(h) / 0.3), nB = 9;
+    for (let i = 0; i < nB; i++) { g.fillStyle = mixc(top, hor, i / (nB - 1)); const y0 = Math.floor(i * fy / nB), y1 = Math.floor((i + 1) * fy / nB) + (i === nB - 1 ? 2 : 0); g.fillRect(0, y0, W, y1 - y0); }
+    if (n > 0.05) for (const [sx_, sy_, ph] of SKYSPR.stars) { g.fillStyle = 'rgba(255,248,200,' + (n * (0.5 + 0.5 * Math.sin(now / 700 + ph))).toFixed(2) + ')'; g.fillRect(Math.round(sx_ * W), Math.round(sy_ * fy), 1, 1); }
+    const day = h >= 6 && h <= 19.5, p = day ? (h - 6) / 13.5 : ((h >= 19.5 ? h - 19.5 : h + 4.5) / 10.5);
+    const bx = Math.round(W * (0.1 + 0.8 * p)), by = Math.round(fy * 0.86 - Math.sin(Math.PI * p) * fy * 0.66), S = day ? SKYSPR.sun : SKYSPR.moon;
+    if (day) { g.globalAlpha = 0.35; g.drawImage(S.c, bx - 10, by - 10); g.globalAlpha = 1; g.drawImage(S.c, bx - 10, by - 10); }
+    else g.drawImage(S.c, bx - 7, by - 7);
+    g.globalAlpha = 0.95 - n * 0.6;
+    [[2.4, .16, 0], [1.5, .34, 40], [3.1, .06, 80]].forEach(([sp, yy, off]) => { const x = ((now / 1000 * sp + off) % (W + 70)) - 36; g.drawImage(SKYSPR.cloud.c, Math.round(x), Math.round(fy * yy)); });
+    g.globalAlpha = 1;
+  }
+
+  function pine(L, cx, by, h, cs) {
+    const tr = Math.max(2, Math.round(h * 0.12)), ch = h - tr, tiers = Math.max(2, Math.round(h / 13)), th = ch / (tiers * 0.7 + 0.3);
+    rect(L, cx - 1, by - tr, 2, tr, '#6e4527');
+    for (let i = 0; i < tiers; i++) {
+      const y0 = Math.round(by - tr - ch + i * th * 0.7), hw = h * 0.13 + i * h * 0.045;
+      for (let r = 0; r < th; r++) {
+        const half = Math.max(0, Math.round(hw * (r + 1) / th));
+        for (let x = cx - half; x <= cx + half; x++) dot(L, x, y0 + r, x < cx - half * 0.2 ? (((x + r) % 4 === 0) ? cs[1] : cs[0]) : (((x + r) % 3 === 0) ? cs[1] : cs[2]));
+      }
+    }
+  }
+  function hills(L, W, fy, col, amp, seed, lift) {
+    const r = mulberry(seed), p1 = r() * 6, p2 = r() * 6;
+    for (let x = 0; x < W; x++) { const y = Math.round(fy - lift - amp * (0.55 + 0.3 * Math.sin(x * 0.06 + p1) + 0.15 * Math.sin(x * 0.17 + p2))); rect(L, x, y, 1, fy - y + 1, col); }
+  }
+  function meadow(L, W, H, y0, cols, seed, light, dark, n) {
+    band(L, 0, y0, W, H - y0, cols);
+    const r = mulberry(seed);
+    for (let i = 0; i < n; i++) { const x = Math.floor(r() * W), y = y0 + 3 + Math.floor(r() * (H - y0 - 3)); dot(L, x, y, dark); dot(L, x - 1, y - 1, light); dot(L, x + 1, y - 1, light); }
+  }
+  function dirtPath(L, x0, x1, cy, hh, seed) {
+    const r = mulberry(seed);
+    for (let x = x0; x < x1; x++) {
+      const c = cy + Math.round(Math.sin(x * 0.06) * 2), k = Math.min(1, (x - x0) / 10), h = Math.round(hh * k);
+      for (let y = c - h; y <= c + h; y++) dot(L, x, y, (y === c - h || y === c + h) ? '#c9a468' : (((x + y) & 3) === 0 ? '#e9cf9a' : '#ddbe86'));
+    }
+    for (let i = 0; i < 18; i++) { const x = x0 + 8 + Math.floor(r() * (x1 - x0 - 8)), y = cy + Math.floor((r() - 0.5) * hh); dot(L, x, y, '#b99560'); dot(L, x + 1, y, '#f3e0b4'); }
+  }
+  function fern(L, x, y) { spr(L, x, y, ['.f.f.f.', 'f.fff.f', '.fffff.', '..fgf..', '...g...'], { f: '#4fb06a', g: '#2f7f45' }); }
+
+  // ---------- задний двор: задняя стена дома с крыльцом, забор, дорожка вправо ----------
+  function buildYard(W, H, fy, baseY) {
+    const R = newLayer(W, H), r = mulberry(21);
+    hills(R, W, fy, '#9fd3b4', 10, 3, 4); hills(R, W, fy, '#80c49c', 7, 4, 0);
+    for (let x = 48; x < W + 8; x += 8 + Math.floor(r() * 6)) pine(R, x, fy + 1, 13 + Math.floor(r() * 9), GREEN.far);
+    meadow(R, W, H, fy, ['#8fe085', '#78d072', '#62bb61', '#52a455'], 5, '#a8f09a', '#3f8f48', 70);
+    dirtPath(R, 24, W, baseY + 8, 8, 9);
+    prop(R, T => {
+      for (let x = 50; x < W + 6; x += 6) { rect(T, x, fy - 3, 4, 14, '#f7efdc'); rect(T, x + 1, fy - 4, 2, 1, '#f7efdc'); rect(T, x, fy - 3, 1, 14, '#d9cba8'); }
+      rect(T, 48, fy + 1, W, 2, '#d9cba8'); rect(T, 48, fy + 7, W, 2, '#d9cba8');
+    });
+    // кусты у забора
+    [[W - 12, fy + 14], [58, fy + 16]].forEach(([x, y]) => prop(R, T => { ell(T, x, y, 9, 6, GREEN.bright); ell(T, x + 6, y + 1, 6, 4.5, GREEN.bright); dot(T, x - 3, y - 2, '#ff8ab8'); dot(T, x + 2, y - 1, '#ffd93d'); dot(T, x + 6, y - 1, '#ff8ab8'); }));
+    // указатель «Лес»
+    const px = W - 24;
+    prop(R, T => {
+      rect(T, px + 6, baseY - 14, 3, 26, '#8f5e35');
+      spr(T, px, baseY - 20, ['bbbbbbbbbbbb...', 'bbbbbbbbbbbbb..', 'bbbbbbbbbbbbbb.', 'bbbbbbbbbbbbbbb', 'bbbbbbbbbbbbbb.', 'bbbbbbbbbbbbb..', 'bbbbbbbbbbbb...'], { b: '#e8b878' });
+      rect(T, px + 2, baseY - 18, 9, 1, '#8f5e35'); rect(T, px + 2, baseY - 15, 6, 1, '#8f5e35');
+    });
+    // дом: задняя стена, крыша, дверь, окно
+    const wb = baseY - 1, dx0 = 6, dw = 24, dh = 38;
+    prop(R, T => {
+      rect(T, 0, wb - 72, 44, 72, '#f5d9a8');
+      for (let y = wb - 72; y < wb; y += 5) rect(T, 0, y, 44, 1, '#e0bd86');
+      rect(T, 0, wb - 4, 44, 4, '#c9a06a'); rect(T, 0, wb - 4, 44, 1, '#e3c08c');
+      rect(T, 0, wb - 82, 49, 11, '#cf5a43'); for (let x = 0; x < 49; x += 6) rect(T, x, wb - 78, 5, 1, '#e8785e'); rect(T, 0, wb - 72, 49, 2, '#8f3a2c');
+      // окно с цветочным ящиком
+      rect(T, 9, wb - 64, 20, 17, '#8f5630'); band(T, 11, wb - 62, 16, 13, ['#a8e0ff', '#d6f2ff']); rect(T, 18, wb - 62, 2, 13, '#8f5630'); rect(T, 11, wb - 56, 16, 2, '#8f5630');
+      rect(T, 8, wb - 47, 22, 3, '#a9683a'); for (let i = 0; i < 6; i++) { dot(T, 10 + i * 3, wb - 49, i % 2 ? '#ff6a8a' : '#ffd93d'); dot(T, 11 + i * 3, wb - 50, '#4eaa56'); }
+      // дверь и крыльцо
+      rect(T, dx0 - 2, wb - dh - 2, dw + 4, dh + 2, '#8f5630');
+      rect(T, dx0, wb - dh, dw, dh, '#b8723a'); rect(T, dx0, wb - dh, dw, 1, '#d9955a');
+      rect(T, dx0 + 3, wb - dh + 4, 8, 14, '#9a5f2e'); rect(T, dx0 + 13, wb - dh + 4, 8, 14, '#9a5f2e'); rect(T, dx0 + 3, wb - dh + 21, 8, 12, '#9a5f2e'); rect(T, dx0 + 13, wb - dh + 21, 8, 12, '#9a5f2e');
+      dot(T, dx0 + dw - 3, wb - 19, '#ffe27a'); dot(T, dx0 + dw - 3, wb - 18, '#ffe27a');
+      rect(T, dx0 - 4, wb, dw + 8, 3, '#c7beb0'); rect(T, dx0 - 4, wb, dw + 8, 1, '#e3dccf');
+      // фонарик у двери
+      rect(T, 34, wb - 36, 6, 7, '#ffe08a'); rect(T, 33, wb - 37, 8, 1, '#3d4a5c'); rect(T, 33, wb - 30, 8, 1, '#3d4a5c');
+    });
+    // коврик у двери
+    flat(R, dx0 + dw / 2, wb + 5, 12, 3, '#e8505b'); flat(R, dx0 + dw / 2, wb + 5, 9, 2, '#ff8a8a');
+    view.door = { x: dx0, y: wb - dh, w: dw, h: dh, cx: dx0 + dw / 2 };
+    return R;
+  }
+
+  // ---------- лес: ёлки, лучи света, мох и грибы ----------
+  function buildForest(W, H, fy, baseY) {
+    const R = newLayer(W, H), r = mulberry(33);
+    hills(R, W, fy, '#78b896', 9, 7, 6);
+    for (let x = -2; x < W + 6; x += 6 + Math.floor(r() * 4)) pine(R, x, fy + 2, 16 + Math.floor(r() * 10), GREEN.far);
+    meadow(R, W, H, fy, ['#62b36c', '#4f9d5d', '#418853', '#357449'], 8, '#7fcf86', '#2c6a40', 90);
+    for (let x = 2; x < W + 8; x += 12 + Math.floor(r() * 6)) pine(R, x, fy + 7 + Math.floor(r() * 4), 30 + Math.floor(r() * 14), GREEN.deep);
+    for (let i = 0; i < 70; i++) { const x = Math.floor(r() * W), y = fy + 8 + Math.floor(r() * (H - fy - 8)); dot(R, x, y, ['#c98a4a', '#e0a35a', '#a86b36'][i % 3]); }
+    dirtPath(R, 0, W, baseY + 8, 8, 12);
+    [[20, fy + 18], [W - 34, fy + 26], [W * 0.55, fy + 14]].forEach(([x, y]) => fern(R, Math.round(x), Math.round(y)));
+    // пенёк и маленькие грибочки у тропы
+    prop(R, T => {
+      ell(T, 36, baseY + 22, 9, 4, ['#d9a468', '#b07a47']); rect(T, 28, baseY + 22, 17, 7, '#8f5e35'); ell(T, 36, baseY + 22, 7, 2.6, ['#e6c08a', '#d9a468']); rect(T, 31, baseY + 25, 1, 4, '#6e4527'); rect(T, 38, baseY + 24, 1, 5, '#6e4527');
+      spr(T, W - 24, baseY + 24, ['..rrrr.', '.rwrrwr', 'rrrrrrr', '..ssss.', '..ssss.'], { r: '#e8505b', w: '#ffffff', s: '#f6e6c8' });
+      spr(T, W - 14, baseY + 27, ['.rrr.', 'rwrwr', '.sss.', '.sss.'], { r: '#e8505b', w: '#ffffff', s: '#f6e6c8' });
+    });
+    // кроны сверху и стволы по краям
+    for (let x = -4; x < W + 8; x += 9) { const d = 4 + Math.floor(r() * 9); ell(R, x, d, 8, 6 + Math.floor(r() * 4), ['#3f9a58', '#2f8048', '#22663a', '#1a5236']); }
+    prop(R, T => {
+      for (const [x, w] of [[2, 9], [W - 11, 9]]) {
+        rect(T, x, 0, w, baseY + 8, '#7a4a2a'); for (let y = 0; y < baseY + 8; y += 3) rect(T, x + ((y * 7) % (w - 2)) + 1, y, 1, 3, '#5a3520'); rect(T, x, 0, 2, baseY + 8, '#9a6238');
+        ell(T, x + (w >> 1), baseY + 8, w * 0.9, 3.2, ['#7a4a2a', '#5a3520']);
+      }
+    });
+    for (let x = -3; x < W + 8; x += 7) { const d = 2 + Math.floor(r() * 5); ell(R, x, d, 5, 4 + Math.floor(r() * 3), ['#4fb06a', '#3f9a58', '#2f8048', '#22663a']); }
+    // лучи света
+    R.x.save(); R.x.globalAlpha = 0.16;
+    for (let i = 0; i < 3; i++) for (let y = 6; y < H * 0.82; y++) { const xs = W * (0.28 + i * 0.22) + y * 0.32 - 4; R.x.fillStyle = '#fffbd0'; R.x.fillRect(Math.round(xs), y, 6 - i, 1); }
+    R.x.restore();
+    return R;
+  }
+
+  // ---------- озеро: вода, тростник, мостки ----------
+  function buildLake(W, H, fy, baseY) {
+    const R = newLayer(W, H), r = mulberry(44), wy1 = fy + Math.round((H - fy) * 0.42);
+    hills(R, W, fy, '#a9c4dc', 16, 9, 8); hills(R, W, fy, '#8fb3cf', 10, 10, 3);
+    for (let x = -2; x < W + 6; x += 5 + Math.floor(r() * 4)) pine(R, x, fy + 2, 9 + Math.floor(r() * 7), GREEN.far);
+    band(R, 0, fy, W, wy1 - fy, ['#8fd3f4', '#62b9ec', '#4a9bd8', '#3a82c2']);
+    for (let i = 0; i < 46; i++) { const x = Math.floor(r() * W), y = fy + 2 + Math.floor(r() * (wy1 - fy - 3)); rect(R, x, y, 2 + Math.floor(r() * 4), 1, i % 3 ? '#bfeaff' : '#2f6fb0'); }
+    meadow(R, W, H, wy1, ['#9be08c', '#7ccc72', '#62b762', '#52a455'], 12, '#b4f0a4', '#3f8f48', 60);
+    for (let x = 0; x < W; x++) { const d = 3 + Math.round(Math.sin(x * 0.13) * 1.6) + (BAYER[x & 1][0] > 1 ? 1 : 0); for (let y = wy1 - 1; y < wy1 + d; y++) dot(R, x, y, (y + x) % 5 === 0 ? '#e6d19a' : '#f3e3b0'); }
+    // кувшинки
+    [[W * 0.32, 0.55], [W * 0.5, 0.3], [W * 0.18, 0.28]].forEach(([x, k]) => { const y = Math.round(fy + (wy1 - fy) * k); flat(R, Math.round(x), y, 5, 2, '#3f9a4d'); flat(R, Math.round(x), y, 4, 1.4, '#58bd5a'); dot(R, Math.round(x) + 1, y - 1, '#ff8ab8'); });
+    // тростник
+    for (let i = 0; i < 9; i++) { const x = 3 + i * 2 + (i % 2), h = 12 + ((i * 5) % 7), by_ = wy1 + 4; rect(R, x, by_ - h, 1, h, i % 2 ? '#3f9a4d' : '#2f7f3d'); if (i % 3 === 0) rect(R, x, by_ - h - 3, 2, 4, '#8f5630'); else dot(R, x + 1, by_ - h + 2, '#58bd5a'); }
+    // мостки
+    prop(R, T => {
+      rect(T, W - 54, wy1 - 8, 54, 11, '#c99358'); rect(T, W - 54, wy1 - 8, 54, 1, '#e3b278'); rect(T, W - 54, wy1 + 2, 54, 1, '#8f5e35');
+      for (let x = W - 52; x < W; x += 5) rect(T, x, wy1 - 7, 1, 9, '#8f5e35');
+      rect(T, W - 52, wy1 + 3, 3, 7, '#6e4527'); rect(T, W - 30, wy1 + 3, 3, 7, '#6e4527'); rect(T, W - 52, wy1 - 12, 3, 5, '#6e4527');
+      rect(T, W - 56, wy1 - 12, 8, 2, '#8f5e35');
+    });
+    view.water = { y0: fy + 1, y1: wy1 - 1 };
+    return R;
+  }
+
   // ---------- сцена, комнаты, переходы ----------
   const K_PREF = 3;
   const ROOMS = {
     home:    { title: 'Гостиная', act: 'play',  icon: 'ball', label: 'Играть',  sub: 'заработать монеты',   left: 'kitchen', right: 'bedroom' },
     kitchen: { title: 'Кухня',    act: 'feed',  icon: 'fish', label: 'Кормить', sub: 'выбрать еду',          left: null,      right: 'home' },
     bedroom: { title: 'Спальня',  act: 'sleep', icon: 'moon', label: 'Спать',   sub: 'набраться сил',       left: 'home',    right: null },
+    yard:    { title: 'Задний двор', out: true, act: 'play',   icon: 'ball', label: 'Играть',        sub: 'заработать монеты',   left: 'home',   leftLabel: 'Домой', right: 'forest' },
+    forest:  { title: 'Лес',         out: true, act: 'forage', icon: 'mush', label: 'Искать грибы',  sub: 'ягоды и монетки',     left: 'yard',   right: 'lake' },
+    lake:    { title: 'Озеро',       out: true, act: 'angle',  icon: 'rod',  label: 'Рыбачить',      sub: 'вдруг клюнет рыбка',  left: 'forest', right: null },
   };
+  const GLOW = { lamppost: { y: 0.8, r: 24 }, campfire: { y: 0.55, r: 28 }, lamp: { y: 0.78, r: 22 } };
   const view = { K: 3, W: 112, H: 150, rooms: {}, cur: 'home', trans: null, baseY: 0, ox: 0 };
   const sc = $('pixcv'), sx = sc.getContext('2d'); sx.imageSmoothingEnabled = false;
 
@@ -1010,15 +1304,16 @@
     view.K = K; view.W = W; view.H = H; sc.width = W; sc.height = H;
     sc.style.width = (W * K) + 'px'; sc.style.height = (H * K) + 'px'; sc.style.left = Math.floor((r.width - W * K) / 2) + 'px'; sc.style.top = Math.floor((r.height - H * K) / 2) + 'px';
     const fy = Math.round(H * 0.5), baseY = fy + Math.round((H - fy) * 0.5);
-    view.baseY = baseY; view.fy = fy; view.ox = Math.round(W * 0.47);
-    view.rooms = { home: buildHome(W, H, fy, baseY), kitchen: buildKitchen(W, H, fy, baseY), bedroom: buildBedroom(W, H, fy, baseY) };
+    view.baseY = baseY; view.fy = fy; view.ox = Math.round(W * 0.47); view.oxOut = Math.round(W * 0.58);
+    view.rooms = { home: buildHome(W, H, fy, baseY), kitchen: buildKitchen(W, H, fy, baseY), bedroom: buildBedroom(W, H, fy, baseY), yard: buildYard(W, H, fy, baseY), forest: buildForest(W, H, fy, baseY), lake: buildLake(W, H, fy, baseY) };
   }
 
   const ease = (p) => p < .5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
   function frame(now) {
     if (!view.rooms.home) return;
     let look = otter.dataset.look;
-    const tr = view.trans;
+    const tr = view.trans, out = outdoor(tr ? tr.to : view.cur);
+    if (out) drawSky(sx, now, gameHour(), view.W, view.fy);
     if (tr) {
       const p = Math.min(1, (now - tr.t0) / tr.dur), e = ease(p), dx = Math.round(tr.dir * view.W * e);
       sx.drawImage(view.rooms[tr.from].c, dx, 0); sx.drawImage(view.rooms[tr.to].c, dx - tr.dir * view.W, 0);
@@ -1029,21 +1324,35 @@
     for (const [r, dx] of view.fx) drawItems(r, dx, false, now);
     const blink = (Math.floor(now / 160) % 31) === 0;
     const hop = look === 'play' ? -Math.round(Math.abs(Math.sin(now / 130)) * 7) : look === 'walk' ? -(Math.floor(now / 150) % 2) : (look === 'sleep' || look === 'sleepy' ? (Math.floor(now / 900) % 2) : (Math.floor(now / 650) % 2));
-    sx.fillStyle = 'rgba(40,20,20,.28)'; for (let i = -19; i <= 19; i++) { const h = Math.round(Math.sqrt(1 - (i / 20) ** 2) * 3); sx.fillRect(view.ox + i, view.baseY - 1 - h + 3, 1, h * 2 - 1); }
+    let ox = out ? view.oxOut : view.ox, alpha = 1, doorOpen = false;
+    const en = view.enter;
+    if (en && view.cur === 'yard' && !tr && view.door) {
+      const p = (now - en.t0) / en.dur;
+      if (p >= 1) view.enter = null; else { ox = Math.round(view.door.cx + (ox - view.door.cx) * ease(clamp((p - 0.15) / 0.85, 0, 1))); alpha = clamp(p / 0.18, 0, 1); look = 'walk'; doorOpen = p < 0.6; }
+    }
+    view.curOx = ox;
+    if (doorOpen) { const d = view.door; sx.fillStyle = '#2e1a10'; sx.fillRect(d.x, d.y, d.w, d.h); sx.fillStyle = '#7a4a28'; sx.fillRect(d.x + 3, d.y + (d.h >> 1), d.w - 6, d.h >> 1); sx.fillStyle = '#b8723a'; sx.fillRect(d.x, d.y, 4, d.h); }
+    sx.globalAlpha = alpha * 0.28 / 0.28; sx.fillStyle = 'rgba(40,20,20,.28)'; for (let i = -19; i <= 19; i++) { const h = Math.round(Math.sqrt(1 - (i / 20) ** 2) * 3); sx.fillRect(ox + i, view.baseY - 1 - h + 3, 1, h * 2 - 1); }
     const O = drawOtter(now, look, blink);
-    sx.drawImage(O.c, view.ox - OX, view.baseY - OB + 4 + hop);
+    sx.drawImage(O.c, ox - OX, view.baseY - OB + 4 + hop); sx.globalAlpha = 1;
     for (const [r, dx] of view.fx) drawItems(r, dx, true, now);
-    if (look === 'play' && view.cur === 'home') {
-      const by = view.baseY - 4 - Math.round(Math.abs(Math.sin(now / 160)) * 26), bx = view.ox + 34;
+    if (look === 'play' && (view.cur === 'home' || view.cur === 'yard')) {
+      const by = view.baseY - 4 - Math.round(Math.abs(Math.sin(now / 160)) * 26), bx = ox + 34;
       const B = newLayer(14, 14); ell(B, 7, 7, 5.5, 5.5, BLUE); for (let i = -4; i <= 4; i++) dot(B, 7 + i, 6 + Math.round(i * .35), '#fff'); outline(B);
       sx.drawImage(B.c, bx - 7, by - 7);
     }
-    { const a = dayAlpha(); if (a > 0.01) { sx.fillStyle = 'rgba(10,16,64,' + a.toFixed(3) + ')'; sx.fillRect(0, 0, view.W, view.H); } }
+    if (view.cur === 'lake' || (tr && tr.to === 'lake')) { const w = view.water; if (w) for (let i = 0; i < 16; i++) if ((Math.floor(now / 380 + i * 3.7) % 6) === 0) { sx.fillStyle = 'rgba(255,255,255,.8)'; sx.fillRect(Math.round(((i * 37) % 100) / 100 * view.W), w.y0 + 2 + (i * 53) % Math.max(1, w.y1 - w.y0 - 3), 2, 1); } }
+    { const a = dayAlpha() * (out ? 0.75 : 1); if (a > 0.01) { sx.fillStyle = 'rgba(10,16,64,' + a.toFixed(3) + ')'; sx.fillRect(0, 0, view.W, view.H); } }
+    { const a = dayAlpha(); if (a > 0.04) {
+      for (const [r, dx] of view.fx) for (const o of roomItems(r)) { const g = GLOW[o.id]; if (!g) continue; const gx = o.x + dx, gy = o.y - o.f.h * g.y, k = Math.min(1, a / 0.2), gr = sx.createRadialGradient(gx, gy, 1, gx, gy, g.r);
+        gr.addColorStop(0, 'rgba(255,214,120,' + (0.55 * k).toFixed(2) + ')'); gr.addColorStop(1, 'rgba(255,214,120,0)'); sx.fillStyle = gr; sx.fillRect(gx - g.r, gy - g.r, g.r * 2, g.r * 2); }
+      if (out && !tr && view.cur !== 'lake') for (let i = 0; i < 9; i++) { const fx = ((i * 0.137 + now * 0.000012 * (1 + i % 3)) % 1) * view.W, fy_ = view.fy + 10 + ((i * 41) % 60) + Math.sin(now / 900 + i) * 3, b = (Math.sin(now / 500 + i * 2) + 1) / 2;
+        sx.fillStyle = 'rgba(220,255,120,' + (0.25 * b * Math.min(1, a / 0.2)).toFixed(2) + ')'; sx.fillRect(Math.round(fx) - 1, Math.round(fy_) - 1, 3, 3); sx.fillStyle = 'rgba(240,255,150,' + (b * Math.min(1, a / 0.2)).toFixed(2) + ')'; sx.fillRect(Math.round(fx), Math.round(fy_), 1, 1); } } }
     if (!view.trans && view.cur === 'bedroom' && look === 'sleep') { sx.fillStyle = 'rgba(12,18,70,.38)'; sx.fillRect(0, 0, view.W, view.H); }
   }
   // положение и размеры выдры в «пикселях игры» — для касания
   function otterHit(lx, ly) {
-    return Math.abs(lx - view.ox) < 23 && ly > view.baseY - OB + 4 + oY(14) && ly < view.baseY + 4;
+    return Math.abs(lx - (view.curOx != null ? view.curOx : view.ox)) < 23 && ly > view.baseY - OB + 4 + oY(14) && ly < view.baseY + 4;
   }
 
   // ---------- реальное время: день и ночь по часам BOT_TIMEZONE (час приходит с сервера) ----------
@@ -1051,8 +1360,9 @@
     if (!S || S.hour == null) return 12;
     return (S.hour + (Date.now() - (S._at || Date.now())) / 3600000) % 24;
   }
-  function dayAlpha() {
-    const h = gameHour(), N = 0.36;
+  function dayAlpha() { return dayAlphaAt(gameHour()); }
+  function dayAlphaAt(h) {
+    const N = 0.36;
     if (h >= 22 || h < 5) return N;
     if (h < 8) return N * (1 - (h - 5) / 3);       // рассвет
     if (h < 18) return 0;
@@ -1395,7 +1705,50 @@
   function bodyFront(L, id) { const o = OUTFIT[id]; if (o) o.body(L); else legacyFront(L, id); }
 
   // ---------- мебель: рисунки (низ по центру для пола, центр для стены) ----------
+  const FLAMEMAP = { y: '#ffe27a', o: '#ff9a3c', r: '#e8505b' };
+  const FLAME = [
+    ['....y....', '...yoy...', '..yooy...', '..yoooy..', '.yooroy..', '.yorrroy.', '.yorrrry.', '..yrrrry.', '...yrry..'],
+    ['.....y...', '....yoy..', '...yooy..', '..yoooy..', '..yooroy.', '.yorrroy.', '.yorrrry.', '..yrrrry.', '...yrry..'],
+    ['...y.....', '..yoy....', '..yooy...', '..yoooy..', '.yoroooy.', '.yorrroy.', '.yorrrry.', '..yrrrry.', '...yrry..']];
   const FURN = {
+    mushrooms: { w: 22, h: 16, draw: (L) => {
+      rect(L, 5, 9, 4, 6, '#f6e6c8'); ell(L, 7, 8, 6, 4.2, ['#ff6b6b', '#e8505b', '#b8343f']); dot(L, 5, 6, '#fff'); dot(L, 8, 5, '#fff'); dot(L, 9, 8, '#fff');
+      rect(L, 15, 11, 3, 4, '#f6e6c8'); ell(L, 16.5, 10.5, 4.2, 3, ['#ffb15c', '#e08a3c', '#b8662a']); dot(L, 15, 9, '#fff3d0');
+      rect(L, 11, 13, 2, 2, '#f6e6c8'); ell(L, 12, 12.5, 3, 2.2, ['#ff6b6b', '#e8505b']);
+      [[3, 15], [10, 15], [19, 15]].forEach(([x, y]) => { dot(L, x, y, '#4eaa56'); dot(L, x + 1, y - 1, '#4eaa56'); }); } },
+    flowerbed: { w: 34, h: 18, draw: (L) => {
+      ell(L, 17, 14, 16, 3.6, ['#9a6a3c', '#7e4d2a'], { d: .1 });
+      const cols = ['#ff6a8a', '#ffd93d', '#ffffff', '#a86be8', '#ff9a3c'];
+      for (let i = 0; i < 8; i++) { const x = 4 + i * 4, h = 4 + ((i * 5) % 5); rect(L, x, 13 - h, 1, h, '#3f9a4d'); rect(L, x - 1, 11 - h, 3, 3, cols[i % 5]); dot(L, x, 12 - h, '#ffe27a'); } } },
+    picnic: { w: 34, h: 18, draw: (L) => {
+      for (let y = 5; y < 16; y++) { const s = Math.round((15 - y) * 0.45); for (let x = 2 + s; x < 28 + s; x++) dot(L, x, y, (Math.floor(x / 4) + Math.floor(y / 3)) % 2 ? '#e8505b' : '#fff4f0'); }
+      rect(L, 17, 3, 9, 6, '#c99358'); rect(L, 17, 3, 9, 1, '#e3b278'); rect(L, 19, 1, 5, 2, '#8f5e35'); rect(L, 18, 5, 7, 2, '#e8505b');
+      ell(L, 8, 8, 2, 2, ['#ff6b6b', '#c43a44']); dot(L, 8, 5, '#3f9a4d'); rect(L, 11, 4, 2, 5, '#7fd0ff'); } },
+    birdhouse: { w: 16, h: 34, draw: (L) => {
+      rect(L, 7, 14, 2, 19, '#8f5e35'); rect(L, 5, 31, 6, 2, '#6e4527');
+      rect(L, 2, 7, 12, 9, '#e8b070'); rect(L, 2, 7, 12, 1, '#f6cf94'); rect(L, 5, 16, 6, 1, '#8f5e35');
+      for (let r = 0; r < 6; r++) { const half = Math.round(2 + r * 1.4); rect(L, 8 - half, 1 + r, half * 2, 1, r % 2 ? '#d4604a' : '#e8685a'); }
+      ell(L, 8, 11, 2, 2, ['#2a1722']); rect(L, 6, 14, 4, 1, '#8f5e35'); } },
+    bench: { w: 34, h: 22, draw: (L) => {
+      rect(L, 3, 2, 2, 13, '#8f5e35'); rect(L, 29, 2, 2, 13, '#8f5e35');
+      rect(L, 2, 2, 30, 3, '#b07a47'); rect(L, 2, 2, 30, 1, '#d9a468'); rect(L, 2, 6, 30, 3, '#c99358');
+      rect(L, 3, 10, 28, 4, '#c99358'); rect(L, 3, 10, 28, 1, '#e3b278'); rect(L, 3, 14, 28, 1, '#7e4d2a');
+      rect(L, 4, 15, 3, 6, '#6e4527'); rect(L, 27, 15, 3, 6, '#6e4527'); } },
+    lamppost: { w: 14, h: 50, draw: (L) => {
+      rect(L, 6, 12, 2, 36, '#3d4a5c'); rect(L, 4, 46, 6, 3, '#2f3a4a'); rect(L, 5, 40, 4, 2, '#4a586c');
+      rect(L, 3, 3, 8, 9, '#ffe08a'); rect(L, 4, 4, 6, 7, '#fff3b8'); rect(L, 2, 2, 10, 2, '#3d4a5c'); rect(L, 4, 0, 6, 2, '#3d4a5c'); rect(L, 2, 12, 10, 1, '#3d4a5c'); } },
+    campfire: { w: 24, h: 22, draw: (L) => {
+      for (let t = 0; t < 15; t++) { rect(L, 5 + t, 16 - Math.round(t * 0.35), 1, 3, '#8f5e35'); rect(L, 19 - t, 16 - Math.round(t * 0.35), 1, 3, '#6e4527'); }
+      for (let i = 0; i < 9; i++) { const a = i / 9 * 6.28; ell(L, 12 + Math.cos(a) * 9.5, 18 + Math.sin(a) * 2.6, 2.2, 1.8, ['#c9c4bd', '#8f8a85', '#6a6560'], { d: .1 }); }
+      spr(L, 8, 3, FLAME[0], FLAMEMAP); } },
+    boat: { w: 40, h: 24, draw: (L) => {
+      flat(L, 20, 20, 18, 2, '#bfe8ff');
+      for (let y = 8; y < 19; y++) { const s = Math.round((y - 8) * 0.6); rect(L, 2 + s, y, 36 - s * 2, 1, y < 10 ? '#e3b278' : (y % 3 === 0 ? '#8f5e35' : '#a8723f')); }
+      rect(L, 15, 6, 9, 2, '#c99358'); for (let t = 0; t < 13; t++) dot(L, 24 + t, 3 + t, '#d9a468'); ell(L, 36, 18, 2.2, 1.6, ['#e3b278']); } },
+    tent: { w: 36, h: 30, draw: (L) => {
+      for (let r = 0; r < 26; r++) { const half = Math.round(1 + r * 0.66); for (let x = 18 - half; x <= 18 + half; x++) dot(L, x, 3 + r, x < 18 ? (((x + r) % 6 < 2) ? '#ff9a5a' : '#ff8a3c') : (((x + r) % 6 < 2) ? '#e0702e' : '#cf5f26')); }
+      for (let r = 0; r < 17; r++) { const half = Math.round(0.5 + r * 0.34); for (let x = 18 - half; x <= 18 + half; x++) dot(L, x, 12 + r, '#3a2418'); }
+      rect(L, 18, 0, 1, 4, '#8f5e35'); rect(L, 19, 0, 4, 2, '#ffd93d'); } },
     cactus: { w: 16, h: 27, draw: (L) => {
       ell(L, 8, 12, 4, 10, GRN); ell(L, 3.5, 14, 2.4, 4, GRN); ell(L, 12.5, 10, 2.4, 4, GRN);
       rect(L, 3, 21, 10, 2, '#e08a58'); rect(L, 4, 23, 8, 3, '#c96a3d'); rect(L, 7, 1, 2, 2, '#ff8ab8'); } },
@@ -1511,7 +1864,7 @@
       const before = S;
       const r = await api('/api/pet/action', Object.assign({ action }, extra || {}));
       if (r.state) { render(r.state); seenTs = Math.max(seenTs, r.state.last_ts || 0); }
-      SFX.play(r.ok ? ({ buy: 'buy', wear: 'wear', unwear: 'wear', place: 'place', unplace: 'place', claim: 'claim' }[action] || 'ok') : 'no');
+      SFX.play(r.ok ? ({ buy: 'buy', wear: 'wear', unwear: 'wear', place: 'place', unplace: 'place', claim: 'claim', claim_ach: 'claim', unlock: 'unlock' }[action] || 'ok') : 'no');
       if (r.ok && r.state && before && r.state.level > before.level) SFX.play('level', 650);
       return r;
     } catch (e) {
@@ -1523,24 +1876,32 @@
   const owns = (id) => !!(S && (S.owned || []).includes(id));
 
   // ---------- навигация: Главная / Меню и разделы меню ----------
-  const PANELS = ['menu', 'shop', 'wardrobe', 'quests', 'visit', 'rewards', 'settings', 'admin'];
+  const PANELS = ['loc', 'menu', 'shop', 'wardrobe', 'quests', 'visit', 'rewards', 'settings', 'admin'];
   // show(t) — открывает раздел (home / menu / shop / wardrobe / …): прячет остальные панели и перерисовывает нужную
-  function show(t) {
-    const edit = t === 'edit'; if (edit) t = 'home';
-    tab = t; setEdit(edit);
-    document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x.dataset.tab === (t === 'home' ? 'home' : 'menu')));
-    const home = t === 'home';
-    $('stage').style.display = home ? '' : 'none';
-    $('actions').style.display = (home && !edit) ? '' : 'none';
-    $('editbar').style.display = (home && edit) ? 'flex' : 'none';
-    PANELS.forEach(p => $('panel-' + p).style.display = (p === t) ? 'block' : 'none');
+  function show(t, o) {
+    o = o || {};
+    const edit = t === 'edit' || t === 'locedit'; if (t === 'edit') t = 'home'; if (t === 'locedit') t = 'loc';
+    const guest = isGuest(), locked = t === 'loc' && !guest && S && !hasForest(S);
+    tab = t; setEdit(edit && !locked);
+    document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x.dataset.tab === (t === 'home' || t === 'loc' ? t : 'menu')));
+    const stageOn = t === 'home' || (t === 'loc' && !locked);
+    $('stage').style.display = stageOn ? '' : 'none';
+    $('actions').style.display = (stageOn && !edit) ? '' : 'none';
+    $('editbar').style.display = (stageOn && edit && !locked) ? 'flex' : 'none';
+    PANELS.forEach(p => $('panel-' + p).style.display = (p === t && (p !== 'loc' || locked)) ? 'block' : 'none');
     if (t === 'shop') renderShop(); else if (t === 'wardrobe') renderWardrobe(); else if (t === 'settings') renderSettings(); else if (t === 'admin') renderAdmin();
-    else if (t === 'quests') renderQuests(); else if (t === 'visit') renderVisit();
-    haptic('light'); SFX.play('click');
+    else if (t === 'quests') renderQuests(); else if (t === 'visit') renderVisit(); else if (t === 'rewards') renderAch(); else if (t === 'loc') renderLoc();
+    if (!o.noMove && !guest && S && !busy) {           // перемещаем питомца между домом и улицей
+      if (t === 'home' && outdoor(S.room)) goIn(); else if (t === 'loc' && !locked && !outdoor(S.room)) goOut();
+    }
+    if (view && view.cur) updateLocBtn();
+    syncAmbient();
+    if (!o.quiet) { haptic('light'); SFX.play('click'); }
   }
   // updatePanels() — зовётся при каждом новом состоянии с сервера: обновляет открытый сейчас раздел (магазин, гардероб, задания)
   function updatePanels() {
     if (tab === 'shop') renderShop(); else if (tab === 'wardrobe') renderWardrobe(); else if (tab === 'quests') renderQuests();
+    else if (tab === 'rewards') renderAch(); else if (tab === 'loc') { renderLoc(); if (view.edit) renderEditList(); }
     else if (tab === 'home' && view.edit) renderEditList();
   }
   document.querySelectorAll('nav button').forEach(b => b.addEventListener('click', () => show(b.dataset.tab)));
@@ -1599,7 +1960,7 @@
     if (rar) d.appendChild(el('div', 'rar', RARITY[rar].n));                       // бейдж редкости
     d.appendChild(el('div', 'ds', c.k === 'food'
       ? 'Сытость +' + c.hu + ' · Радость +' + c.hp + (c.en ? ' · Энергия +' + c.en : '')
-      : c.k === 'wear' ? SLOT_RU[c.s] : (c.pl === 'wall' ? 'Висит на стене' : 'Стоит на полу')));
+      : c.k === 'wear' ? SLOT_RU[c.s] : (c.w === 'out' ? '🌲 Для улицы' : c.w === 'any' ? 'Дома и на улице' : (c.pl === 'wall' ? 'Висит на стене' : 'Стоит на полу'))));
     const b = el('button', 'buy');
     if (c.k === 'food') {
       const q = (S.inv || {})[id] || 0; if (q) d.appendChild(el('div', 'own', 'В запасе: ' + q));
@@ -1781,6 +2142,7 @@
       if ((o.c.pl !== 'wall' && o.y > view.baseY + 4) !== front) continue;
       const x = o.x - (o.f.w >> 1) + dx, y = o.c.pl === 'wall' ? o.y - (o.f.h >> 1) : o.y - o.f.h;
       sx.drawImage(o.f.c, x, y);
+      if (o.id === 'campfire') spr({ x: sx, w: 0, h: 0 }, x + 8, y + 3, FLAME[Math.floor(now / 160) % 3], FLAMEMAP);
       if (view.edit && sel === o.id) {
         sx.fillStyle = (Math.floor(now / 350) % 2) ? '#ffe27a' : '#ffffff';
         const x0 = x - 1, y0 = y - 1, w = o.f.w + 2, h = o.f.h + 2;
@@ -1801,8 +2163,9 @@
   function setEdit(on) { view.edit = !!on; if (!on) { sel = null; drag = null; } else renderEditList(); }
   function renderEditList() {
     const box = $('editlist'); if (!box || !S || !CAT) return; box.textContent = '';
-    const ids = (S.owned || []).filter(id => CAT[id] && CAT[id].k === 'furn');
-    if (!ids.length) box.appendChild(el('div', 'empty', 'Мебели пока нет — загляни в Меню → Магазин 🛍'));
+    const out = outdoor(view.cur); $('edittitle').textContent = out ? '🌲 Обустройство улицы' : '🛋 Расстановка мебели';
+    const ids = (S.owned || []).filter(id => CAT[id] && CAT[id].k === 'furn' && fitsRoom(CAT[id], out));
+    if (!ids.length) box.appendChild(el('div', 'empty', (out ? 'Уличной мебели пока нет' : 'Мебели пока нет') + ' — загляни в Меню → Магазин → Мебель 🛍'));
     ids.forEach(id => {
       const pl = (S.placed || {})[id], b = el('button', 'chip' + (sel === id ? ' on' : ''));
       b.appendChild(furnPreview(id, 1)); b.appendChild(el('span', 'cn', CAT[id].n));
@@ -1810,7 +2173,7 @@
       b.addEventListener('click', () => pickFurn(id)); box.appendChild(b);
     });
     $('editstore').disabled = !(sel && S.placed && S.placed[sel]);
-    $('edithint').textContent = sel ? 'Тапни по комнате или перетащи «' + CAT[sel].n + '»' : 'Выбери вещь, чтобы поставить её в эту комнату';
+    $('edithint').textContent = sel ? 'Тапни по сцене или перетащи «' + CAT[sel].n + '»' : 'Выбери вещь, чтобы поставить её сюда';
   }
   async function pickFurn(id) {
     if (view.trans) return; haptic('light');
@@ -1844,8 +2207,107 @@
     if (!sel) return; const id = sel; sel = null; haptic('light');
     const r = await rpc('unplace', { item: id }); if (r && !r.ok) toast(r.say);
   });
-  $('editdone').addEventListener('click', () => show('home'));
+  $('editdone').addEventListener('click', () => show(tab === 'loc' ? 'loc' : 'home'));
 
+  // =====================================================================
+  // ЛОКАЦИЯ «ЛЕС»: вкладка, замок, выход из дома, перемещения, достижения
+  // =====================================================================
+  const outdoor = (room) => !!(ROOMS[room] && ROOMS[room].out);
+  const isGuest = () => viewingUserId !== null && viewingUserId !== myId;
+  const hasForest = (st) => !!(st && (st.locs || []).includes('forest'));
+  const fitsRoom = (c, out) => { const w = c.w || 'in'; return w === 'any' || (out ? w === 'out' : w === 'in'); };
+
+  function renderLoc() {
+    const box = $('locbody'); if (!box || !S) return;
+    $('loccoins').textContent = S.coins;
+    box.textContent = '';
+    if (hasForest(S)) return;
+    const info = (S.loc_info && S.loc_info.forest) || { n: 'Лес', p: 1500, d: '' };
+    const cv = document.createElement('canvas'); cv.className = 'pxi locprev';
+    if (view.rooms && view.rooms.forest) {
+      const W = view.W, H = view.H; cv.width = W; cv.height = H; const g = cv.getContext('2d'); g.imageSmoothingEnabled = false;
+      drawSky(g, 0, 12, W, view.fy); g.drawImage(view.rooms.forest.c, 0, 0);
+      g.fillStyle = 'rgba(10,16,40,.35)'; g.fillRect(0, 0, W, H);
+      box.appendChild(cv);
+    }
+    box.appendChild(el('div', 'lochead', '🔒 ' + info.e + ' ' + info.n));
+    box.appendChild(el('p', null, info.d || ''));
+    const b = el('button', 'buy' + (S.coins < info.p ? ' poor' : ''), 'Открыть за ' + info.p + ' 🪙'); b.style.width = '100%'; b.style.margin = '4px 0 8px'; b.style.padding = '13px';
+    b.addEventListener('click', () => unlockLoc(info)); box.appendChild(b);
+    [['🏡', 'Задний двор', 'выход из дома, можно играть на свежем воздухе'], ['🌲', 'Лес', 'искать грибы и ягоды за монеты'], ['🎣', 'Озеро', 'рыбачить — иногда клюёт рыбка 🐟'],
+     ['🪑', 'Своя обстановка', 'уличная мебель: скамейка, костёр, палатка…'], ['🎶', 'Звуки природы', 'птицы, ветер, шелест листвы, вода']].forEach(([e, n, d]) => {
+      const r = el('div', 'locrow'); r.appendChild(el('span', 'e', e)); const m = el('span', 'm', n); m.appendChild(el('small', null, d)); r.appendChild(m); box.appendChild(r);
+    });
+  }
+  let unlocking = false;
+  async function unlockLoc(info) {
+    if (unlocking || !S) return;
+    if (S.coins < info.p) { toast('Не хватает монет 🪙 Нужно ' + info.p); haptic('err'); SFX.play('no'); return; }
+    const go = async () => {
+      unlocking = true;
+      try {
+        const r = await rpc('unlock', { item: 'forest' });
+        if (r) { toast(r.say, 3500); haptic(r.ok ? 'ok' : 'err'); onAch(r); if (r.ok) { SFX.play('unlock'); show('loc'); } }
+      } finally { unlocking = false; }
+    };
+    const msg = 'Открыть «' + info.n + '» за ' + info.p + ' монет?';
+    if (tg.showConfirm) tg.showConfirm(msg, (ok) => ok && go()); else if (window.confirm(msg)) go();
+  }
+  async function stepOut(action) {
+    if (busy || isGuest()) return; busy = true;
+    try {
+      const r = await api('/api/pet/action', { action });
+      if (r.state) render(r.state, true);
+      if (r.ok) { SFX.play('door'); if (action === 'go_out') view.enter = { t0: performance.now(), dur: 1700 }; }
+      else { SFX.play('no'); toast(r.say); show(action === 'go_out' ? 'home' : 'loc', { quiet: true, noMove: true }); }
+      onAch(r);
+    } catch (e) { if (String(e.message) === 'auth') veil(AUTH_MSG); else toast('Связь потерялась, попробуй ещё раз 📡'); }
+    finally { busy = false; }
+  }
+  const goOut = () => stepOut('go_out'), goIn = () => stepOut('go_in');
+  function updateLocBtn() {
+    const b = $('locedit'); if (!b) return;
+    b.style.display = (tab === 'loc' && !view.edit && !view.trans && !isGuest() && outdoor(view.cur)) ? 'block' : 'none';
+  }
+  $('locedit').addEventListener('click', () => { haptic('light'); show('locedit', { quiet: true }); });
+  function onAch(r) {
+    if (!r || !r.ach_new || !r.ach_new.length) return;
+    const t = r.ach_new.map(a => a.e + ' ' + a.n).join('\n');
+    setTimeout(() => { toast('🏆 Достижение!\n' + t, 4200); SFX.play('ach'); }, 700);
+  }
+
+  // ---------- достижения ----------
+  let achBusy = false;
+  const fmtN = (n) => Number(n).toLocaleString('ru');
+  function achRow(i) {
+    const d = el('div', 'q arow' + (i.claimed ? ' claimed' : i.done ? ' done' : '')), it = i.item && CAT[i.item];
+    d.appendChild(el('div', 'ae', i.e));
+    const m = el('div', 'ab'); m.appendChild(el('div', 'qt', i.n)); m.appendChild(el('div', 'qh', i.d));
+    const bar = el('div', 'qbar'), f = el('div'); f.style.width = Math.min(100, i.progress / i.goal * 100) + '%'; bar.appendChild(f); m.appendChild(bar);
+    const row = el('div', 'qrow'); row.appendChild(el('span', 'qp', fmtN(i.progress) + '/' + fmtN(i.goal)));
+    row.appendChild(el('span', 'qr', '🪙' + i.coins + ' · ' + i.xp + ' XP' + (it ? ' · ' + it.e : '')));
+    if (i.done && !i.claimed) { const b = el('button', 'buy', 'Забрать'); b.addEventListener('click', () => claimAch(i.id)); row.appendChild(b); }
+    else if (i.claimed) row.appendChild(el('span', 'qp', '✓'));
+    m.appendChild(row); d.appendChild(m); return d;
+  }
+  function renderAch() {
+    const box = $('abody'); if (!box) return; box.textContent = '';
+    const A = S && S.ach;
+    if (!A || !CAT) { box.appendChild(el('div', 'empty', 'Загружаем достижения…')); return; }
+    $('acount').textContent = A.done + ' / ' + A.total;
+    box.appendChild(el('div', 'qinfo' + (A.ready ? ' ok' : ''), A.ready ? '🎁 Наград к получению: ' + A.ready : 'Открыто ' + A.done + ' из ' + A.total + '. Награду можно забрать один раз'));
+    const ready = A.items.filter(i => i.done && !i.claimed), prog = A.items.filter(i => !i.done).sort((a, b) => b.progress / b.goal - a.progress / a.goal), got = A.items.filter(i => i.claimed);
+    [['🎁 Можно забрать', ready], ['⏳ В процессе', prog], ['🏆 Получено', got]].forEach(([t, list]) => {
+      if (!list.length) return; const h = el('div', 'qcat', t); h.appendChild(el('small', null, String(list.length))); box.appendChild(h); list.forEach(i => box.appendChild(achRow(i)));
+    });
+  }
+  async function claimAch(id) {
+    if (achBusy) return; achBusy = true; haptic('light');
+    try { const r = await rpc('claim_ach', { item: id }); if (r) { toast(r.say, 4500); haptic(r.ok ? 'ok' : 'err'); onAch(r); } } finally { achBusy = false; }
+  }
+
+  SFX.setNight(() => dayAlpha() > 0.18);
+  document.addEventListener('visibilitychange', syncAmbient);
   drawAvatar(); layout();
   new ResizeObserver(() => { layout(); }).observe($('stage'));
   window.addEventListener('resize', layout);
