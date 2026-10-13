@@ -1366,8 +1366,12 @@
     view.curOx = ox;
     if (doorOpen) { const d = view.door; sx.fillStyle = '#2e1a10'; sx.fillRect(d.x, d.y, d.w, d.h); sx.fillStyle = '#7a4a28'; sx.fillRect(d.x + 3, d.y + (d.h >> 1), d.w - 6, d.h >> 1); sx.fillStyle = '#b8723a'; sx.fillRect(d.x, d.y, 4, d.h); }
     sx.globalAlpha = alpha * 0.28 / 0.28; sx.fillStyle = 'rgba(40,20,20,.28)'; for (let i = -19; i <= 19; i++) { const h = Math.round(Math.sqrt(1 - (i / 20) ** 2) * 3); sx.fillRect(ox + i, view.baseY - 1 - h + 3, 1, h * 2 - 1); }
-    const O = drawOtter(now, look, blink);
-    sx.drawImage(O.c, ox - OX, view.baseY - OB + 4 + hop); sx.globalAlpha = 1;
+    const tentSleeping = !!(S && S.sleeping && out && S.placed && S.placed.tent && S.placed.tent.room === view.cur);
+    if (!tentSleeping) {
+      const O = drawOtter(now, look, blink);
+      sx.drawImage(O.c, ox - OX, view.baseY - OB + 4 + hop);
+    }
+    sx.globalAlpha = 1;
     for (const [r, dx] of view.fx) drawItems(r, dx, true, now);
     if (look === 'play' && (view.cur === 'home' || view.cur === 'yard')) {
       const by = view.baseY - 4 - Math.round(Math.abs(Math.sin(now / 160)) * 26), bx = ox + 34;
@@ -1819,8 +1823,7 @@
       band(L, 3, 3, 28, 19, ['#b6e8ff', '#7fcbf5', '#58b0e6']);
       rect(L, 2, 2, 30, 1, '#eaf9ff'); rect(L, 2, 2, 1, 21, '#eaf9ff'); rect(L, 31, 2, 1, 21, '#eaf9ff'); rect(L, 2, 22, 30, 1, '#eaf9ff');
       rect(L, 3, 19, 28, 3, '#f0d79a'); rect(L, 6, 12, 2, 8, '#3f9a4d'); rect(L, 8, 14, 1, 6, '#4eaa56'); rect(L, 25, 10, 2, 10, '#3f9a4d');
-      spr(L, 11, 8, ['..oo...o', '.ooooooo', 'oookooo.', '.ooooooo', '..oo...o'], { o: '#ff9a3c', k: OUT });
-      spr(L, 20, 14, ['.bbb.b', 'bbkbbb', '.bbb.b'], { b: '#6a8cff', k: OUT });
+      // Рыбки рисуются в drawItems: обе имеют независимую траекторию.
       dot(L, 22, 6, '#fff'); dot(L, 23, 4, '#fff'); dot(L, 16, 5, '#fff'); } },
     tv: { w: 34, h: 31, draw: (L) => {
       rect(L, 4, 24, 26, 7, '#8f5630'); rect(L, 4, 24, 26, 1, '#b07a47'); rect(L, 2, 3, 30, 21, '#2a2f3d');
@@ -2176,12 +2179,23 @@
       const x = o.x - (o.f.w >> 1) + dx, y = o.c.pl === 'wall' ? o.y - (o.f.h >> 1) : o.y - o.f.h;
       sx.drawImage(o.f.c, x, y);
       if (o.id === 'aquarium') {
-        const fx = x + 8 + Math.round((Math.sin(now / 520) + 1) * 5);
-        const fy = y + 9 + Math.round(Math.sin(now / 280) * 2);
-        spr({ x: sx, w: 0, h: 0 }, fx, fy, ['..oo...', '.oooooo', 'oookoo.', '.oooooo', '..oo...'], { o: '#ffb15c', k: OUT });
-        const bx = x + 20 + Math.round(Math.sin(now / 700) * 4);
-        spr({ x: sx, w: 0, h: 0 }, bx, y + 14 + Math.round(Math.cos(now / 430) * 2), ['.bbb.', 'bbkbb', '.bbb.'], { b: '#8aa7ff', k: OUT });
-        if (Math.floor(now / 650) % 3 === 0) { sx.fillStyle = 'rgba(255,255,255,.7)'; sx.fillRect(x + 14 + Math.floor(now / 180) % 9, y + 5, 1, 2); }
+        // Плавание без заметного короткого цикла: сложенные волны дают каждой рыбке свой маршрут.
+        const t = now / 1000;
+        const swim = (baseX, baseY, phase, rangeX, rangeY) => ({
+          x: x + baseX + Math.round(Math.sin(t * 0.63 + phase) * rangeX + Math.sin(t * 0.29 + phase * 1.7) * rangeX * 0.28),
+          y: y + baseY + Math.round(Math.sin(t * 0.91 + phase * 1.3) * rangeY + Math.sin(t * 0.37 + phase) * rangeY * 0.35)
+        });
+        const f1 = swim(5, 7, 0.8, 5, 2);
+        const f2 = swim(17, 13, 3.4, 4, 2);
+        spr({ x: sx, w: 0, h: 0 }, f1.x, f1.y, ['..oo...', '.oooooo', 'oookoo.', '.oooooo', '..oo...'], { o: '#ffb15c', k: OUT });
+        spr({ x: sx, w: 0, h: 0 }, f2.x, f2.y, ['.bbb.', 'bbkbb', '.bbb.'], { b: '#8aa7ff', k: OUT });
+        // Пузыри возникают нерегулярно и в разных местах.
+        for (let i = 0; i < 3; i++) {
+          const phase = t * (0.42 + i * 0.07) + i * 2.4;
+          const bx = x + 8 + ((i * 9 + Math.floor(Math.sin(phase) * 3 + 4)) % 18);
+          const by = y + 5 + ((Math.floor(now / (570 + i * 90) + i * 7) % 10));
+          if (Math.sin(phase * 1.9) > 0.58) { sx.fillStyle = 'rgba(255,255,255,.72)'; sx.fillRect(bx, by, 1, 2); }
+        }
       }
       if (o.id === 'tv') {
         const pulse = Math.floor(now / 230) % 4;
