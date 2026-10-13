@@ -20,6 +20,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 import pet_quests as quests   # ежедневные задания (pet_quests.py лежит рядом)
+import pet_ach as ach         # достижения (pet_ach.py лежит рядом)
 
 # В PostgreSQL строка блокируется на время действия, чтобы два одновременных
 # нажатия (два игрока) не затёрли друг друга.
@@ -47,13 +48,22 @@ USER_IDS = []                         # app.py подставляет двух �
 NIGHT_FROM, NIGHT_TO = 22, 7          # ночь: с 22:00 до 7:00
 
 # Комнаты: гостиная (home) соединена с кухней и спальней
-ROOMS = ("home", "kitchen", "bedroom")
-ADJACENT = {"home": ("kitchen", "bedroom"), "kitchen": ("home",), "bedroom": ("home",)}
-ROOM_NAMES = {"home": "в гостиную", "kitchen": "на кухню", "bedroom": "в спальню"}
+INDOOR = ("home", "kitchen", "bedroom")
+# Локация «Лес» (открывается за монеты): задний двор → лес → озеро. Из дома выходят через дверь (go_out).
+OUTDOOR = ("yard", "forest", "lake")
+ROOMS = INDOOR + OUTDOOR
+ADJACENT = {"home": ("kitchen", "bedroom"), "kitchen": ("home",), "bedroom": ("home",),
+            "yard": ("forest",), "forest": ("yard", "lake"), "lake": ("forest",)}
+ROOM_NAMES = {"home": "в гостиную", "kitchen": "на кухню", "bedroom": "в спальню",
+              "yard": "на задний двор", "forest": "в лес", "lake": "к озеру"}
+LOCATIONS = {"forest": {"n": "Лес", "e": "🌲", "p": 1500, "rooms": list(OUTDOOR),
+                        "d": "Задний двор, лес и озеро: грибы, рыбалка и своя уличная мебель"}}
+FORAGE_COINS = (8, 14)      # грибы и ягоды в лесу
 
 PET_COOLDOWN_SEC = 20       # монетка за поглаживание — не чаще, чем раз в 20 секунд
 MAX_FOOD = 20               # сколько штук одной еды можно держать в запасе
-MAX_PER_ROOM = 8            # сколько предметов мебели помещается в одну комнату
+MAX_PER_ROOM = 8            # сколько предметов мебели помещается в одну комнату дома
+MAX_PER_ROOM_OUT = 12       # на улице места больше
 
 # ---------------------------------------------------------------------------
 # РЕДКОСТЬ ОДЕЖДЫ. Цена вещи зависит только от редкости: чтобы поменять цены, правьте эту таблицу.
@@ -136,12 +146,12 @@ CATALOG = {
     "sweater":    _wear("Свитер",             "top",  "rare",   True, 60),
     "cape":       _wear("Плащ героя",         "back", "epic",   True, 100),
     # --- мебель ---
-    "cactus":    {"k": "furn", "n": "Кактус",         "p": 25,  "pl": "floor"},
+    "cactus":    {"k": "furn", "n": "Кактус",         "p": 25,  "pl": "floor", "w": "any"},
     "pouf":      {"k": "furn", "n": "Пуф",            "p": 35,  "pl": "floor"},
-    "plant":     {"k": "furn", "n": "Фикус",          "p": 40,  "pl": "floor"},
+    "plant":     {"k": "furn", "n": "Фикус",          "p": 40,  "pl": "floor", "w": "any"},
     "table":     {"k": "furn", "n": "Столик с чаем",  "p": 50,  "pl": "floor"},
-    "lamp":      {"k": "furn", "n": "Торшер",         "p": 55,  "pl": "floor"},
-    "tree":      {"k": "furn", "n": "Ёлочка",         "p": 80,  "pl": "floor"},
+    "lamp":      {"k": "furn", "n": "Торшер",         "p": 55,  "pl": "floor", "w": "any"},
+    "tree":      {"k": "furn", "n": "Ёлочка",         "p": 80,  "pl": "floor", "w": "any"},
     "armchair":  {"k": "furn", "n": "Кресло",         "p": 90,  "pl": "floor"},
     "bookcase":  {"k": "furn", "n": "Книжный шкаф",   "p": 110, "pl": "floor"},
     "aquarium":  {"k": "furn", "n": "Аквариум",       "p": 160, "pl": "floor"},
@@ -152,6 +162,16 @@ CATALOG = {
     "poster":    {"k": "furn", "n": "Постер с выдрой", "p": 45, "pl": "wall"},
     "mirror":    {"k": "furn", "n": "Зеркало",        "p": 60,  "pl": "wall"},
     "garland":   {"k": "furn", "n": "Гирлянда",       "p": 70,  "pl": "wall"},
+    # --- уличная мебель (w: out — только на улице; any — и дома, и на улице; остальное — только дома) ---
+    "mushrooms": {"k": "furn", "n": "Грибочки",       "p": 30,  "pl": "floor", "w": "out"},
+    "flowerbed": {"k": "furn", "n": "Клумба",         "p": 45,  "pl": "floor", "w": "out"},
+    "picnic":    {"k": "furn", "n": "Плед для пикника", "p": 50, "pl": "floor", "w": "out"},
+    "birdhouse": {"k": "furn", "n": "Скворечник",     "p": 55,  "pl": "floor", "w": "out"},
+    "bench":     {"k": "furn", "n": "Скамейка",       "p": 60,  "pl": "floor", "w": "out"},
+    "lamppost":  {"k": "furn", "n": "Уличный фонарь", "p": 70,  "pl": "floor", "w": "out"},
+    "campfire":  {"k": "furn", "n": "Костёр",         "p": 90,  "pl": "floor", "w": "out"},
+    "boat":      {"k": "furn", "n": "Лодочка",        "p": 120, "pl": "floor", "w": "out"},
+    "tent":      {"k": "furn", "n": "Палатка",        "p": 140, "pl": "floor", "w": "out"},
 }
 
 SAY = {
@@ -159,9 +179,22 @@ SAY = {
     "play": ["Ура! Давай ещё! 🎾", "Лови мячик! Плюх-плюх!", "Поиграем?! Ура-ура!"],
     "sleep": ["Зевает… Спокойной ночи 💤", "{name} свернулся клубочком и сопит…", "Сопит… Zzz"],
     "wake": ["{name} потягивается и открывает глазки ☀️"],
+    "forage": ["Нашёл грибочки и ягоды! 🍄", "Полная корзинка лесных даров 🧺", "Хрум! Земляничка! 🍓"],
+    "angle": ["Тишина, поплавок качается… 🎣", "Клюёт! Знатная рыбалка! 🐟", "Сидит на берегу, любуется водой 🌊"],
+    "unlock": ["Новая локация открыта! 🌲"],
+    "go_out": ["{name} вышел во двор 🚪"],
+    "go_in": ["{name} вернулся домой 🏠"],
     "pet": ["Хвостик виляет! 💕", "Мурлыкает от удовольствия!", "{name} прижимается к руке"],
 }
 REFUSE = {
+    "loc_locked": "Локация закрыта. Откройте её во вкладке «Локация» 🔒",
+    "loc_owned": "Эта локация у вас уже открыта ✨",
+    "loc_unknown": "Такой локации нет 🤔",
+    "forage_room": "Грибы и ягоды растут в лесу 🍄",
+    "angle_room": "Рыбачить можно на озере 🎣",
+    "not_outside": "Сначала нужно выйти на улицу 🚪",
+    "not_inside": "{name} уже дома 🏠",
+    "bad_place": "Эта вещь здесь не подойдёт: уличное — на улице, домашнее — дома 🌲",
     "asleep": "{name} спит 💤 Не будите — или разбудите в спальне.",
     "wake_room": "Будить можно в спальне 🛏",
     "not_asleep": "{name} не спит ☀️",
@@ -170,7 +203,7 @@ REFUSE = {
     "feed_none": "Такой еды нет в запасе. Загляните в Меню → Магазин 🛍",
     "play_tired": "{name} слишком устал для игр. Пусть поспит 💤",
     "feed_room": "Есть можно только на кухне 🍽",
-    "play_room": "Играть можно только в гостиной 🎾",
+    "play_room": "Играть можно только в гостиной или во дворе 🎾",
     "sleep_room": "Спать можно только в спальне 🛏",
     "move_far": "Туда не пройти напрямую: сначала зайдите в гостиную 🚪",
     "sleep_rested": "{name} бодр и совсем не хочет спать ☀️",
@@ -232,6 +265,7 @@ def init_tables(get_db):
                 "CREATE INDEX IF NOT EXISTS idx_pet_log_key ON pet_log (pet_key, id);"
             )
             quests.init(cur)
+            ach.init(cur)
             # Вещи пары: еда (qty), одежда (worn), мебель (room/x/y — где стоит)
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS pet_items (
@@ -334,7 +368,7 @@ def public_catalog() -> dict:
     return CATALOG
 
 
-def public_state(st: dict, names=None, now: float = None, uid=None, quests_view=None) -> dict:
+def public_state(st: dict, names=None, now: float = None, uid=None, quests_view=None, ach_view=None) -> dict:
     names = names or {}
     now = now or time.time()
     inv, owned, worn, placed = {}, [], {}, {}
@@ -375,9 +409,13 @@ def public_state(st: dict, names=None, now: float = None, uid=None, quests_view=
         "hour": round(local_hour(now), 2),  # местный час (BOT_TIMEZONE) — для дня и ночи
         "night": is_night(now),
         "is_admin": bool(uid and uid in ADMIN_IDS),
+        "locs": unlocked_locs(st),           # открытые локации
+        "loc_info": LOCATIONS,               # название, цена и состав локаций для экрана «Локация»
     }
     if quests_view is not None:
         out["quests"] = quests_view
+    if ach_view is not None:
+        out["ach"] = ach_view
     return out
 
 
@@ -439,8 +477,10 @@ def get_state(get_db, names=None, uid=None, pet_key=PET_KEY) -> dict:
         with conn.cursor() as cur:
             st = _load(cur, lock=False, pet_key=pet_key)
             qv = _quests_view(cur, st, uid, names, now, pet_key)   # None, если это чужой питомец (гость)
+            stats = ach.load_stats(cur, pet_key)
+            av = _ach_view(cur, st, stats, pet_key)
     _decay(st, now)
-    return public_state(st, names, now, uid, qv)
+    return public_state(st, names, now, uid, qv, av)
 
 
 def _clean_name(raw) -> str:
@@ -450,6 +490,10 @@ def _clean_name(raw) -> str:
 
 def _touch(st: dict, iid: str) -> None:
     st.setdefault("_dirty", set()).add(iid)
+
+
+def unlocked_locs(st: dict) -> list:
+    return sorted(k[4:] for k in st.get("items", {}) if k.startswith("loc_") and k[4:] in LOCATIONS)
 
 
 def _new_item() -> dict:
@@ -472,8 +516,36 @@ def _apply(st: dict, action: str, now: float, p: dict):
         st["wake_pending"] = False
         st["happy"] = _clamp(st["happy"] - 3)
         return True, random.choice(SAY["wake"]), 0, 0
-    if asleep and action in ("move", "feed", "play", "sleep", "pet"):
+    if asleep and action in ("move", "feed", "play", "sleep", "pet", "forage", "angle", "go_out", "go_in"):
         return False, REFUSE["asleep"], 0, 0
+    locs = unlocked_locs(st)
+
+    # ---------- локации: открыть, выйти на улицу, вернуться домой ----------
+    if action == "unlock":
+        loc = LOCATIONS.get(iid)
+        if not loc:
+            return False, REFUSE["loc_unknown"], 0, 0
+        if iid in locs:
+            return False, REFUSE["loc_owned"], 0, 0
+        if st["coins"] < loc["p"]:
+            return False, REFUSE["buy_poor"], 0, 0
+        st["coins"] -= loc["p"]
+        it = items.setdefault("loc_" + iid, _new_item())
+        it["qty"] = 1
+        _touch(st, "loc_" + iid)
+        return True, f"Открыто: {loc['n']} {loc['e']} Теперь можно выйти на улицу!", -loc["p"], 0
+    if action == "go_out":
+        if "forest" not in locs:
+            return False, REFUSE["loc_locked"], 0, 0
+        if room in OUTDOOR:
+            return True, "", 0, 0
+        st["room"] = "yard"
+        return True, random.choice(SAY["go_out"]), 0, 0
+    if action == "go_in":
+        if room in INDOOR:
+            return True, "", 0, 0
+        st["room"] = "home"
+        return True, random.choice(SAY["go_in"]), 0, 0
 
     if action == "move":
         if to not in ROOMS:
@@ -482,6 +554,8 @@ def _apply(st: dict, action: str, now: float, p: dict):
             return True, "", 0, 0
         if to not in ADJACENT[room]:
             return False, REFUSE["move_far"], 0, 0
+        if to in OUTDOOR and "forest" not in locs:
+            return False, REFUSE["loc_locked"], 0, 0
         st["room"] = to
         return True, f"{{name}} идёт {ROOM_NAMES[to]} 🐾", 0, 0
 
@@ -546,9 +620,14 @@ def _apply(st: dict, action: str, now: float, p: dict):
         target = p.get("room")
         if target not in ROOMS:
             return False, REFUSE["move_far"], 0, 0
+        kind = c.get("w", "in")
+        if kind == "out" and target not in OUTDOOR or kind == "in" and target in OUTDOOR:
+            return False, REFUSE["bad_place"], 0, 0
+        if target in OUTDOOR and "forest" not in locs:
+            return False, REFUSE["loc_locked"], 0, 0
         if it.get("room") != target:
             others = sum(1 for oid, o in items.items() if o.get("room") == target and oid != iid)
-            if others >= MAX_PER_ROOM:
+            if others >= (MAX_PER_ROOM_OUT if target in OUTDOOR else MAX_PER_ROOM):
                 return False, REFUSE["room_full"], 0, 0
         it["room"] = target
         it["x"] = int(_clamp(_int(p.get("x"), 50), 5, 95))
@@ -590,8 +669,38 @@ def _apply(st: dict, action: str, now: float, p: dict):
         st["energy"] = _clamp(st["energy"] + c.get("en", 0))
         xp_delta = c["xp"]
 
+    elif action == "forage":
+        if room != "forest":
+            return False, REFUSE["forage_room"], 0, 0
+        if st["energy"] < 15:
+            return False, REFUSE["play_tired"], 0, 0
+        st["energy"] = _clamp(st["energy"] - 12)
+        st["happy"] = _clamp(st["happy"] + 8)
+        st["hunger"] = _clamp(st["hunger"] - 4)
+        coins_delta = random.randint(*FORAGE_COINS)
+        st["coins"] += coins_delta
+        xp_delta = 12
+
+    elif action == "angle":
+        if room != "lake":
+            return False, REFUSE["angle_room"], 0, 0
+        if st["energy"] < 15:
+            return False, REFUSE["play_tired"], 0, 0
+        st["energy"] = _clamp(st["energy"] - 10)
+        st["happy"] = _clamp(st["happy"] + 8)
+        st["hunger"] = _clamp(st["hunger"] - 3)
+        st["coins"] += 5
+        coins_delta = 5
+        xp_delta = 12
+        caught = random.random() < 0.4
+        if caught:                                   # улов — рыбка в запас для кормления
+            fish = items.setdefault("fish", _new_item())
+            if fish["qty"] < MAX_FOOD:
+                fish["qty"] += 1
+                _touch(st, "fish")
+
     elif action == "play":
-        if room != "home":
+        if room not in ("home", "yard"):
             return False, REFUSE["play_room"], 0, 0
         if st["energy"] < 15:
             return False, REFUSE["play_tired"], 0, 0
@@ -637,13 +746,15 @@ def _apply(st: dict, action: str, now: float, p: dict):
         leveled = True
 
     say = random.choice(SAY[action])
+    if action == "angle" and caught:
+        say = "Поймалась рыбка! 🐟 Она уже в запасе для кормления"
     if leveled:
         say = f"🎉 Новый уровень: {st['level']}! +10 монет. " + say
     return True, say, coins_delta, xp_delta
 
 
 def _users_for(pet_key: str) -> list:
-    """Кто играет с этим питомцем: общий питомец пары — оба, отдельный («user:<id>») — один человек."""
+    """Кто играет с этим питомцем: общий питомец пары — оба, отдельный («user:<id>») и админский для «Проверки» («admin:<id>») — один человек."""
     if pet_key == PET_KEY:
         return list(USER_IDS)
     try:
@@ -701,6 +812,7 @@ def _claim(cur, st: dict, uid: int, qkey: str, now: float, pet_key: str):
         return False, msg, 0, 0
     coins, xp = rw["coins"], rw["xp"]
     _give(st, coins, xp, rw["item"])
+    st["_last_claim"] = bool(rw["last"])
     parts = [f"+{coins} 🪙", f"+{xp} XP"] + ([f"{CATALOG[rw['item']]['e']} {CATALOG[rw['item']]['n']}"] if rw["item"] in CATALOG else [])
     say = "🎁 Награда: " + ", ".join(parts)
     if rw["last"]:                                   # забрали последнее задание дня
@@ -716,6 +828,46 @@ def _claim(cur, st: dict, uid: int, qkey: str, now: float, pet_key: str):
     return True, say, coins, xp
 
 
+def _ach_vals(st: dict, stats: dict) -> dict:
+    kinds = [CATALOG[i]["k"] for i in st.get("items", {}) if i in CATALOG and not CATALOG[i].get("legacy")]
+    return ach.values(stats, st["level"], kinds.count("wear"), kinds.count("furn"), len(unlocked_locs(st)))
+
+
+def _ach_view(cur, st: dict, stats: dict, pet_key: str) -> dict:
+    return ach.view(cur, pet_key, _ach_vals(st, stats))
+
+
+def _claim_ach(cur, st: dict, stats: dict, ach_id: str, pet_key: str):
+    """Выдаёт награду за достижение. Возвращает (ok, say, coins_delta, xp_delta)."""
+    status, rw = ach.claim(cur, pet_key, str(ach_id or ""), _ach_vals(st, stats))
+    if status != "ok":
+        msg = {"none": "Такого достижения нет 🤔", "not_done": "Достижение ещё не открыто ⏳",
+               "claimed": "Награда уже получена ✅"}[status]
+        return False, msg, 0, 0
+    coins, xp, item = rw["coins"], rw["xp"], rw["item"]
+    parts = [f"+{coins} 🪙", f"+{xp} XP"]
+    c = CATALOG.get(item or "")
+    if c and c["k"] == "food":
+        _give(st, 0, 0, item)
+        parts.append(f"{c['e']} {c['n']}")
+    elif c:
+        if item in st["items"]:
+            coins += 20
+            parts[0] = f"+{coins} 🪙"
+        else:
+            it = _new_item(); it["qty"] = 1
+            st["items"][item] = it
+            _touch(st, item)
+            parts.append(f"🎁 {c['n']}")
+    _give(st, coins, xp, None)
+    say = f"🏅 «{rw['name']}»: " + ", ".join(parts)
+    lv = _level_up(st)
+    if lv:
+        coins += lv
+        say += f"\n🎉 Новый уровень: {st['level']}! +{lv} 🪙"
+    return True, say, coins, xp
+
+
 def _game_events(action: str, item, coins_delta: int, xp_delta: int, lvl_gain: int,
                  room_changed: bool, newly_placed: bool) -> dict:
     """Какие «события заданий» породило действие в игре."""
@@ -724,7 +876,7 @@ def _game_events(action: str, item, coins_delta: int, xp_delta: int, lvl_gain: i
         ev["feed"] = 1
         if (item or "fish") != "fish":
             ev["fancy"] = 1
-    elif action in ("play", "sleep", "pet", "wear"):
+    elif action in ("play", "sleep", "pet", "wear", "forage", "angle"):
         ev[action] = 1
     elif action == "move" and room_changed:
         ev["move"] = 1
@@ -763,15 +915,25 @@ def _write(cur, st: dict, pet_key=PET_KEY) -> None:
 
 def perform(get_db, action: str, user_id: int, names=None, to: str = None,
             item: str = None, name: str = None, room: str = None, x=None, y=None, pet_key=PET_KEY) -> dict:
-    """Выполняет действие игрока. Возвращает {"ok", "say", "state"}."""
+    """Выполняет действие игрока. Возвращает {"ok", "say", "state", "ach_new"}."""
     now = time.time()
     params = {"to": to, "item": item, "name": name, "room": room, "x": x, "y": y}
     with get_db() as conn:
         with conn.cursor() as cur:
             st = _load(cur, lock=True, pet_key=pet_key)
             _decay(st, now)
+            stats = ach.load_stats(cur, pet_key)
+            unlocked0 = ach.unlocked(_ach_vals(st, stats))
+            ev = {}
             if action == "claim":
+                st.pop("_last_claim", None)
                 ok, say, coins_delta, xp_delta = _claim(cur, st, user_id, item, now, pet_key)
+                if ok:
+                    ach.add(stats, "quests", 1)
+                    if st.pop("_last_claim", False):
+                        ach.add(stats, "allquests", 1)
+            elif action == "claim_ach":
+                ok, say, coins_delta, xp_delta = _claim_ach(cur, st, stats, item, pet_key)
             else:
                 lvl0, room0 = st["level"], st.get("room")
                 prev_room = (st["items"].get(item or "") or {}).get("room")
@@ -782,12 +944,27 @@ def perform(get_db, action: str, user_id: int, names=None, to: str = None,
                     if ev:
                         day, users = _ensure_quests(cur, st, now, pet_key)
                         quests.bump(cur, pet_key, day, user_id, ev, users)
+                    for k, n in ev.items():              # счётчики достижений
+                        ach.add(stats, k, n)
+                    if action == "rename":
+                        ach.add(stats, "rename", 1)
+            if ok and action not in ("claim_ach",):
+                local = datetime.fromtimestamp(now, ZoneInfo(TZ))
+                ach.touch_day(stats, local.date().toordinal())
+                if action in ("feed", "play", "pet", "sleep"):
+                    if local.hour < 5:
+                        ach.add(stats, "late", 1)
+                    elif local.hour < 7:
+                        ach.add(stats, "early", 1)
             say = say.replace("{name}", st["name"])
             if ok and action in CARE_ACTIONS:
                 st["last_actor"], st["last_action"], st["last_ts"] = user_id, action, now
             # Время и сниженные за отсутствие характеристики сохраняем в любом случае
             _write(cur, st, pet_key)
             _save_items(cur, st, pet_key)
+            vals = _ach_vals(st, stats)
+            ach_new = sorted(ach.unlocked(vals) - unlocked0)
+            ach.save(cur, pet_key, stats)
             tag = str(action)
             if action == "move":
                 tag += f":{to}"
@@ -799,8 +976,12 @@ def perform(get_db, action: str, user_id: int, names=None, to: str = None,
                 (pet_key, user_id, tag[:20], bool(ok), coins_delta, xp_delta),
             )
             qv = _quests_view(cur, st, user_id, names, now, pet_key)
+            av = ach.view(cur, pet_key, vals)
     logging.info(f"🦦 {user_id}: {action} -> {'ок' if ok else 'отказ'}")
-    return {"ok": ok, "say": say, "state": public_state(st, names, now, user_id, qv)}
+    out = {"ok": ok, "say": say, "state": public_state(st, names, now, user_id, qv, av)}
+    if ach_new:
+        out["ach_new"] = [{"id": a, "e": ach.BY_ID[a][1], "n": ach.BY_ID[a][2]} for a in ach_new]
+    return out
 
 
 def process_wakeups(get_db, pet_key=PET_KEY):
@@ -870,6 +1051,7 @@ def admin(get_db, user_id: int, op: str, p: dict, names=None, pet_key=PET_KEY) -
                 st["name"] = DEFAULT_NAME
                 cur.execute("DELETE FROM pet_items WHERE pet_key=%s", (pet_key,))
                 cur.execute("DELETE FROM pet_quests WHERE pet_key=%s", (pet_key,))
+                ach.reset(cur, pet_key)
                 st["items"] = {}
                 msg = "Игра сброшена с нуля 🔄"
             elif op == "reset_stats":                # только персонаж, вещи остаются
@@ -880,6 +1062,16 @@ def admin(get_db, user_id: int, op: str, p: dict, names=None, pet_key=PET_KEY) -
             elif op == "clear_items":
                 cur.execute("DELETE FROM pet_items WHERE pet_key=%s", (pet_key,))
                 st["items"] = {}
+            elif op in ("loc_unlock", "loc_lock"):
+                for lid in LOCATIONS:
+                    if op == "loc_unlock":
+                        it = st["items"].setdefault("loc_" + lid, _new_item()); it["qty"] = 1
+                    else:
+                        st["items"].pop("loc_" + lid, None)
+                        if st.get("room") in OUTDOOR:
+                            st["room"] = "home"
+                    _touch(st, "loc_" + lid)
+                msg = "Локация открыта 🌲" if op == "loc_unlock" else "Локация закрыта 🔒"
             elif op == "unlock_all":
                 for iid, c in CATALOG.items():
                     if c["k"] != "food" and not c.get("legacy") and iid not in st["items"]:
@@ -894,6 +1086,12 @@ def admin(get_db, user_id: int, op: str, p: dict, names=None, pet_key=PET_KEY) -
             elif op == "quests_reset":               # сбросить прогресс сегодняшних заданий
                 cur.execute("DELETE FROM pet_quests WHERE pet_key=%s AND day=%s", (pet_key, quests.day_key(now, TZ)))
                 msg = "Прогресс заданий сброшен 🔄"
+            elif op == "ach_all":                    # для проверки: довести счётчики до максимума
+                ach.complete_all(cur, pet_key)
+                msg = "Счётчики достижений на максимуме ✅ (уровень и вещи — по факту)"
+            elif op == "ach_reset":                  # обнулить счётчики и забранные награды
+                ach.reset(cur, pet_key)
+                msg = "Достижения сброшены 🔄"
             elif op == "log":
                 cur.execute(
                     "SELECT user_id, action, ok, coins_delta, created_at FROM pet_log"
@@ -912,8 +1110,9 @@ def admin(get_db, user_id: int, op: str, p: dict, names=None, pet_key=PET_KEY) -
                     "INSERT INTO pet_log (pet_key, user_id, action, ok) VALUES (%s, %s, %s, %s)",
                     (pet_key, user_id, ("admin:" + op)[:20], True))
             qv = _quests_view(cur, st, user_id, names, now, pet_key)
+            av = _ach_view(cur, st, ach.load_stats(cur, pet_key), pet_key)
     logging.info(f"🛠 админ {user_id}: {op}")
-    out = {"ok": True, "say": msg, "state": public_state(st, names, now, user_id, qv)}
+    out = {"ok": True, "say": msg, "state": public_state(st, names, now, user_id, qv, av)}
     if log is not None:
         out["log"] = log
     return out
