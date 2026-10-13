@@ -10,7 +10,8 @@
   wear / unwear — надеть / снять одежду (слоты: голова, верх, костюм, аксессуар, спина — в каждом одна вещь;
                   костюм и «верх» вместе не носятся);
   place / unplace — поставить мебель в комнату (room, x, y) / убрать в кладовую;
-  rename   — сменить имя питомца.
+  rename   — сменить имя питомца;
+  claim_daily — забрать ежедневный бонус за вход (награда растёт с серией дней подряд, см. pet_ach.py).
 """
 
 import logging
@@ -368,7 +369,7 @@ def public_catalog() -> dict:
     return CATALOG
 
 
-def public_state(st: dict, names=None, now: float = None, uid=None, quests_view=None, ach_view=None) -> dict:
+def public_state(st: dict, names=None, now: float = None, uid=None, quests_view=None, ach_view=None, daily_view=None) -> dict:
     names = names or {}
     now = now or time.time()
     inv, owned, worn, placed = {}, [], {}, {}
@@ -416,6 +417,8 @@ def public_state(st: dict, names=None, now: float = None, uid=None, quests_view=
         out["quests"] = quests_view
     if ach_view is not None:
         out["ach"] = ach_view
+    if daily_view is not None:
+        out["daily"] = daily_view        # ежедневный бонус: серия, 7 дней цикла, можно ли забрать сегодня
     return out
 
 
@@ -479,8 +482,9 @@ def get_state(get_db, names=None, uid=None, pet_key=PET_KEY) -> dict:
             qv = _quests_view(cur, st, uid, names, now, pet_key)   # None, если это чужой питомец (гость)
             stats = ach.load_stats(cur, pet_key)
             av = _ach_view(cur, st, stats, pet_key)
+            dv = ach.daily_view(stats, _today(now), names) if qv is not None else None   # у чужого питомца (гость) бонус не показываем
     _decay(st, now)
-    return public_state(st, names, now, uid, qv, av)
+    return public_state(st, names, now, uid, qv, av, dv)
 
 
 def _clean_name(raw) -> str:
@@ -837,6 +841,36 @@ def _claim(cur, st: dict, uid: int, qkey: str, now: float, pet_key: str):
     return True, say, coins, xp
 
 
+def _today(now: float) -> int:
+    """Порядковый номер сегодняшнего дня по времени игры (BOT_TIMEZONE) — по нему считаются серия и ежедневный бонус."""
+    return datetime.fromtimestamp(now, ZoneInfo(TZ)).date().toordinal()
+
+
+def _claim_daily(st: dict, stats: dict, user_id: int, now: float):
+    """Ежедневный бонус за вход. Возвращает (ok, say, coins_delta, xp_delta).
+    Сначала засчитываем сегодняшний заход (серия обновляется), потом выдаём награду за этот день серии."""
+    today = _today(now)
+    ach.touch_day(stats, today)
+    if ach.daily_claimed(stats, today):
+        return False, "Бонус дня уже получен ✅ Заходите завтра!", 0, 0
+    rw = ach.daily_reward(stats.get("streak", 1))
+    coins, xp, item = rw["coins"], rw["xp"], rw["item"]
+    _give(st, coins, xp, item)
+    ach.mark_daily(stats, today, user_id)
+    parts = [f"+{coins} 🪙", f"+{xp} XP"]
+    c = CATALOG.get(item or "")
+    if c:
+        parts.append(f"{c['e']} {c['n']}")
+    say = f"🎁 Бонус дня {rw['day']} из 7 (серия {stats.get('streak', 1)} 🔥): " + ", ".join(parts)
+    if rw["day"] == 7:
+        say += "\n🎉 Неделя без пропусков! Дальше награды ещё щедрее"
+    lv = _level_up(st)
+    if lv:
+        coins += lv
+        say += f"\n🎉 Новый уровень: {st['level']}! +{lv} 🪙"
+    return True, say, coins, xp
+
+
 def _ach_vals(st: dict, stats: dict) -> dict:
     kinds = [CATALOG[i]["k"] for i in st.get("items", {}) if i in CATALOG and not CATALOG[i].get("legacy")]
     return ach.values(stats, st["level"], kinds.count("wear"), kinds.count("furn"), len(unlocked_locs(st)))
@@ -943,6 +977,8 @@ def perform(get_db, action: str, user_id: int, names=None, to: str = None,
                         ach.add(stats, "allquests", 1)
             elif action == "claim_ach":
                 ok, say, coins_delta, xp_delta = _claim_ach(cur, st, stats, item, pet_key)
+            elif action == "claim_daily":
+                ok, say, coins_delta, xp_delta = _claim_daily(st, stats, user_id, now)
             else:
                 lvl0, room0 = st["level"], st.get("room")
                 prev_room = (st["items"].get(item or "") or {}).get("room")
@@ -986,8 +1022,9 @@ def perform(get_db, action: str, user_id: int, names=None, to: str = None,
             )
             qv = _quests_view(cur, st, user_id, names, now, pet_key)
             av = ach.view(cur, pet_key, vals)
+            dv = ach.daily_view(stats, _today(now), names)
     logging.info(f"🦦 {user_id}: {action} -> {'ок' if ok else 'отказ'}")
-    out = {"ok": ok, "say": say, "state": public_state(st, names, now, user_id, qv, av)}
+    out = {"ok": ok, "say": say, "state": public_state(st, names, now, user_id, qv, av, dv)}
     if ach_new:
         out["ach_new"] = [{"id": a, "e": ach.BY_ID[a][1], "n": ach.BY_ID[a][2]} for a in ach_new]
     return out
@@ -1101,6 +1138,17 @@ def admin(get_db, user_id: int, op: str, p: dict, names=None, pet_key=PET_KEY) -
             elif op == "ach_reset":                  # обнулить счётчики и забранные награды
                 ach.reset(cur, pet_key)
                 msg = "Достижения сброшены 🔄"
+            elif op == "daily_reset":                # для проверки: бонус сегодняшнего дня можно забрать снова
+                stats = ach.load_stats(cur, pet_key)
+                ach.admin_daily_reset(stats)
+                ach.save(cur, pet_key, stats)
+                msg = "Бонус дня снова можно забрать 🎁"
+            elif op == "streak_set":                 # для проверки: сегодняшний бонус будет за день N серии
+                stats = ach.load_stats(cur, pet_key)
+                n = max(1, min(400, _int(p.get("amount"), 1)))
+                ach.admin_set_streak(stats, _today(now), n)
+                ach.save(cur, pet_key, stats)
+                msg = f"Серия подстроена: сегодняшний бонус за день {n} 🔥"
             elif op == "log":
                 cur.execute(
                     "SELECT user_id, action, ok, coins_delta, created_at FROM pet_log"
@@ -1119,9 +1167,11 @@ def admin(get_db, user_id: int, op: str, p: dict, names=None, pet_key=PET_KEY) -
                     "INSERT INTO pet_log (pet_key, user_id, action, ok) VALUES (%s, %s, %s, %s)",
                     (pet_key, user_id, ("admin:" + op)[:20], True))
             qv = _quests_view(cur, st, user_id, names, now, pet_key)
-            av = _ach_view(cur, st, ach.load_stats(cur, pet_key), pet_key)
+            stats2 = ach.load_stats(cur, pet_key)
+            av = _ach_view(cur, st, stats2, pet_key)
+            dv = ach.daily_view(stats2, _today(now), names)
     logging.info(f"🛠 админ {user_id}: {op}")
-    out = {"ok": True, "say": msg, "state": public_state(st, names, now, user_id, qv, av)}
+    out = {"ok": True, "say": msg, "state": public_state(st, names, now, user_id, qv, av, dv)}
     if log is not None:
         out["log"] = log
     return out
