@@ -1308,13 +1308,6 @@
     [[W * 0.32, 0.55], [W * 0.5, 0.3], [W * 0.18, 0.28]].forEach(([x, k]) => { const y = Math.round(fy + (wy1 - fy) * k); flat(R, Math.round(x), y, 5, 2, '#3f9a4d'); flat(R, Math.round(x), y, 4, 1.4, '#58bd5a'); dot(R, Math.round(x) + 1, y - 1, '#ff8ab8'); });
     // тростник
     for (let i = 0; i < 9; i++) { const x = 3 + i * 2 + (i % 2), h = 12 + ((i * 5) % 7), by_ = wy1 + 4; rect(R, x, by_ - h, 1, h, i % 2 ? '#3f9a4d' : '#2f7f3d'); if (i % 3 === 0) rect(R, x, by_ - h - 3, 2, 4, '#8f5630'); else dot(R, x + 1, by_ - h + 2, '#58bd5a'); }
-    // мостки
-    prop(R, T => {
-      rect(T, W - 54, wy1 - 8, 54, 11, '#c99358'); rect(T, W - 54, wy1 - 8, 54, 1, '#e3b278'); rect(T, W - 54, wy1 + 2, 54, 1, '#8f5e35');
-      for (let x = W - 52; x < W; x += 5) rect(T, x, wy1 - 7, 1, 9, '#8f5e35');
-      rect(T, W - 52, wy1 + 3, 3, 7, '#6e4527'); rect(T, W - 30, wy1 + 3, 3, 7, '#6e4527'); rect(T, W - 52, wy1 - 12, 3, 5, '#6e4527');
-      rect(T, W - 56, wy1 - 12, 8, 2, '#8f5e35');
-    });
     view.water = { y0: fy + 1, y1: wy1 - 1 };
     return R;
   }
