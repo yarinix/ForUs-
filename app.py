@@ -170,6 +170,12 @@ def pet_key_for_user(uid: int) -> str:
     return "couple" if uid in COUPLE_USER_IDS else f"user:{int(uid)}"
 
 
+def admin_pet_key(uid: int) -> str:
+    """Режим «Проверка»: личный тестовый питомец админа. Отдельная запись в базе (admin:<id>): он не общий с Полиной,
+    его нет в списке «Навестить», уведомления о пробуждении по нему не шлются."""
+    return f"admin:{int(uid)}"
+
+
 # ---------------------------------------------------------------------------
 # HTTP-сервер для Render (health-check + холст для рисования)
 # ---------------------------------------------------------------------------
@@ -483,9 +489,18 @@ class WebAppHandler(BaseHTTPRequestHandler):
                 self._reply(403, b"Forbidden")
                 return
             names = {uid: user_name(uid) for uid in ALLOWED_USER_IDS}
+            # Режим «Проверка» (test): админ играет с отдельным питомцем admin:<id>, общий питомец пары не затрагивается.
+            # Проверяем по подписи Telegram, а не по флагу из запроса: не-админу флаг test просто запрещён.
+            test_mode = bool(data.get("test"))
+            if test_mode and tg_user["id"] not in pet.ADMIN_IDS:
+                self._reply(403, b"Forbidden")
+                return
+            my_key = admin_pet_key(tg_user["id"]) if test_mode else pet_key_for_user(tg_user["id"])   # с каким питомцем работает этот запрос
             if path == "/api/pet/state":
                 caller_id = tg_user["id"]
-                if data.get("people"):
+                if data.get("people") and test_mode:
+                    result = {"ok": True, "people": [], "you": caller_id}      # админского питомца навестить нельзя
+                elif data.get("people"):
                     # Показываем только людей с отдельным питомцем; у исходной пары питомец общий.
                     own_key = pet_key_for_user(caller_id)
                     people, seen_keys = [], set()
@@ -504,7 +519,7 @@ class WebAppHandler(BaseHTTPRequestHandler):
                     result = {"ok": True, "people": people, "you": caller_id}
                 else:
                     target_id = caller_id
-                    if data.get("view_user_id") is not None:
+                    if data.get("view_user_id") is not None and not test_mode:     # в «Проверке» гостевой режим не нужен
                         try:
                             target_id = int(data.get("view_user_id"))
                         except (TypeError, ValueError):
@@ -514,7 +529,7 @@ class WebAppHandler(BaseHTTPRequestHandler):
                             self._reply(403, b"Forbidden")
                             return
                     # В гостевом режиме только читаем состояние чужого питомца.
-                    result = {"ok": True, "state": pet.get_state(get_db, names, caller_id, pet_key=pet_key_for_user(target_id)), "you": caller_id, "viewing": target_id}
+                    result = {"ok": True, "state": pet.get_state(get_db, names, caller_id, pet_key=my_key if test_mode else pet_key_for_user(target_id)), "you": caller_id, "viewing": target_id}
                     if data.get("catalog"):       # каталог магазина нужен клиенту один раз при запуске
                         result["catalog"] = pet.public_catalog()
             elif path == "/api/pet/admin":
@@ -522,7 +537,7 @@ class WebAppHandler(BaseHTTPRequestHandler):
                     self._reply(403, b"Forbidden")
                     return
                 params = data.get("params") if isinstance(data.get("params"), dict) else {}
-                result = pet.admin(get_db, tg_user["id"], str(data.get("op") or "")[:20], params, names, pet_key=pet_key_for_user(tg_user["id"]))
+                result = pet.admin(get_db, tg_user["id"], str(data.get("op") or "")[:20], params, names, pet_key=my_key)
             else:
                 action = str(data.get("action") or "")[:20]
                 to = str(data.get("to") or "")[:12]
@@ -532,9 +547,10 @@ class WebAppHandler(BaseHTTPRequestHandler):
                     name=str(data.get("name") or "")[:60],
                     room=str(data.get("room") or "")[:12],
                     x=data.get("x"), y=data.get("y"),
-                    pet_key=pet_key_for_user(tg_user["id"]),
+                    pet_key=my_key,
                 )
             result["you"] = tg_user["id"]
+            result["test"] = test_mode
             self._reply(200, json.dumps(result).encode("utf-8"), "application/json")
         except Exception as e:
             logging.error(f"Ошибка API выдры: {e}")
