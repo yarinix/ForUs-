@@ -109,11 +109,21 @@
   .seg button.on { color: #fff; background: linear-gradient(180deg, #3b86ff, #2563d8); border-color: transparent; }
   .items { display: grid; grid-template-columns: repeat(2, 1fr); gap: 9px; }
   .it { background: rgba(8,16,40,.4); border: 1.5px solid var(--line); border-radius: 16px; padding: 9px 8px 10px; display: flex; flex-direction: column; align-items: center; gap: 5px; text-align: center; }
-  .it .pv { height: 92px; display: grid; place-items: center; }
+  .it .pv { height: 104px; display: grid; place-items: center; }
   .it .pv .emo { font-size: 44px; line-height: 1; }
   .it b { font-size: 13.5px; line-height: 1.2; }
   .it .ds { font-size: 11px; color: var(--dim); font-weight: 700; line-height: 1.25; min-height: 27px; }
   .it .own { font-size: 11px; font-weight: 800; color: var(--ok); }
+  /* редкость одежды: цвет задаётся переменной --rc (её ставит shopCard / renderWardrobe) */
+  .it.r-common, .it.r-rare, .it.r-epic, .it.r-legendary { border-color: var(--rc); }
+  .it.r-rare { box-shadow: 0 0 10px rgba(74,163,255,.18); }
+  .it.r-epic { box-shadow: 0 0 0 1px var(--rc) inset, 0 0 13px rgba(192,107,255,.30); }
+  .it.r-legendary { box-shadow: 0 0 0 1px var(--rc) inset, 0 0 16px rgba(255,200,61,.40); animation: legend 2.4s ease-in-out infinite; }
+  @keyframes legend { 50% { box-shadow: 0 0 0 1px var(--rc) inset, 0 0 24px rgba(255,200,61,.70); } }
+  .rar { font-size: 10.5px; font-weight: 900; letter-spacing: .4px; text-transform: uppercase; color: var(--rc); background: rgba(8,16,40,.55); border: 1px solid var(--rc); border-radius: 9px; padding: 1px 8px; }
+  .seg.sub { overflow-x: auto; }
+  .seg.sub button { flex: 0 0 auto; font-size: 12px; padding: 7px 11px; }
+  #wslots .slot:last-child:nth-child(odd) { grid-column: 1 / -1; }
   .buy { font: inherit; font-weight: 800; font-size: 13px; color: #fff; background: linear-gradient(180deg, #3b86ff, #2563d8); border: 0; border-radius: 13px; padding: 8px 10px; width: 100%; box-shadow: 0 3px 0 rgba(4,10,30,.6); }
   .buy:active { transform: translateY(2px); box-shadow: 0 1px 0 rgba(4,10,30,.6); }
   .buy.poor { background: rgba(255,255,255,.12); color: var(--dim); box-shadow: none; }
@@ -252,6 +262,7 @@
   <section class="panel" id="panel-shop">
     <div class="top"><button class="back" data-go="menu">‹ Меню</button><h3>Магазин</h3><div class="wal">🪙 <span id="shopcoins">0</span></div></div>
     <div class="seg" id="shopseg"><button data-k="food">🍣 Еда</button><button data-k="wear">👕 Одежда</button><button data-k="furn">🛋 Мебель</button></div>
+    <div class="seg sub" id="wearseg" style="display:none"></div>   <!-- подразделы одежды: Все / Голова / Верх / Костюм / Аксессуар / Спина (рисует renderWearSeg) -->
     <div class="items" id="shoplist"></div>
   </section>
   <section class="panel" id="panel-wardrobe">
@@ -767,7 +778,8 @@
   }
 
   function drawOtter(t, look, blink, ov) {
-    WEAR = ov || (S && S.worn) || {};
+    WEAR = ov || (S && S.worn) || {};   // что надето: из состояния или из ov (так рисуются превью вещей в магазине)
+    CLK = t; LK = look;                // время и поза нужны анимированным вещам
     const L = newLayer(OW, OH), fast = look === 'pet' || look === 'play' || look === 'walk';
     const wag = Math.floor(t / (fast ? 140 : 480)) % 2, step = Math.floor(t / 150) % 2;
     // хвост (короткий, плоский, торчит вправо)
@@ -777,29 +789,32 @@
       oe(L, x, y - (k > 1.5 ? wag * (k - 1.5) * 2.4 : 0), 5.4 - k * .6, 3.8 - k * .3, FURD, { d: .06 });
     }
     // тело и пузико
-    bodyBack(L, WEAR.body);
+    bodyBack(L, WEAR.back);                          // слот «Спина»: рюкзак, ранец, крылья, плащ — позади туловища
     oe(L, OX, 67, 18.5, 19.5, FUR, { d: .08 });
     oe(L, OX, 70, 11.8, 14.5, BELLY, { d: .08 });
-    bodyFront(L, WEAR.body);
+    const outfit = WEAR.suit || WEAR.top;            // костюм закрывает «верх»
+    bodyFront(L, outfit);                            // слоты «Верх» / «Костюм»
+    backFront(L, WEAR.back);                         // лямки рюкзака — поверх одежды
+    const fit = OUTFIT[outfit], armR = (fit && fit.sleeve) || FURD, footR = (fit && fit.feet) || FURD;   // рукава и обувь костюма (иначе — мех)
     // ноги
     const lf = look === 'walk' && step ? 3 : 0, rf = look === 'walk' && !step ? 3 : 0;
-    oe(L, OX - 9, 84 - lf, 6.8, 3.4, FURD, { d: .06 }); oe(L, OX + 9, 84 - rf, 6.8, 3.4, FURD, { d: .06 });
+    oe(L, OX - 9, 84 - lf, 6.8, 3.4, footR, { d: .06 }); oe(L, OX + 9, 84 - rf, 6.8, 3.4, footR, { d: .06 });
     // лапки: обычные по бокам или сложены у груди
     const clasp = look === 'feed' || look === 'pet';
     if (clasp) {
-      oe(L, OX - 14, 66, 3.8, 6.6, FURD, { d: .06 }); oe(L, OX + 14, 66, 3.8, 6.6, FURD, { d: .06 });
-      oe(L, OX - 5, 63, 4.4, 3.6, FURD, { d: .06 }); oe(L, OX + 5, 63, 4.4, 3.6, FURD, { d: .06 });
+      oe(L, OX - 14, 66, 3.8, 6.6, armR, { d: .06 }); oe(L, OX + 14, 66, 3.8, 6.6, armR, { d: .06 });
+      oe(L, OX - 5, 63, 4.4, 3.6, armR, { d: .06 }); oe(L, OX + 5, 63, 4.4, 3.6, armR, { d: .06 });
     } else if (look === 'play') {
-      oe(L, OX - 20, 58, 3.8, 6.8, FURD, { d: .06 }); oe(L, OX + 20, 58, 3.8, 6.8, FURD, { d: .06 });
+      oe(L, OX - 20, 58, 3.8, 6.8, armR, { d: .06 }); oe(L, OX + 20, 58, 3.8, 6.8, armR, { d: .06 });
     } else {
-      oe(L, OX - 18, 69, 4, 7.6, FURD, { d: .06 }); oe(L, OX + 18, 69, 4, 7.6, FURD, { d: .06 });
+      oe(L, OX - 18, 69, 4, 7.6, armR, { d: .06 }); oe(L, OX + 18, 69, 4, 7.6, armR, { d: .06 });
     }
     drawHead(L, OX, 34, look === 'walk' ? 'idle' : look, blink);
     // эффекты
     if (look === 'feed') {
       const b = Math.floor(t / 300) % 2;
       os(L, OX - 8, 58 - b, ['..bbbb......b', '.bbbbbbbbbbbb', 'bbkbbbbbbbbb.', 'bLLLLLLbbbbb.', '.bbbbbbbbbbbb', '..bbbb......b'], { b: '#ff9a3c', L: '#ffd08a', k: OUT });
-      oe(L, OX - 5, 63, 4.4, 3.6, FURD, { d: .06 }); oe(L, OX + 5, 63, 4.4, 3.6, FURD, { d: .06 });
+      oe(L, OX - 5, 63, 4.4, 3.6, armR, { d: .06 }); oe(L, OX + 5, 63, 4.4, 3.6, armR, { d: .06 });
     }
     if (look === 'pet') {
       for (let i = 0; i < 3; i++) {
@@ -815,6 +830,7 @@
       }
     }
     outline(L, OTT_OUT);
+    legendFx(L, t);                                  // искорки легендарных вещей (после обводки, чтобы не темнели)
     return L;
   }
 
@@ -1069,7 +1085,19 @@
   // ОДЕЖДА, МЕБЕЛЬ, МАГАЗИН, МЕНЮ
   // =====================================================================
   let WEAR = {};                                   // что надето прямо сейчас (слот → id)
-  const SLOT_RU = { hat: 'Шапка', face: 'Очки', neck: 'На шею', body: 'Одежда' };
+  // Слоты одежды: голова / верх / костюм / аксессуар / спина. Ключи те же, что в pet.py (поле "s" в CATALOG).
+  // «Костюм» занимает место «верха», поэтому сервер не даёт носить их вместе (pet.py → CONFLICTS).
+  const SLOT_RU = { head: 'Голова', top: 'Верх', suit: 'Костюм', acc: 'Аксессуар', back: 'Спина' };
+  const SLOT_ORDER = ['head', 'top', 'suit', 'acc', 'back'];
+  // Редкость: название, цвет рамки/бейджа и порядок сортировки. Сама редкость и цена приходят с сервера (поля "r" и "p").
+  const RARITY = {
+    common:    { n: 'Обычное',     col: '#c9d6ee', ord: 0 },
+    rare:      { n: 'Редкое',      col: '#4aa3ff', ord: 1 },
+    epic:      { n: 'Эпическое',   col: '#c06bff', ord: 2 },
+    legendary: { n: 'Легендарное', col: '#ffc83d', ord: 3 },
+  };
+  const rarityOf = (id) => (CAT && CAT[id] && CAT[id].r) || 'common';
+  let CLK = 0, LK = 'idle';                        // время (мс) и поза выдры — нужны вещам с анимацией (пламя, крылья, искорки)
   const GRN = ['#7fd37e', '#4eaa56', '#2f7f3d'];
 
   // спрайт по центру: cx — центр, by — нижняя строка (в координатах выдры, с учётом её масштаба)
@@ -1093,6 +1121,20 @@
     }
   }
 
+  // ---------- помощники для рисования новой одежды ----------
+  // shape: «лепит» спрайт по формуле — f(x, y) возвращает символ цвета (или ничего = пусто); получается массив строк, как у старых шапок
+  const shape = (w, h, f) => Array.from({ length: h }, (_, y) => Array.from({ length: w }, (_, x) => f(x, y) || '.').join(''));
+  // inE: лежит ли пиксель (x, y) внутри эллипса с центром (cx, cy) и радиусами rx, ry
+  const inE = (x, y, cx, cy, rx, ry) => ((x + .5 - cx) / rx) ** 2 + ((y + .5 - cy) / ry) ** 2 <= 1;
+  // lit: свет падает слева сверху — вернёт 'h' (блик), 'm' (середина) или 'd' (тень) для точки эллипса
+  const lit = (x, y, cx, cy, rx, ry) => { const t = -.6 * (x + .5 - cx) / rx - .8 * (y + .5 - cy) / ry; return t > .35 ? 'h' : t < -.35 ? 'd' : 'm'; };
+  // ring2: ровное кольцо из точек (в координатах выдры) — оправа монокля
+  function ring2(L, cx, cy, r, col) { const n = Math.ceil(r * otS * 7); for (let i = 0; i < n; i++) { const a = i / n * 6.2832; od(L, cx + Math.cos(a) * r, cy + Math.sin(a) * r, col); } }
+  // olin: линия из точек от (x0, y0) до (x1, y1) — цепочки, нитки, лямки, ремешки
+  function olin(L, x0, y0, x1, y1, col) { const n = Math.ceil(Math.hypot(x1 - x0, y1 - y0) * otS * 1.5); for (let i = 0; i <= n; i++) od(L, x0 + (x1 - x0) * i / n, y0 + (y1 - y0) * i / n, col); }
+
+  // ---------- СТАРАЯ одежда (legacy): сняты с продажи, но у кого уже куплена — продолжает рисоваться ----------
+  // В pet.py им выставлены новые слоты: шапки → head, очки и шейные → acc, футболка/свитер/фартук → top, плащ → back.
   // шапки: by — нижний край относительно центра головы, dx — сдвиг по горизонтали
   const HAT = {
     cap: { by: -13, sc: 1.5, map: { r: '#e8505b', h: '#ff9aa2', d: '#a82c38' }, rows: [
@@ -1130,19 +1172,227 @@
       sprc(L, hx, hy + 26, ['bbbbbbbbbbbbbbb', '.bbwbbbwbbbwbb.', '..bbbbbbbbbbb..', '...bbbwbbbbb...', '....bbbbbbb....', '.....bbbbb.....', '......bbb......'], { b: '#4f83e8', w: '#ffffff' }, 1.5);
     }
   }
-  function drawWear(L, hx, hy) {
-    const w = WEAR || {};
-    if (w.neck) drawNeckWear(L, hx, hy, w.neck);
-    if (w.face) drawFaceWear(L, hx, hy, w.face);
-    const h = w.hat && HAT[w.hat];
-    if (h) sprc(L, hx + (h.dx || 0), hy + h.by, h.rows, h.map, h.sc);
-  }
-  function bodyBack(L, id) { if (id === 'cape') { oe(L, OX, 70, 26, 21, ['#ff7a7a', '#d93b3b', '#a72a2a'], { d: .08 }); or_(L, OX - 13, 53, 26, 4, '#ffd23d'); } }
-  function bodyFront(L, id) {
+  function legacyBack(L, id) { if (id === 'cape') { oe(L, OX, 70, 26, 21, ['#ff7a7a', '#d93b3b', '#a72a2a'], { d: .08 }); or_(L, OX - 13, 53, 26, 4, '#ffd23d'); } }
+  function legacyFront(L, id) {
     if (id === 'tee') { oe(L, OX, 66.5, 19, 18.5, ['#8fe8cc', '#4cc4a4', '#2f9c80'], { d: .1 }); os(L, OX - 4, 62, SPR.heart.rows, SPR.heart.map); }
     else if (id === 'sweater') { oe(L, OX, 66.5, 19, 18.5, ['#7fb0ff', '#4f83e8', '#3560c4'], { d: .1 }); stripesEll(L, OX, 66.5, 19, 18.5, 4, '#e8f1ff'); }
     else if (id === 'apron') { oe(L, OX, 71, 14, 14.5, ['#ffd3e0', '#ff9fbf', '#e06b95'], { d: .1 }); or_(L, OX - 11, 54, 3, 14, '#e06b95'); or_(L, OX + 8, 54, 3, 14, '#e06b95'); or_(L, OX - 6, 73, 12, 7, '#fff0f5'); }
   }
+
+  // =====================================================================
+  // НОВАЯ ОДЕЖДА (5 слотов × 3 вещи). Здесь хранятся ТОЛЬКО рисунки; название, слот, редкость и цена — в pet.py (CATALOG).
+  // Каждый рисунок подогнан под выдру: центр головы (hx, hy), туловище — эллипс (OX, 66.5, 19×18.5), лапки по бокам на OX±18.
+  // Все координаты — «координаты выдры» (см. oe/od/or_/os выше): они сами масштабируются на otS.
+  // =====================================================================
+
+  // ---------- ГОЛОВА (HEAD): спрайты, собранные формулой ----------
+  //   by — нижний край спрайта относительно центра головы (чем меньше число, тем выше сидит), bob — лёгкое покачивание
+  const HEAD = {
+    // Панамка (обычная): жёлтый купол, синяя лента и широкие поля — уши выглядывают по бокам
+    bucket: { by: -9, map: { h: '#fff0a8', m: '#ffd35a', d: '#d99a28', b: '#4a8cff', B: '#2a5cc0' },
+      rows: shape(38, 13, (x, y) => {
+        let c = null;
+        if (inE(x, y, 19, 10, 19, 3.2)) c = y >= 11 ? 'd' : 'm';                                  // поля
+        if (y <= 8 && inE(x, y, 19, 7.2, 11, 7.6)) c = lit(x, y, 19, 7.2, 11, 7.6);               // купол со светом слева сверху
+        if (y >= 6 && y <= 8 && Math.abs(x + .5 - 19) <= 11.4) c = y === 8 ? 'B' : 'b';            // лента вокруг купола
+        if (y >= 9 && y <= 10 && inE(x, y, 19, 10, 19, 3.2) && c === 'm') c = x < 9 ? 'h' : 'm';   // блик на переднем крае полей
+        return c;
+      }) },
+    // Колпак повара (редкий): три пышных «облака» и ободок со складками
+    chef: { by: -10, map: { w: '#ffffff', m: '#e3eaf6', d: '#b4c3e0', s: '#9aabd2' },
+      rows: shape(30, 21, (x, y) => {
+        let c = null;
+        for (const [cx, cy, r] of [[9, 9, 6.4], [21, 9, 6.4], [15, 6.6, 7.2]]) if (inE(x, y, cx, cy, r, r)) { const l = lit(x, y, cx, cy, r, r); c = l === 'h' ? 'w' : l; }
+        if (y >= 9 && y <= 14 && x >= 5 && x <= 24) c = x < 10 ? 'w' : x > 19 ? 'd' : 'm';           // тулья
+        if (y >= 15 && y <= 20 && x >= 5 && x <= 24) c = (x - 5) % 5 === 4 ? 's' : x < 10 ? 'w' : x > 19 ? 'd' : 'm';   // ободок
+        return c;
+      }) },
+    // Золотой нимб (легендарный): парит над головой и чуть покачивается
+    halo: { by: -19, bob: 1, map: { h: '#fff6b8', m: '#ffd23d', d: '#d49412' },
+      rows: shape(34, 10, (x, y) => {
+        if (!inE(x, y, 17, 5, 16.5, 4.4) || inE(x, y, 17, 5, 12, 2.1)) return null;                // кольцо = большой эллипс минус малый
+        return y <= 2 ? 'h' : y >= 7 ? 'd' : 'm';
+      }) },
+  };
+
+  // ---------- ОДЕЖДА НА ТУЛОВИЩЕ (ВЕРХ и КОСТЮМ) ----------
+  // body(L)   — рисует вещь поверх туловища (до рук и ног);
+  // sleeve    — цвета лапок-рукавов, feet — цвета ботинок/тапочек (если вещь их меняет);
+  // head(L,hx,hy) — детали на голове, которые идут вместе с костюмом (повязка пирата).
+  const NAVY = ['#8a98ff', '#4a58d8', '#2c3590'], SLIP = ['#ffc4dc', '#ff8dba', '#d65a8e'];
+  const COAT = ['#6e677c', '#3d3749', '#231e2c'], BOOT = ['#b27a45', '#80512a', '#55331c'];
+  const ROBE = ['#ff6f7a', '#d62f4b', '#8c1730'], VIOL = ['#c9bcff', '#9a86f2', '#6b55c8'];
+  // горностаевый мех (мантия): заливка по условию inside(X, Y) + чёрные «хвостики». X, Y — пиксели слоя, не координаты выдры
+  function ermine(L, x0, y0, x1, y1, inside) {
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (inside(x, y)) dot(L, x, y, (x + y) % 9 === 0 ? '#e8e0d4' : '#fffaf0');
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if ((x * 5 + y * 3) % 13 === 0 && inside(x, y) && inside(x, y + 1)) { dot(L, x, y, '#2a1722'); dot(L, x, y + 1, '#2a1722'); }
+  }
+  const OUTFIT = {
+    // ----- ВЕРХ -----
+    // Худи (обычное): сиреневое, капюшон лежит на плечах, карман «кенгуру», белые завязки
+    hoodie: { sleeve: VIOL,
+      body(L) {
+        oe(L, OX, 66.5, 19, 18.5, VIOL, { d: .1 });
+        oe(L, OX, 55, 15.5, 4.8, ['#a595f5', '#7d68dc', '#5640ae'], { d: .1 });                      // капюшон вокруг шеи
+        of(L, OX, 77.5, 11.5, 5.5, '#7d68dc'); or_(L, OX - 10, 72.5, 20, 1, '#b8abff');                // карман и его верхний край
+        or_(L, OX - 5, 58, 1, 9, '#ffffff'); or_(L, OX + 4, 58, 1, 9, '#ffffff');                     // завязки
+        od(L, OX - 5, 67, '#e8e0ff'); od(L, OX + 4, 67, '#e8e0ff');
+      } },
+    // Гавайская рубашка (редкая): бирюзовая, с цветочками и вырезом, в котором видно пузико
+    aloha: {
+      body(L) {
+        oe(L, OX, 66.5, 19, 18.5, ['#8cf0e6', '#2fc3c8', '#1e8f9a'], { d: .1 });
+        for (let y = 55; y <= 62; y++) { const k = y - 55; or_(L, OX - 7 + k * .45, y, 3.4, 1, '#d6fff9'); or_(L, OX + 3.6 - k * .45, y, 3.4, 1, '#d6fff9'); }   // лацканы воротника
+        for (let y = 56; y <= 62; y++) { const hw = 3.4 - (y - 56) * .5; if (hw > 0) or_(L, OX - hw, y, hw * 2, 1, '#f1d6a8'); }                        // вырез: видно пузико
+        or_(L, OX - .6, 62.5, 1.2, 17, '#1e8f9a'); for (const y of [66, 72, 78]) od(L, OX, y, '#ffffff');                                              // планка и пуговицы
+        [[-14, 61, 'p'], [9, 63, 'y'], [-12, 72, 'y'], [11, 73, 'p'], [-9, 80, 'p'], [8, 81, 'y']].forEach(([x, y, c]) =>
+          os(L, OX + x, y, ['.f.', 'fcf', '.f.'], c === 'p' ? { f: '#ff8fb8', c: '#ffe27a' } : { f: '#ffe27a', c: '#ff8a3c' }));                          // цветочки
+      } },
+    // Рыцарская кираса (эпическая): сталь, золотой воротник, заклёпки, пояс с пряжкой и наплечники
+    armor: {
+      body(L) {
+        const ST = ['#eef3fb', '#aebbd1', '#7587a4', '#4c5b78'], GD = ['#ffe27a', '#e8b030', '#b07c12'];
+        for (const sg of [-1, 1]) { oe(L, OX + sg * 17, 54.4, 6.4, 5.4, GD, { d: .1 }); oe(L, OX + sg * 17, 53.8, 5.2, 4.2, ST, { d: .1 }); }   // наплечники с золотой каймой
+        oe(L, OX, 66.5, 19, 18.5, ST, { d: .1 });
+        or_(L, OX - .5, 58, 1.6, 19, '#f4f8ff');                                                        // центральное ребро
+        oe(L, OX, 56, 13.5, 3.6, GD, { d: .1 });                                                        // золотой воротник
+        or_(L, OX - 15, 77, 30, 2.2, '#d89a12'); or_(L, OX - 2.5, 76.2, 5, 4, '#ffe27a'); od(L, OX, 78, '#b07c12');   // пояс и пряжка
+        for (const [x, y] of [[-12, 63], [11, 63], [-11, 71], [10, 71]]) od(L, OX + x, y, '#ffe27a');   // заклёпки
+        os(L, OX - 2.5, 63, ['..y..', 'yyyyy', '.yyy.', 'yy.yy'], { y: '#ffd23d' });                    // золотая звёздочка на груди
+      } },
+    // ----- КОСТЮМ (занимает место «верха») -----
+    // Пижама со звёздами (редкая): синяя, звёзды и месяц, пуговки, воротничок; тапочки розовые
+    pajamas: { sleeve: NAVY, feet: SLIP,
+      body(L) {
+        oe(L, OX, 66.5, 19, 18.5, NAVY, { d: .1 });
+        for (const [x, y] of [[-13, 60], [9, 64], [-8, 74], [12, 77], [-14, 80], [2, 82]]) os(L, OX + x, y, ['.y.', 'yyy', '.y.'], { y: '#ffe27a' });   // звёздочки
+        os(L, OX + 3, 56, SPR.moon.rows, SPR.moon.map);                                                // месяц
+        for (const y of [62, 69, 76]) od(L, OX - 1, y, '#ffffff');                                    // пуговицы
+        or_(L, OX - 6, 56, 5, 2, '#e8edff'); or_(L, OX + 1, 56, 5, 2, '#e8edff');                      // воротничок
+      } },
+    // Костюм пирата (эпический): чёрный камзол, белое жабо, золотые пуговицы, красный кушак, коричневые сапоги; на голове — повязка на глаз
+    pirate: { sleeve: COAT, feet: BOOT,
+      head(L, hx, hy) {
+        const ex = hx - 12.5, ey = hy + 2;
+        olin(L, ex + 4, ey - 5, hx + 21, hy - 11, '#1d1a26'); olin(L, ex + 4, ey - 6, hx + 21, hy - 12, '#1d1a26');   // ремешок через лоб
+        olin(L, ex - 5, ey - 4, hx - 24, hy - 8, '#1d1a26');
+        oe(L, ex, ey, 6.2, 6.6, ['#4a4458', '#25212f', '#14121a'], { d: 0 }); od(L, ex - 3, ey - 3, '#847d9c');   // повязка
+      },
+      body(L) {
+        oe(L, OX, 66.5, 19, 18.5, COAT, { d: .1 });
+        for (let y = 55; y <= 66; y++) { const hw = 6 - (y - 55) * .5; if (hw > 0) or_(L, OX - hw, y, hw * 2, 1, (y & 1) ? '#ffffff' : '#e8e0f0'); }   // жабо
+        for (const y of [60, 66, 72]) { od(L, OX - 8, y, '#ffd23d'); od(L, OX + 8, y, '#ffd23d'); }     // золотые пуговицы
+        or_(L, OX - 15, 76, 30, 3.4, '#d93b3b'); or_(L, OX - 15, 76, 30, 1, '#ff7a7a'); or_(L, OX - 2, 76.5, 4, 3, '#ffd23d');   // красный кушак с пряжкой
+        or_(L, OX + 8, 79, 4, 6, '#b52c2c');                                                           // свисающий конец кушака
+      } },
+    // Королевская мантия (легендарная): алый бархат, горностаевый воротник, полоса и подол, золотая застёжка с рубином
+    robe: { sleeve: ROBE,
+      body(L) {
+        oe(L, OX, 66.5, 19, 18.5, ROBE, { d: .1 });
+        const px = (X, Y) => ({ x: (X - OX) / otS + OX, y: (Y - OB) / otS + OB });                     // из пикселей слоя обратно в координаты выдры
+        const inBody = (X, Y) => { const p = px(X, Y); return ((p.x - OX) / 19) ** 2 + ((p.y - 66.5) / 18.5) ** 2 <= 1; };
+        const x0 = Math.round(oX(OX - 20)), x1 = Math.round(oX(OX + 20));
+        ermine(L, x0, Math.round(oY(80)), x1, Math.round(oY(86)), (X, Y) => inBody(X, Y) && px(X, Y).y >= 80);                // подол
+        ermine(L, Math.round(oX(OX - 2.8)), Math.round(oY(58)), Math.round(oX(OX + 2.8)), Math.round(oY(80)), (X, Y) => inBody(X, Y) && Math.abs(px(X, Y).x - OX) <= 2.8 && px(X, Y).y < 80);   // полоса спереди
+        oe(L, OX, 55.5, 17.5, 5.2, ['#ffffff', '#fffaf0', '#e8e0d4'], { d: .06 });                    // воротник
+        ermine(L, x0, Math.round(oY(50)), x1, Math.round(oY(61)), (X, Y) => { const p = px(X, Y); return ((p.x - OX) / 17.5) ** 2 + ((p.y - 55.5) / 5.2) ** 2 <= 1; });
+        or_(L, OX - 3.6, 60, 1, 20, '#e8b030'); or_(L, OX + 2.8, 60, 1, 20, '#e8b030');                // золотая кайма вдоль полосы
+        oe(L, OX, 59.5, 2.6, 2.6, ['#ffe27a', '#e8b030', '#b07c12'], { d: .1 }); od(L, OX, 59.5, '#e0233f');   // застёжка с рубином
+      } },
+  };
+
+  // ---------- АКСЕССУАР (ACC): функции рисуют поверх головы и груди (hx, hy — центр головы) ----------
+  const ACC = {
+    // Ожерелье из ракушек (обычное): нитка дугой под подбородком и розовая ракушка-кулон
+    shells(L, hx, hy) {
+      for (let i = -15; i <= 15; i++) { const y = hy + 21 + Math.round(4 * (1 - (i / 16) ** 2)); od(L, hx + i, y, '#8a5a3a'); if (i % 3 === 0) or_(L, hx + i - 1, y - 1, 2.6, 2.6, (i / 3) & 1 ? '#ff8fb8' : '#ffffff'); }
+      os(L, hx - 3.5, hy + 25, ['.ppppp.', 'pPpPpPp', 'pPpPpPp', '.ppPpp.', '..ppp..', '...d...'], { p: '#ff9ec2', P: '#ffd6e6', d: '#c4577f' });
+    },
+    // Монокль с цепочкой (редкий): золотое кольцо вокруг правого глаза и цепочка, спускающаяся по щеке на грудь
+    monocle(L, hx, hy) {
+      const ex = hx + 12.5, ey = hy + 2;
+      ring2(L, ex, ey, 6.4, '#e8b030'); ring2(L, ex, ey, 5.6, '#ffd96a'); od(L, ex - 3, ey - 3.5, '#ffffff'); od(L, ex - 2, ey - 4, '#ffffff');
+      const ch = [[ex + 4.5, ey + 5], [ex + 7.5, ey + 11], [ex + 7, ey + 18], [ex + 4, ey + 24]];
+      for (let i = 0; i < ch.length - 1; i++) olin(L, ch[i][0], ch[i][1], ch[i + 1][0], ch[i + 1][1], i & 1 ? '#ffd96a' : '#e8b030');
+      of(L, ex + 4, ey + 26, 2.6, 2.6, '#ffd23d'); od(L, ex + 3, ey + 25, '#fff3a8');                    // золотая подвеска-монетка
+    },
+    // Кристальный амулет (легендарный): золотая цепь на груди и сияющий голубой кристалл (искорки — в legendFx)
+    amulet(L, hx, hy) {
+      olin(L, hx - 14, hy + 20, hx, hy + 33, '#e8b030'); olin(L, hx + 14, hy + 20, hx, hy + 33, '#e8b030');
+      os(L, hx - 3.5, hy + 31, ['..ggg..', '...g...', '..cCc..', '.cwCCd.', 'cwCCCDd', 'cCCCCDd', '.cCCDd.', '..cDd..', '...d...'],
+        { g: '#ffd23d', c: '#aee4ff', C: '#4aa3ff', D: '#3a86e8', d: '#2d6fd0', w: '#ffffff' });
+    },
+  };
+
+  // ---------- СПИНА (BACK): behind — рисуется ПОЗАДИ туловища (торчит по бокам), front — поверх одежды (лямки) ----------
+  const BACK = {
+    // Рюкзачок (обычный): оранжевый, виден по бокам, на груди — две лямки и боковой кармашек
+    backpack: {
+      behind(L) {
+        oe(L, OX, 66, 25, 18, ['#ffb87a', '#f08a38', '#b85a1c'], { d: .08 });
+        oe(L, OX, 51, 14, 5, ['#ffb87a', '#f08a38', '#b85a1c'], { d: .08 });                           // клапан сверху — выглядывает у плеч
+        oe(L, OX + 23.5, 74, 4.4, 7, ['#f6a05a', '#d07028', '#9a4a14'], { d: .06 });                    // боковой кармашек
+        or_(L, OX - 24, 66, 48, 1, '#c96a24');                                                          // шов
+      },
+      front(L) { for (const s of [-1, 1]) { olin(L, OX + s * 10, 52, OX + s * 14.5, 73, '#8a4a1c'); olin(L, OX + s * 11, 52, OX + s * 15.5, 73, '#a95c24'); olin(L, OX + s * 12, 52, OX + s * 16.5, 73, '#8a4a1c'); } },
+    },
+    // Ракетный ранец (эпический): два стальных баллона с красной полосой, сопла и живое пламя (длиннее, когда выдра прыгает)
+    jetpack: {
+      behind(L) {
+        const ST = ['#eef3fb', '#aebbd1', '#7587a4', '#4c5b78'], RD = ['#ff8a7a', '#e0504a', '#a82c36'];
+        const big = LK === 'play' || LK === 'walk', fl = (big ? 6 : 3) + (Math.floor(CLK / 90) % 2);   // длина пламени
+        for (const s of [-1, 1]) {
+          const cx = OX + s * 18.5;
+          oe(L, cx, 66, 6.4, 14.5, ST, { d: .1 }); oe(L, cx, 52.5, 4.4, 3.2, RD, { d: .1 }); or_(L, cx - 6, 61, 12, 3, '#e0504a');
+          or_(L, cx - 3, 79.5, 6, 3, '#3b3547');
+          for (let i = 0; i < fl; i++) { const w = Math.max(1, 5 - Math.floor(i * .8)); or_(L, cx - w / 2, 82.5 + i * 1.25, w, 1.4, i < 2 ? '#fff3a8' : i < 4 ? '#ffb02e' : '#ff5a2e'); }
+        }
+      },
+      front(L) { for (const s of [-1, 1]) { olin(L, OX + s * 10, 52, OX + s * 14.5, 73, '#4c5b78'); olin(L, OX + s * 11, 52, OX + s * 15.5, 73, '#7587a4'); } },
+    },
+    // Ангельские крылья (легендарные): по четыре белых пера с золотыми кончиками, машут вверх-вниз
+    wings: {
+      behind(L) {
+        const W = ['#ffffff', '#eaf2ff', '#bcd2f4', '#93b0e0'], flap = Math.floor(CLK / 520) % 2;
+        for (const s of [-1, 1]) {
+          [[26, 51, 13, 4.3], [24.5, 58.5, 12, 4.2], [22, 66, 10.5, 4], [18.5, 72.5, 8, 3.4]].forEach(([dx, y, rx, ry], i) => {
+            const yy = y - flap * (4 - i) * .7;
+            oe(L, OX + s * dx, yy, rx, ry, W, { d: .08 });
+            od(L, OX + s * (dx + rx - 1.5), yy, '#ffd23d'); od(L, OX + s * (dx + rx - 2.5), yy, '#ffe27a');    // золотые кончики
+          });
+          oe(L, OX + s * 15, 56 - flap * 1.5, 7.5, 8, W, { d: .08 });                                    // «плечо» крыла
+        }
+      },
+    },
+  };
+
+  // ---------- искорки легендарных вещей: рисуются поверх всего, после обводки ----------
+  function legendFx(L, t) {
+    if (!SLOT_ORDER.some(s => WEAR[s] && rarityOf(WEAR[s]) === 'legendary')) return;
+    [[-30, 34, 0], [31, 30, 1.7], [-27, 64, 3.1], [29, 60, 4.6]].forEach(([dx, y, ph]) => {
+      const k = Math.floor(t / 280 + ph) % 4, x = OX + dx;
+      if (k === 0) { dot(L, x, y, '#fff3a8'); return; }
+      dot(L, x, y, '#ffffff'); dot(L, x - 1, y, '#ffe27a'); dot(L, x + 1, y, '#ffe27a'); dot(L, x, y - 1, '#ffe27a'); dot(L, x, y + 1, '#ffe27a');
+      if (k === 2) { dot(L, x - 2, y, '#ffe27a'); dot(L, x + 2, y, '#ffe27a'); dot(L, x, y - 2, '#ffe27a'); dot(L, x, y + 2, '#ffe27a'); }
+    });
+  }
+
+  // ---------- ДИСПЕТЧЕРЫ: выбирают, чем рисовать вещь — новой таблицей или старой функцией ----------
+  // Главный слой одежды на голове и груди. Вызывается в самом конце drawHead — поэтому всё ложится ПОВЕРХ мордочки.
+  // Порядок: детали костюма (повязка пирата) → аксессуар → головной убор (он выше всего).
+  function drawWear(L, hx, hy) {
+    const w = WEAR || {}, fit = OUTFIT[w.suit];
+    if (fit && fit.head) fit.head(L, hx, hy);
+    if (w.acc) { if (ACC[w.acc]) ACC[w.acc](L, hx, hy); else { drawNeckWear(L, hx, hy, w.acc); drawFaceWear(L, hx, hy, w.acc); } }   // старые шарфики/очки рисуют прежние функции
+    const h = w.head && (HEAD[w.head] || HAT[w.head]);
+    if (h) sprc(L, hx + (h.dx || 0), hy + h.by - (h.bob ? Math.floor(CLK / 700) % 2 * 1.3 : 0), h.rows, h.map, h.sc);   // bob — покачивание нимба
+  }
+  // Всё, что лежит ЗА спиной (рисуется до туловища, выглядывает по бокам): рюкзак, ранец, крылья, плащ.
+  function bodyBack(L, id) { const b = BACK[id]; if (b) b.behind(L); else legacyBack(L, id); }
+  // Лямки рюкзака и ранца — поверх одежды на груди (вызывается после bodyFront).
+  function backFront(L, id) { const b = BACK[id]; if (b && b.front) b.front(L); }
+  // Одежда на туловище (верх или костюм): рисуется поверх живота, но под лапками и головой.
+  function bodyFront(L, id) { const o = OUTFIT[id]; if (o) o.body(L); else legacyFront(L, id); }
 
   // ---------- мебель: рисунки (низ по центру для пола, центр для стены) ----------
   const FURN = {
@@ -1224,22 +1474,37 @@
     if (!text) return; const t = $('toast'); t.textContent = text; t.classList.add('show');
     clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), ms);
   }
+  // pxCanvas — превращает слой (canvas) в картинку для интерфейса: вырезает кусок crop = [x, y, ширина, высота]
+  // и увеличивает в k раз. Класс 'pxi' отключает сглаживание, чтобы пиксели оставались чёткими.
   function pxCanvas(src, k, crop) {
     const [cx, cy, cw, ch] = crop || [0, 0, src.width, src.height];
     const cv = document.createElement('canvas'); cv.width = cw; cv.height = ch; cv.className = 'pxi';
     cv.style.width = (cw * k) + 'px'; cv.style.height = (ch * k) + 'px';
     cv.getContext('2d').drawImage(src, cx, cy, cw, ch, 0, 0, cw, ch); return cv;
   }
+  // ---------- ПРЕВЬЮ ОДЕЖДЫ (витрина магазина и гардероб) ----------
+  // WL — кэш картинок: каждая вещь рисуется один раз, потому что рисунок вещи не меняется,
+  // а магазин перерисовывается после каждого действия (монеты, покупки).
   const WL = {};
-  const CROP = { hat: [14, 14, 56, 40], face: [14, 30, 56, 34], neck: [14, 42, 56, 34], body: [14, 46, 56, 44] };
+  // CROP — какой кусок выдры показать для слота: [x, y, ширина, высота] в пикселях слоя 84×92.
+  // голова — голова с головным убором; верх — туловище; костюм и спина — почти вся выдра (крылья шире туловища); аксессуар — голова и грудь.
+  const CROP = { head: [14, 10, 56, 46], top: [14, 46, 56, 44], suit: [14, 38, 56, 52], acc: [14, 36, 56, 48], back: [8, 38, 68, 52] };
+  // wearPreview(id) — готовая картинка вещи для карточки. Рисуем целую выдру в позе покоя и надеваем на неё ТОЛЬКО эту вещь:
+  // четвёртый параметр drawOtter (ov) подменяет «что надето» вместо настоящего состояния. Дальше drawOtter сам вызывает
+  // drawHead → drawWear (голова, аксессуар) и bodyBack / bodyFront / backFront (спина, верх, костюм).
+  // Потом вырезаем нужный кусок (CROP) и увеличиваем ×2.
   function wearPreview(id) {
     const c = CAT[id]; if (!WL[id]) WL[id] = drawOtter(0, 'idle', false, { [c.s]: id });
     return pxCanvas(WL[id].c, 2, CROP[c.s]);
   }
+  // furnPreview(id) — картинка мебели для карточки: берём готовый рисунок из FURN (furnLayer) и увеличиваем так, чтобы влез в 88 px
   function furnPreview(id, kmax) {
     const f = furnLayer(id); if (!f) return el('div', 'emo', '❔');
     return pxCanvas(f.c, Math.max(1, Math.min(kmax || 2, Math.floor(88 / Math.max(f.w, f.h)))));
   }
+  // rpc(action, extra) — отправляет действие на сервер (buy / wear / unwear / place / …) и сразу перерисовывает игру новым состоянием.
+  // Возвращает ответ сервера {ok, say, state} или null, если связь пропала. Одновременно играет звук (покупка, одевание…).
+  // В гостях (чужой питомец) действия запрещены — только смотреть.
   async function rpc(action, extra) {
     if (viewingUserId !== null && viewingUserId !== myId) { toast('В гостях можно только смотреть 👀'); return null; }
     try {
@@ -1254,10 +1519,12 @@
       return null;
     }
   }
+  // owns(id) — куплена ли вещь (одежда и мебель покупаются один раз; еда копится в запасе S.inv)
   const owns = (id) => !!(S && (S.owned || []).includes(id));
 
   // ---------- навигация: Главная / Меню и разделы меню ----------
   const PANELS = ['menu', 'shop', 'wardrobe', 'quests', 'visit', 'rewards', 'settings', 'admin'];
+  // show(t) — открывает раздел (home / menu / shop / wardrobe / …): прячет остальные панели и перерисовывает нужную
   function show(t) {
     const edit = t === 'edit'; if (edit) t = 'home';
     tab = t; setEdit(edit);
@@ -1271,6 +1538,7 @@
     else if (t === 'quests') renderQuests(); else if (t === 'visit') renderVisit();
     haptic('light'); SFX.play('click');
   }
+  // updatePanels() — зовётся при каждом новом состоянии с сервера: обновляет открытый сейчас раздел (магазин, гардероб, задания)
   function updatePanels() {
     if (tab === 'shop') renderShop(); else if (tab === 'wardrobe') renderWardrobe(); else if (tab === 'quests') renderQuests();
     else if (tab === 'home' && view.edit) renderEditList();
@@ -1279,19 +1547,56 @@
   document.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', () => show(b.dataset.go)));
   $('who').addEventListener('click', () => show('settings'));
 
-  // ---------- магазин ----------
-  let shopBusy = false;
+  // =====================================================================
+  // МАГАЗИН. Одежда на витрине рисуется так:
+  //   renderShop → shopCard → wearPreview → drawOtter (выдра, одетая только в эту вещь) → drawHead → drawWear
+  //   → рисунки вещей (HEAD / ACC / OUTFIT / BACK) → pxCanvas (вырезать кусок и увеличить) → картинка в карточке товара.
+  // Цену, слот и редкость вещи клиент берёт из каталога сервера (CAT, см. pet.py), здесь их нигде не выдумываем.
+  // =====================================================================
+  let shopBusy = false;    // защита от двойного тапа по «Купить» (пока идёт запрос, второй не отправляем)
+  let wearSlot = 'all';    // подраздел одежды в магазине: all / head / top / suit / acc / back
+
+  // renderShop — перерисовывает витрину выбранной вкладки (Еда / Одежда / Мебель). Зовётся при открытии магазина,
+  // при смене вкладки и после каждого ответа сервера (updatePanels), чтобы монеты и «Куплено ✓» обновлялись сразу.
   function renderShop() {
-    if (!CAT || !S) return;
+    if (!CAT || !S) return;                                   // без каталога и состояния рисовать нечего
     $('shopcoins').textContent = S.coins;
     document.querySelectorAll('#shopseg button').forEach(b => b.classList.toggle('on', b.dataset.k === shopTab));
+    renderWearSeg();                                          // подразделы одежды (видны только на вкладке «Одежда»)
     const box = $('shoplist'); box.textContent = '';
-    Object.keys(CAT).filter(id => CAT[id].k === shopTab && !CAT[id].base).forEach(id => box.appendChild(shopCard(id)));
+    // base — стартовая еда (бесконечная), legacy — старая одежда, снятая с продажи (у кого уже куплена, носит дальше)
+    let ids = Object.keys(CAT).filter(id => CAT[id].k === shopTab && !CAT[id].base && !CAT[id].legacy);
+    if (shopTab === 'wear') {
+      if (wearSlot !== 'all') ids = ids.filter(id => CAT[id].s === wearSlot);
+      // порядок: по слотам (голова → спина), внутри слота от обычного к легендарному — цена растёт вместе с редкостью
+      ids.sort((a, b) => SLOT_ORDER.indexOf(CAT[a].s) - SLOT_ORDER.indexOf(CAT[b].s) || RARITY[rarityOf(a)].ord - RARITY[rarityOf(b)].ord || CAT[a].p - CAT[b].p);
+    }
+    ids.forEach(id => box.appendChild(shopCard(id)));
   }
+
+  // renderWearSeg — полоска подразделов «Все / Голова / Верх / Костюм / Аксессуар / Спина» над товарами одежды.
+  // Нажатие запоминает выбор в wearSlot и перерисовывает витрину.
+  function renderWearSeg() {
+    const seg = $('wearseg'); seg.style.display = shopTab === 'wear' ? 'flex' : 'none';
+    if (shopTab !== 'wear') return;
+    seg.textContent = '';
+    [['all', 'Все']].concat(SLOT_ORDER.map(k => [k, SLOT_RU[k]])).forEach(([k, name]) => {
+      const b = el('button', k === wearSlot ? 'on' : '', name);
+      b.addEventListener('click', () => { wearSlot = k; renderShop(); haptic('light'); });
+      seg.appendChild(b);
+    });
+  }
+
+  // shopCard — одна карточка товара: картинка, название, подпись, кнопка покупки.
+  //   • еда — эмодзи и что она даёт; мебель — furnPreview; одежда — wearPreview (выдра в этой вещи);
+  //   • у одежды рамка и бейдж цветом редкости (переменная --rc, стили .it.r-* и .rar в CSS) + подпись со слотом;
+  //   • кнопка: «Купить · цена», «Куплено ✓» (одежда и мебель покупаются один раз) или серая, если не хватает монет.
   function shopCard(id) {
-    const c = CAT[id], d = el('div', 'it'), pv = el('div', 'pv');
+    const c = CAT[id], d = el('div', 'it'), pv = el('div', 'pv'), rar = c.k === 'wear' ? rarityOf(id) : null;
+    if (rar) { d.classList.add('r-' + rar); d.style.setProperty('--rc', RARITY[rar].col); }
     pv.appendChild(c.k === 'food' ? el('div', 'emo', c.e) : c.k === 'wear' ? wearPreview(id) : furnPreview(id));
     d.appendChild(pv); d.appendChild(el('b', null, c.n));
+    if (rar) d.appendChild(el('div', 'rar', RARITY[rar].n));                       // бейдж редкости
     d.appendChild(el('div', 'ds', c.k === 'food'
       ? 'Сытость +' + c.hu + ' · Радость +' + c.hp + (c.en ? ' · Энергия +' + c.en : '')
       : c.k === 'wear' ? SLOT_RU[c.s] : (c.pl === 'wall' ? 'Висит на стене' : 'Стоит на полу')));
@@ -1301,34 +1606,47 @@
       b.textContent = 'Купить · ' + c.p + ' 🪙';
     } else if (owns(id)) { b.textContent = 'Куплено ✓'; b.classList.add('off'); b.disabled = true; }
     else b.textContent = 'Купить · ' + c.p + ' 🪙';
-    if (!b.disabled && S.coins < c.p) b.classList.add('poor');
+    if (!b.disabled && S.coins < c.p) b.classList.add('poor');                      // серая кнопка: монет пока не хватает
     b.addEventListener('click', () => buyItem(id));
     d.appendChild(b); return d;
   }
+
+  // buyItem — покупка. Сначала быстрая проверка монет на клиенте (чтобы не гонять запрос зря), потом действие 'buy' на сервер.
+  // Окончательное решение всегда за сервером (цена, «уже куплено», лимит еды), поэтому показываем его ответ r.say.
   async function buyItem(id) {
     if (shopBusy) return; const c = CAT[id];
     if (S.coins < c.p) { toast('Не хватает монет 🪙 Поиграйте и погладьте питомца!'); haptic('err'); return; }
     shopBusy = true; haptic('light');
     try { const r = await rpc('buy', { item: id }); if (r) { toast(r.say); haptic(r.ok ? 'ok' : 'err'); } } finally { shopBusy = false; }
   }
+  // переключение вкладок магазина: Еда / Одежда / Мебель
   document.querySelectorAll('#shopseg button').forEach(b => b.addEventListener('click', () => { shopTab = b.dataset.k; renderShop(); haptic('light'); }));
 
-  // ---------- гардероб ----------
+  // ---------- ГАРДЕРОБ ----------
+  // renderWardrobe — вверху пять слотов (что надето сейчас), ниже — все купленные вещи одежды с кнопкой «Надеть / Снять».
+  // Вещи идут по слотам и по редкости; рамка и бейдж — те же, что в магазине. Здесь же показывается и старая одежда (legacy).
+  // Надеть вещь в занятый слот — сервер сам снимет прежнюю; костюм и «верх» сервер тоже не даёт носить вместе (CONFLICTS в pet.py).
   function renderWardrobe() {
     if (!CAT || !S) return;
     const slots = $('wslots'); slots.textContent = '';
-    ['hat', 'face', 'neck', 'body'].forEach(s => { const id = (S.worn || {})[s]; slots.appendChild(el('div', 'slot' + (id ? ' on' : ''), SLOT_RU[s] + ': ' + (id ? CAT[id].n : '—'))); });
+    SLOT_ORDER.forEach(k => { const id = (S.worn || {})[k]; slots.appendChild(el('div', 'slot' + (id ? ' on' : ''), SLOT_RU[k] + ': ' + (id ? CAT[id].n : '—'))); });
     const box = $('wlist'); box.textContent = '';
-    const ids = (S.owned || []).filter(id => CAT[id] && CAT[id].k === 'wear');
+    const ids = (S.owned || []).filter(id => CAT[id] && CAT[id].k === 'wear')
+      .sort((a, b) => SLOT_ORDER.indexOf(CAT[a].s) - SLOT_ORDER.indexOf(CAT[b].s) || RARITY[rarityOf(a)].ord - RARITY[rarityOf(b)].ord);
     if (!ids.length) { box.appendChild(el('div', 'empty', 'Гардероб пока пуст. Загляни в Меню → Магазин 🛍')); return; }
     ids.forEach(id => {
-      const c = CAT[id], on = (S.worn || {})[c.s] === id, d = el('div', 'it'), pv = el('div', 'pv');
-      pv.appendChild(wearPreview(id)); d.appendChild(pv); d.appendChild(el('b', null, c.n)); d.appendChild(el('div', 'ds', SLOT_RU[c.s]));
+      const c = CAT[id], rar = rarityOf(id), on = (S.worn || {})[c.s] === id, d = el('div', 'it r-' + rar), pv = el('div', 'pv');
+      d.style.setProperty('--rc', RARITY[rar].col);
+      pv.appendChild(wearPreview(id)); d.appendChild(pv); d.appendChild(el('b', null, c.n));
+      d.appendChild(el('div', 'rar', RARITY[rar].n)); d.appendChild(el('div', 'ds', SLOT_RU[c.s]));
       const b = el('button', 'buy' + (on ? ' alt' : ''), on ? 'Снять' : 'Надеть');
       b.addEventListener('click', async () => { haptic('light'); const r = await rpc(on ? 'unwear' : 'wear', { item: id }); if (r && !r.ok) toast(r.say); });
       d.appendChild(b); box.appendChild(d);
     });
   }
+  // wardFrame — кадр большой выдры в гардеробе. Зовётся 10 раз в секунду, пока открыт гардероб (см. setInterval внизу):
+  // рисует выдру в том, что надето СЕЙЧАС (drawOtter без ov берёт S.worn), моргает и чуть подпрыгивает.
+  // Благодаря этому видно анимации вещей: взмахи крыльев, пламя ранца, искорки легендарных вещей.
   function wardFrame(now) {
     const cv = $('wprev'), x = cv.getContext('2d'); x.imageSmoothingEnabled = false; x.clearRect(0, 0, cv.width, cv.height);
     const O = drawOtter(now, 'idle', (Math.floor(now / 160) % 31) === 0);
