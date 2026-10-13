@@ -11,6 +11,9 @@
 buy_wear, buy_furn, earn, spend, quests (забрано заданий), allquests (идеальных дней),
 days (дней в игре), streak_max (лучшая серия дней подряд), late (игра после полуночи),
 early (игра утром), rename. «Живые»: level, owned_wear, owned_furn, locs (открытые локации).
+
+Ежедневный бонус (см. раздел в конце файла) хранится в тех же pet_stats, отдельной таблицы нет:
+daily_last (в какой день бонус забрали), daily_by (кто забрал), daily_total (сколько раз всего).
 """
 
 import time
@@ -194,3 +197,87 @@ def complete_all(cur, pet_key: str) -> None:
         cur.execute("INSERT INTO pet_stats (pet_key, stat, val) VALUES (%s, %s, %s)"
                     " ON CONFLICT (pet_key, stat) DO UPDATE SET val = GREATEST(pet_stats.val, EXCLUDED.val)",
                     (pet_key, stat, v))
+
+
+# ===========================================================================
+# ЕЖЕДНЕВНЫЙ БОНУС ЗА ВХОД И СЕРИЯ ДНЕЙ
+# Награда зависит от серии (сколько дней подряд заходили): цикл из 7 дней, каждый день награда больше,
+# седьмой — самый щедрый, с подарком. Пропустили день — серия и цикл начинаются заново.
+# Каждая полностью пройденная неделя серии даёт ещё прибавку к монетам и опыту (WEEK_BOOST).
+# Питомец общий, поэтому бонус общий: его забирает тот из пары, кто зашёл первым, а серию двигает любой из вас.
+# ===========================================================================
+# (монеты, опыт, подарок-еда или None) на каждый день цикла
+DAILY = [
+    (15, 5, None),
+    (20, 8, None),
+    (30, 10, "shrimp"),
+    (40, 12, None),
+    (55, 15, "crab"),
+    (70, 20, None),
+    (120, 40, None),          # день 7: подарок берётся из DAILY_GIFTS
+]
+DAILY_GIFTS = ("cake", "sushi", "oyster")   # подарок седьмого дня по неделям: 1-я неделя тортик, 2-я суши, 3-я устрицы, дальше по кругу
+WEEK_BOOST = 0.25                           # +25% за каждую пройденную неделю серии…
+WEEK_BOOST_MAX = 4                          # …но не больше четырёх недель (то есть до +100%)
+
+
+def streak_today(stats: dict, today: int) -> int:
+    """Какая серия будет (или уже есть) сегодня: вчера заходили, значит +1; сегодня уже заходили, значит текущая; иначе 1."""
+    last = stats.get("last_day", 0)
+    if last == today:
+        return max(1, stats.get("streak", 1))
+    if last == today - 1:
+        return stats.get("streak", 0) + 1
+    return 1
+
+
+def daily_reward(streak: int) -> dict:
+    """Награда за день серии streak (1, 2, 3 …): номер дня в цикле, монеты, опыт и подарок с учётом недельной прибавки."""
+    week, d = divmod(max(1, streak) - 1, 7)
+    coins, xp, item = DAILY[d]
+    if d == 6:
+        item = DAILY_GIFTS[week % len(DAILY_GIFTS)]
+    k = 1 + WEEK_BOOST * min(week, WEEK_BOOST_MAX)
+    return {"day": d + 1, "week": week, "coins": round(coins * k), "xp": round(xp * k), "item": item}
+
+
+def daily_claimed(stats: dict, today: int) -> bool:
+    return stats.get("daily_last", 0) == today
+
+
+def mark_daily(stats: dict, today: int, user_id: int) -> None:
+    """Запоминает, что бонус дня забран (и кем), и считает забранные бонусы."""
+    _set(stats, "daily_last", today)
+    _set(stats, "daily_by", user_id)
+    _set(stats, "daily_total", stats.get("daily_total", 0) + 1)
+
+
+def daily_view(stats: dict, today: int, names: dict = None) -> dict:
+    """Всё, что нужно клиенту для экрана «Ежедневный бонус»: серия, 7 дней цикла с наградами и состоянием каждого дня."""
+    s = streak_today(stats, today)
+    claimed = daily_claimed(stats, today)
+    week = (s - 1) // 7
+    days = []
+    for d in range(7):
+        n = week * 7 + d + 1                                   # номер этого дня в серии
+        r = daily_reward(n)
+        state = "claimed" if (n < s or (n == s and claimed)) else "today" if n == s else "future"
+        days.append({"day": d + 1, "coins": r["coins"], "xp": r["xp"], "item": r["item"], "state": state})
+    by = stats.get("daily_by") if claimed else None
+    return {"can_claim": not claimed, "streak": s, "best": max(stats.get("streak_max", 0), s), "day": (s - 1) % 7 + 1,
+            "week": week, "boost": round(100 * WEEK_BOOST * min(week, WEEK_BOOST_MAX)), "total": stats.get("daily_total", 0),
+            "by": (names or {}).get(by) if by else None, "days": days}
+
+
+def admin_daily_reset(stats: dict) -> None:
+    """Для проверки: бонус сегодняшнего дня снова можно забрать."""
+    _set(stats, "daily_last", 0)
+
+
+def admin_set_streak(stats: dict, today: int, n: int) -> None:
+    """Для проверки: подстроить серию так, чтобы сегодняшний бонус был за день n (и его можно было забрать)."""
+    n = max(1, min(400, int(n)))
+    _set(stats, "streak", n - 1)
+    _set(stats, "last_day", today - 1)
+    _set(stats, "daily_last", 0)
+    _set(stats, "streak_max", max(stats.get("streak_max", 0), n - 1))
