@@ -177,6 +177,18 @@
   nav button.dot::after { content: ''; position: absolute; top: 7px; right: 28%; width: 9px; height: 9px; border-radius: 50%; background: #ff5a6a; box-shadow: 0 0 0 2px #14224a; }
   .qinfo { font-size: 12px; font-weight: 700; color: var(--dim); text-align: center; margin: -2px 0 12px; line-height: 1.4; }
   .qinfo.ok { color: var(--ok); }
+  /* ежедневный бонус: календарь 4 + 3 дня (седьмой — двойной, с подарком) */
+  .dgrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 4px 0 14px; }
+  .dday { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-height: 80px; padding: 8px 4px 9px; text-align: center; border: 1.5px solid var(--line); border-radius: 14px; background: rgba(8,16,40,.38); }
+  .dday small { font-size: 10.5px; color: var(--dim); font-weight: 800; text-transform: uppercase; letter-spacing: .3px; }
+  .dday b { font-size: 13px; color: var(--coin); }
+  .dday span { font-size: 11px; font-weight: 700; color: var(--dim); }
+  .dday .gift { font-size: 17px; line-height: 1; }
+  .dday.d7 { grid-column: span 2; }
+  .dday.claimed { opacity: .55; }
+  .dday.claimed::after { content: '✓'; position: absolute; top: 4px; right: 8px; font-size: 13px; font-weight: 900; color: var(--ok); }
+  .dday.today { --rc: var(--coin); border-color: var(--coin); box-shadow: 0 0 0 1px var(--coin) inset, 0 0 14px rgba(255,207,61,.35); animation: legend 2.4s ease-in-out infinite; }
+  .dnote { font-size: 12px; font-weight: 700; color: var(--dim); text-align: center; line-height: 1.45; margin: 10px 4px 0; }
   .qcat { display: flex; align-items: baseline; justify-content: space-between; margin: 16px 2px 7px; font-weight: 800; font-size: 15px; }
   .qcat small { font-size: 11px; color: var(--dim); font-weight: 700; }
   .q { background: rgba(8,16,40,.4); border: 1.5px solid var(--line); border-radius: 16px; padding: 11px 12px; margin-bottom: 8px; }
@@ -266,6 +278,7 @@
       <button class="mcard" data-go="shop"><span data-icon="bag" data-k="4"></span>Магазин<small>еда, одежда, мебель</small></button>
       <button class="mcard" data-go="wardrobe"><span data-icon="shirt" data-k="4"></span>Гардероб<small>переодеть питомца</small></button>
       <button class="mcard" data-go="edit"><span data-icon="house" data-k="4"></span>Дом<small>расставить мебель</small></button>
+      <button class="mcard" data-go="daily"><span data-icon="gift" data-k="4"></span>Бонус дня<small id="dsub">награда за вход</small></button>
       <button class="mcard" data-go="quests"><span data-icon="list" data-k="4"></span>Задания<small id="qsub">ежедневные дела</small></button>
       <button class="mcard" data-go="visit" id="visitcard" style="display:none"><span data-icon="paw" data-k="4"></span>В гости<small>посетить друга</small></button>
       <button class="mcard" data-go="rewards"><span data-icon="trophy" data-k="4"></span>Достижения<small id="asub">награды за заботу</small></button>
@@ -317,6 +330,9 @@
     <div class="admbtns"><button class="chipbtn alt" data-adm="add_coins" data-amount="100">+100 монет</button><button class="chipbtn alt" data-adm="add_coins" data-amount="1000">+1000 монет</button><button class="chipbtn alt" data-adm="unlock_all">Открыть все вещи</button><button class="chipbtn alt" data-adm="clear_items">Убрать все вещи</button><button class="chipbtn alt" data-adm="quests_done">Выполнить задания дня</button><button class="chipbtn alt" data-adm="quests_reset">Сбросить прогресс заданий</button></div>
     <h4>Локация и достижения</h4>
     <div class="admbtns"><button class="chipbtn alt" data-adm="loc_unlock">Открыть «Лес»</button><button class="chipbtn alt" data-adm="loc_lock">Закрыть «Лес»</button><button class="chipbtn alt" data-adm="ach_all">Выполнить все достижения</button><button class="chipbtn danger" data-adm="ach_reset" data-confirm="Сбросить счётчики и полученные награды достижений?">Сбросить достижения</button></div>
+    <h4>Бонус дня</h4>
+    <p>Для проверки: сегодняшний бонус будет за выбранный день серии, и его можно забрать.</p>
+    <div class="admbtns"><button class="chipbtn alt" data-adm="daily_reset">Забрать снова</button><button class="chipbtn alt" data-adm="streak_set" data-amount="1">День 1</button><button class="chipbtn alt" data-adm="streak_set" data-amount="4">День 4</button><button class="chipbtn alt" data-adm="streak_set" data-amount="7">День 7</button><button class="chipbtn alt" data-adm="streak_set" data-amount="8">День 8 (+25%)</button></div>
     <h4>Сброс</h4>
     <div class="admbtns"><button class="chipbtn danger" data-adm="reset_stats" data-confirm="Сбросить уровень, опыт и характеристики? Вещи и монеты останутся.">Сбросить персонажа</button><button class="chipbtn danger" data-adm="reset" data-confirm="Сбросить ВСЮ игру: уровень, монеты, вещи, имя?">Сбросить всю игру</button></div>
     <h4>Журнал действий</h4>
@@ -335,6 +351,10 @@
   <section class="panel" id="panel-loc">
     <div class="top"><h3>Локация</h3><div class="wal">🪙 <span id="loccoins">0</span></div></div>
     <div id="locbody"></div>
+  </section>
+  <section class="panel" id="panel-daily">
+    <div class="top"><button class="back" data-go="menu">‹ Меню</button><h3>Бонус дня</h3><div class="wal" id="dstreak">🔥 0</div></div>
+    <div id="dbody"></div>
   </section>
   <section class="panel" id="panel-rewards">
     <div class="top"><button class="back" data-go="menu">‹ Меню</button><h3>Достижения</h3><div class="wal" id="acount">0 / 0</div></div>
@@ -572,6 +592,7 @@
   function render(st, instant) {
     if (!st.ach && S && S.ach) st.ach = S.ach;
     if (!st.quests && S && S.quests) st.quests = S.quests;   // чужой питомец (гость) заданий не присылает
+    if (!st.daily && S && S.daily) st.daily = S.daily;       // и бонуса дня тоже
     const wasSleeping = !!(S && S.sleeping);
     S = st; if (wasSleeping && !st.sleeping && Date.now() - lastWakeSfx > 3000) { SFX.play('wake'); lastWakeSfx = Date.now(); }
     if (st.now) { skew = st.now - Date.now() / 1000; S._at = Date.now(); }
@@ -587,7 +608,10 @@
     $('qsub').textContent = ready ? '🎁 наград: ' + ready : 'ежедневные дела';
     const A = st.ach, ar = A ? A.ready : 0;
     $('asub').textContent = A ? (ar ? '🎁 наград: ' + ar : A.done + ' из ' + A.total) : 'награды за заботу';
-    document.querySelector('nav button[data-tab="menu"]').classList.toggle('dot', ready > 0 || ar > 0);
+    const D = st.daily, dc = !!(D && D.can_claim);          // можно ли сегодня забрать ежедневный бонус
+    $('dsub').textContent = D ? (dc ? '🎁 забери награду' : '🔥 серия ' + D.streak) : 'награда за вход';
+    document.querySelector('nav button[data-tab="menu"]').classList.toggle('dot', ready > 0 || ar > 0 || dc);
+    if (dc && !dailyNudged && !isGuest()) { dailyNudged = true; setTimeout(() => toast('🎁 Бонус дня ждёт в меню!', 3500), 1200); }   // напоминаем один раз за запуск
     if (!isGuest()) {                                  // вкладка идёт за питомцем: на улице — «Локация», дома — «Главная»
       const o = outdoor(st.room), un = hasForest(st);
       if (tab === 'home' && o) show('loc', { quiet: true, noMove: true });
@@ -850,6 +874,7 @@
     arrR: { rows: ['yy...', '.yy..', '..yy.', '...yy', '..yy.', '.yy..', 'yy...'], map: { y: '#ffffff' } },
     arrL: { rows: ['...yy', '..yy.', '.yy..', 'yy...', '.yy..', '..yy.', '...yy'], map: { y: '#ffffff' } },
     trophy: { rows: ['yyyyyyy', 'yyyyyyy', '.yyyyy.', '..yyy..', '...y...', '..yyy..', '.yyyyy.'], map: { y: '#ffcf3d' } },
+    gift: { rows: ['..y..y..', '.yyyyyy.', '..yyyy..', 'rrryyrrr', 'rrryyrrr', 'yyyyyyyy', 'rrryyrrr', 'rrryyrrr'], map: { r: '#ff5a8a', y: '#ffe27a' } },
     bag: { rows: ['..hhhh..', '.h....h.', '.h....h.', 'rrrrrrrr', 'rrrrrrrr', 'rrrYYrrr', 'rrrrrrrr', 'rrrrrrrr'], map: { r: '#ff7a59', h: '#ffffff', Y: '#ffe27a' } },
     shirt: { rows: ['.ww...ww.', 'wwww.wwww', 'wwwwwwwww', '.wwwwwww.', '.wwwwwww.', '.wwwwwww.'], map: { w: '#8fc4ff' } },
     gear: { rows: ['....g....', '.gg.g.gg.', '.ggggggg.', '..gg.gg..', 'ggg...ggg', '..gg.gg..', '.ggggggg.', '.gg.g.gg.', '....g....'], map: { g: '#cfe0ff' } },
@@ -1938,7 +1963,7 @@
       const before = S;
       const r = await api('/api/pet/action', Object.assign({ action }, extra || {}));
       if (r.state) { render(r.state); seenTs = Math.max(seenTs, r.state.last_ts || 0); }
-      SFX.play(r.ok ? ({ buy: 'buy', wear: 'wear', unwear: 'wear', place: 'place', unplace: 'place', claim: 'claim', claim_ach: 'claim', unlock: 'unlock' }[action] || 'ok') : 'no');
+      SFX.play(r.ok ? ({ buy: 'buy', wear: 'wear', unwear: 'wear', place: 'place', unplace: 'place', claim: 'claim', claim_ach: 'claim', claim_daily: 'claim', unlock: 'unlock' }[action] || 'ok') : 'no');
       if (r.ok && r.state && before && r.state.level > before.level) SFX.play('level', 650);
       return r;
     } catch (e) {
@@ -1950,7 +1975,7 @@
   const owns = (id) => !!(S && (S.owned || []).includes(id));
 
   // ---------- навигация: Главная / Меню и разделы меню ----------
-  const PANELS = ['loc', 'menu', 'shop', 'wardrobe', 'quests', 'visit', 'rewards', 'settings', 'admin'];
+  const PANELS = ['loc', 'menu', 'shop', 'wardrobe', 'quests', 'visit', 'rewards', 'daily', 'settings', 'admin'];
   // show(t) — открывает раздел (home / menu / shop / wardrobe / …): прячет остальные панели и перерисовывает нужную
   function show(t, o) {
     o = o || {};
@@ -1964,7 +1989,7 @@
     $('editbar').style.display = (stageOn && edit && !locked) ? 'flex' : 'none';
     PANELS.forEach(p => $('panel-' + p).style.display = (p === t && (p !== 'loc' || locked)) ? 'block' : 'none');
     if (t === 'shop') renderShop(); else if (t === 'wardrobe') renderWardrobe(); else if (t === 'settings') renderSettings(); else if (t === 'admin') renderAdmin();
-    else if (t === 'quests') renderQuests(); else if (t === 'visit') renderVisit(); else if (t === 'rewards') renderAch(); else if (t === 'loc') renderLoc();
+    else if (t === 'quests') renderQuests(); else if (t === 'visit') renderVisit(); else if (t === 'rewards') renderAch(); else if (t === 'daily') renderDaily(); else if (t === 'loc') renderLoc();
     if (!o.noMove && !guest && S && !busy) {           // перемещаем питомца между домом и улицей
       if (t === 'home' && outdoor(S.room)) goIn(); else if (t === 'loc' && !locked && !outdoor(S.room)) goOut();
     }
@@ -1975,7 +2000,7 @@
   // updatePanels() — зовётся при каждом новом состоянии с сервера: обновляет открытый сейчас раздел (магазин, гардероб, задания)
   function updatePanels() {
     if (tab === 'shop') renderShop(); else if (tab === 'wardrobe') renderWardrobe(); else if (tab === 'quests') renderQuests();
-    else if (tab === 'rewards') renderAch(); else if (tab === 'loc') { renderLoc(); if (view.edit) renderEditList(); }
+    else if (tab === 'rewards') renderAch(); else if (tab === 'daily') renderDaily(); else if (tab === 'loc') { renderLoc(); if (view.edit) renderEditList(); }
     else if (tab === 'home' && view.edit) renderEditList();
   }
   document.querySelectorAll('nav button').forEach(b => b.addEventListener('click', () => show(b.dataset.tab)));
@@ -2372,6 +2397,41 @@
     b.style.display = (tab === 'loc' && !view.edit && !view.trans && !isGuest() && outdoor(view.cur)) ? 'block' : 'none';
   }
   $('locedit').addEventListener('click', () => { haptic('light'); show('locedit', { quiet: true }); });
+  // =====================================================================
+  // ЕЖЕДНЕВНЫЙ БОНУС. Всё считает сервер (pet_ach.py → daily_view): серию, награды дней и «можно ли забрать сегодня».
+  // Клиент только рисует календарь из 7 дней и по кнопке просит действие claim_daily.
+  // =====================================================================
+  let dailyBusy = false, dailyNudged = false;   // dailyNudged — напомнили о бонусе уже один раз за этот запуск
+  // renderDaily — экран «Бонус дня»: строка-статус, календарь текущей недели серии (4 + 3 дня), кнопка «Забрать», правила.
+  // Состояния дня: claimed (✓, приглушён), today (золотая рамка), future. Подарок дня показывается эмодзи из каталога еды.
+  function renderDaily() {
+    const box = $('dbody'); if (!box) return; box.textContent = '';
+    const D = S && S.daily;
+    if (!D || !CAT) { box.appendChild(el('div', 'empty', 'Загружаем бонус…')); return; }
+    $('dstreak').textContent = '🔥 ' + D.streak;
+    box.appendChild(el('div', 'qinfo' + (D.can_claim ? ' ok' : ''), D.can_claim
+      ? '🎁 Бонус дня ждёт: день ' + D.day + ' из 7'
+      : '✅ Сегодня бонус получен' + (D.by ? ' · ' + D.by : '') + '. Завтра будет день ' + (D.day % 7 + 1)));
+    const grid = el('div', 'dgrid');
+    D.days.forEach(d => {
+      const c = el('div', 'dday ' + d.state + (d.day === 7 ? ' d7' : ''));
+      c.appendChild(el('small', null, d.day === 7 ? 'День 7 · сундук' : 'День ' + d.day));
+      c.appendChild(el('b', null, '+' + d.coins + ' 🪙'));
+      c.appendChild(el('span', null, '+' + d.xp + ' XP'));
+      if (d.item && CAT[d.item]) c.appendChild(el('div', 'gift', CAT[d.item].e));
+      grid.appendChild(c);
+    });
+    box.appendChild(grid);
+    if (D.can_claim) { const b = el('button', 'buy', '🎁 Забрать бонус'); b.addEventListener('click', claimDaily); box.appendChild(b); }
+    box.appendChild(el('div', 'dnote', D.boost ? 'Бонус серии: +' + D.boost + '% к монетам и опыту' : 'Каждая пройденная неделя серии добавляет +25% к монетам и опыту (до +100%)'));
+    box.appendChild(el('div', 'dnote', 'Заходите каждый день: награда растёт. Пропустите день — серия начнётся заново.'));
+    box.appendChild(el('div', 'dnote', 'Лучшая серия: ' + D.best + ' · бонусов забрано: ' + D.total));
+  }
+  // claimDaily — «Забрать бонус»: действие claim_daily на сервер; в ответе новое состояние и, возможно, новые достижения (серия)
+  async function claimDaily() {
+    if (dailyBusy) return; dailyBusy = true; haptic('light');
+    try { const r = await rpc('claim_daily'); if (r) { toast(r.say, 4500); haptic(r.ok ? 'ok' : 'err'); onAch(r); } } finally { dailyBusy = false; }
+  }
   function onAch(r) {
     if (!r || !r.ach_new || !r.ach_new.length) return;
     const t = r.ach_new.map(a => a.e + ' ' + a.n).join('\n');
