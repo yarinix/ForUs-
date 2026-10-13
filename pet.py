@@ -37,10 +37,10 @@ FLOORS = {"hunger": 15, "happy": 15, "energy": 20}
 # Во сне сытость и радость тратятся вдвое медленнее, а энергия растёт.
 DECAY_PER_HOUR = {"hunger": 2.0, "happy": 1.5, "energy": 2.0}
 SLEEP_DECAY_FACTOR = 0.5
-NIGHT_ENERGY_FACTOR = 1.5      # ночью (по местным часам) энергия тратится быстрее
+NIGHT_ENERGY_FACTOR = 1.5
 MAX_DECAY_HOURS = 72
-SLEEP_MIN_H, SLEEP_MAX_H = 2.0, 8.0   # длина сна зависит от усталости
-SLEEP_NEEDS_BELOW = 85                # выше этой энергии спать не хочется
+SLEEP_MIN_H, SLEEP_MAX_H = 2.0, 8.0
+SLEEP_NEEDS_BELOW = 85
 
 TZ = "Asia/Omsk"                      # app.py подставляет BOT_TIMEZONE
 ADMIN_IDS = []                        # app.py подставляет id админов (PET_ADMIN_IDS)
@@ -101,12 +101,12 @@ def _wear(name: str, slot: str, rarity: str, legacy: bool = False, price: int = 
 # ---------------------------------------------------------------------------
 CATALOG = {
     # --- еда ---
-    "fish":   {"k": "food", "n": "Рыбка",    "p": 5,  "e": "🐟", "hu": 28, "hp": 3,  "xp": 6, "base": True},
-    "shrimp": {"k": "food", "n": "Креветки", "p": 8,  "e": "🦐", "hu": 35, "hp": 4,  "xp": 8},
-    "crab":   {"k": "food", "n": "Краб",     "p": 12, "e": "🦀", "hu": 45, "hp": 6,  "xp": 11},
-    "oyster": {"k": "food", "n": "Устрицы",  "p": 16, "e": "🦪", "hu": 40, "hp": 8,  "en": 8, "xp": 12},
-    "cake":   {"k": "food", "n": "Тортик",   "p": 18, "e": "🍰", "hu": 25, "hp": 25, "xp": 14},
-    "sushi":  {"k": "food", "n": "Суши-сет", "p": 22, "e": "🍣", "hu": 60, "hp": 10, "xp": 16},
+    "fish":   {"k": "food", "n": "Рыбка",    "p": 5,  "e": "🐟", "hu": 20, "hp": 2,  "xp": 5,  "base": True},
+    "shrimp": {"k": "food", "n": "Креветки", "p": 8,  "e": "🦐", "hu": 30, "hp": 5,  "xp": 8},
+    "crab":   {"k": "food", "n": "Краб",     "p": 12, "e": "🦀", "hu": 42, "hp": 8,  "xp": 12},
+    "oyster": {"k": "food", "n": "Устрицы",  "p": 16, "e": "🦪", "hu": 32, "hp": 10, "en": 18, "xp": 14},
+    "cake":   {"k": "food", "n": "Тортик",   "p": 18, "e": "🍰", "hu": 18, "hp": 35, "xp": 15},
+    "sushi":  {"k": "food", "n": "Суши-сет", "p": 24, "e": "🍣", "hu": 58, "hp": 15, "en": 10, "xp": 19},
     # --- одежда: 5 слотов × 3 вещи (рисунки лежат в pet.html под теми же id) ---
     # голова
     "bucket":   _wear("Панамка",             "head", "common"),
@@ -674,7 +674,7 @@ def _apply(st: dict, action: str, now: float, p: dict):
             return False, REFUSE["forage_room"], 0, 0
         if st["energy"] < 15:
             return False, REFUSE["play_tired"], 0, 0
-        st["energy"] = _clamp(st["energy"] - 12)
+        st["energy"] = _clamp(st["energy"] - 6)
         st["happy"] = _clamp(st["happy"] + 8)
         st["hunger"] = _clamp(st["hunger"] - 4)
         coins_delta = random.randint(*FORAGE_COINS)
@@ -686,7 +686,7 @@ def _apply(st: dict, action: str, now: float, p: dict):
             return False, REFUSE["angle_room"], 0, 0
         if st["energy"] < 15:
             return False, REFUSE["play_tired"], 0, 0
-        st["energy"] = _clamp(st["energy"] - 10)
+        st["energy"] = _clamp(st["energy"] - 5)
         st["happy"] = _clamp(st["happy"] + 8)
         st["hunger"] = _clamp(st["hunger"] - 3)
         st["coins"] += 5
@@ -704,7 +704,7 @@ def _apply(st: dict, action: str, now: float, p: dict):
             return False, REFUSE["play_room"], 0, 0
         if st["energy"] < 15:
             return False, REFUSE["play_tired"], 0, 0
-        st["energy"] = _clamp(st["energy"] - 10)
+        st["energy"] = _clamp(st["energy"] - 4)
         st["happy"] = _clamp(st["happy"] + 15)
         st["hunger"] = _clamp(st["hunger"] - 3)
         st["coins"] += 6
