@@ -343,6 +343,7 @@
 
   <div id="actions">
     <button class="act main" id="mainact" data-a="play"><span class="em" data-icon="ball" data-k="4"></span><span class="txt"><b class="lbl">Играть</b><small>заработать монеты</small></span></button>
+    <button class="chipbtn alt" id="tentsleep" style="display:none;width:100%;margin-top:7px">⛺ Спать в палатке</button>
     <div id="hint">Нажми на питомца, чтобы погладить 💕</div>
   </div>
 
@@ -700,7 +701,10 @@
     updateLocBtn(); syncAmbient();
     a.style.visibility = (view.trans || (S && S.sleeping)) ? 'hidden' : 'visible';
     const em = a.querySelector('.em'); if (em.dataset.cur !== r.icon) { em.dataset.cur = r.icon; em.textContent = ''; em.appendChild(icon(r.icon, 4)); }
+    const ts = $('tentsleep');
+    if (ts) { const tent = S && S.placed && S.placed.tent; ts.style.display = (!view.trans && outdoor(view.cur) && tent && tent.room === view.cur && !(S && S.sleeping)) ? '' : 'none'; }
   }
+  $('tentsleep').addEventListener('click', () => act('sleep', $('tentsleep')));
   async function move(to) {
     if (busy || view.trans || !to) return; busy = true; haptic('light');
     try {
@@ -2171,6 +2175,21 @@
       if ((o.c.pl !== 'wall' && o.y > view.baseY + 4) !== front) continue;
       const x = o.x - (o.f.w >> 1) + dx, y = o.c.pl === 'wall' ? o.y - (o.f.h >> 1) : o.y - o.f.h;
       sx.drawImage(o.f.c, x, y);
+      if (o.id === 'aquarium') {
+        const fx = x + 8 + Math.round((Math.sin(now / 520) + 1) * 5);
+        const fy = y + 9 + Math.round(Math.sin(now / 280) * 2);
+        spr({ x: sx, w: 0, h: 0 }, fx, fy, ['..oo...', '.oooooo', 'oookoo.', '.oooooo', '..oo...'], { o: '#ffb15c', k: OUT });
+        const bx = x + 20 + Math.round(Math.sin(now / 700) * 4);
+        spr({ x: sx, w: 0, h: 0 }, bx, y + 14 + Math.round(Math.cos(now / 430) * 2), ['.bbb.', 'bbkbb', '.bbb.'], { b: '#8aa7ff', k: OUT });
+        if (Math.floor(now / 650) % 3 === 0) { sx.fillStyle = 'rgba(255,255,255,.7)'; sx.fillRect(x + 14 + Math.floor(now / 180) % 9, y + 5, 1, 2); }
+      }
+      if (o.id === 'tv') {
+        const pulse = Math.floor(now / 230) % 4;
+        sx.fillStyle = pulse === 0 ? 'rgba(255,255,255,.24)' : pulse === 1 ? 'rgba(255,95,125,.16)' : 'rgba(70,180,255,.12)';
+        sx.fillRect(x + 4, y + 5, 26, 17);
+        const shift = Math.floor(now / 170) % 5;
+        sx.fillStyle = 'rgba(255,255,255,.3)'; sx.fillRect(x + 5, y + 6 + shift, 24, 1);
+      }
       if (o.id === 'campfire') spr({ x: sx, w: 0, h: 0 }, x + 8, y + 3, FLAME[Math.floor(now / 160) % 3], FLAMEMAP);
       if (view.edit && sel === o.id) {
         sx.fillStyle = (Math.floor(now / 350) % 2) ? '#ffe27a' : '#ffffff';
