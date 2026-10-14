@@ -38,6 +38,7 @@ from google import genai
 from google.genai import types as genai_types
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
+import pet_garden  # отдельная локация сада
 import pet  # игра «Наша выдра» (pet.py лежит рядом с app.py)
 
 # Настройка логирования
@@ -342,6 +343,22 @@ class WebAppHandler(BaseHTTPRequestHandler):
                 self._reply(200, content, "text/html; charset=utf-8")
             except Exception:
                 self._reply(404, b"Pet page not found")
+        elif path.startswith("/pet-garden/"):
+            # Только известные файлы, без произвольного доступа к static.
+            assets = {
+                "garden.js": "application/javascript; charset=utf-8",
+                "garden.css": "text/css; charset=utf-8",
+                "assets/clearing.webp": "image/webp",
+            }
+            asset = path[len("/pet-garden/"):]
+            if asset not in assets:
+                self._reply(404)
+                return
+            try:
+                with open(os.path.join(BASE_DIR, "static", "garden", asset), "rb") as f:
+                    self._reply(200, f.read(), assets[asset])
+            except OSError:
+                self._reply(404)
         elif path.startswith("/img/"):
             token = path[5:].split(".")[0]
             with _drawings_lock:
@@ -359,7 +376,7 @@ class WebAppHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = urllib.parse.urlparse(self.path).path
-        if path in ("/api/pet/state", "/api/pet/action", "/api/pet/admin"):
+        if path in ("/api/pet/state", "/api/pet/action", "/api/pet/admin", "/api/pet/garden/state", "/api/pet/garden/action"):
             self._pet_api(path)
             return
         if path != "/api/upload":
@@ -498,7 +515,15 @@ class WebAppHandler(BaseHTTPRequestHandler):
                 self._reply(403, b"Forbidden")
                 return
             my_key = admin_pet_key(tg_user["id"]) if test_mode else pet_key_for_user(tg_user["id"])   # с каким питомцем работает этот запрос
-            if path == "/api/pet/state":
+            if path in ("/api/pet/garden/state", "/api/pet/garden/action"):
+                # Гости не могут изменять чужой сад; ключ берётся только из подписи.
+                if data.get("view_user_id") is not None:
+                    self._reply(403, b"Forbidden")
+                    return
+                action = str(data.get("action") or "")[:32] if path.endswith("/action") else None
+                result = pet_garden.handle(get_db, tg_user["id"], names, pet_key=my_key,
+                                           action=action, params=data)
+            elif path == "/api/pet/state":
                 caller_id = tg_user["id"]
                 if data.get("people") and test_mode:
                     result = {"ok": True, "people": [], "you": caller_id}      # админского питомца навестить нельзя
@@ -3337,6 +3362,7 @@ async def main():
     logging.info("Инициализация базы данных...")
     await asyncio.to_thread(init_db)
     await asyncio.to_thread(pet.init_tables, get_db)
+    await asyncio.to_thread(pet_garden.init_tables, get_db)
     logging.info("База данных готова.")
 
     # Имена из профилей Telegram (работает, если человек уже писал боту)
