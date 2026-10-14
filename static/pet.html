@@ -660,7 +660,7 @@
   // setTestMode(false) — возвращаемся к общему. Состояние берём заново, как при первом запуске.
   async function setTestMode(on) {
     if (testMode === on) return;
-    testMode = on; peopleLoaded = false; seenTs = 0;
+    testMode = on; peopleLoaded = false; seenTs = 0; dailyPopShown = false;
     setGuestMode(null);                                             // из гостей выходим, если были
     $('testnote').classList.toggle('on', on);
     $('visitcard').style.display = 'none';                          // «Навестить» вернётся после loadPeople
@@ -2141,6 +2141,7 @@
       if (r.state) { render(r.state); seenTs = Math.max(seenTs, r.state.last_ts || 0); }
       SFX.play(r.ok ? ({ buy: 'buy', wear: 'wear', unwear: 'wear', place: 'place', unplace: 'place', claim: 'claim', claim_ach: 'claim', claim_daily: 'claim', unlock: 'unlock' }[action] || 'ok') : 'no');
       if (r.ok && r.state && before && r.state.level > before.level) SFX.play('level', 650);
+      if (r.ok) onAch(r);
       return r;
     } catch (e) {
       if (String(e.message) === 'auth') veil(AUTH_MSG); else toast('Связь потерялась, попробуй ещё раз 📡');
@@ -2554,7 +2555,7 @@
       unlocking = true;
       try {
         const r = await rpc('unlock', { item: 'forest' });
-        if (r) { toast(r.say, 3500); haptic(r.ok ? 'ok' : 'err'); onAch(r); if (r.ok) { SFX.play('unlock'); show('loc'); } }
+        if (r) { toast(r.say, 3500); haptic(r.ok ? 'ok' : 'err'); if (r.ok) { SFX.play('unlock'); show('loc'); } }
       } finally { unlocking = false; }
     };
     const msg = 'Открыть «' + info.n + '» за ' + info.p + ' монет?';
@@ -2634,7 +2635,7 @@
   // claimDaily — «Забрать бонус»: действие claim_daily на сервер; в ответе новое состояние и, возможно, новые достижения (серия)
   async function claimDaily() {
     if (dailyBusy) return; dailyBusy = true; haptic('light');
-    try { const r = await rpc('claim_daily'); if (r) { closeDailyPop(); toast(r.say, 4500); haptic(r.ok ? 'ok' : 'err'); onAch(r); } } finally { dailyBusy = false; }
+    try { const r = await rpc('claim_daily'); if (r) { closeDailyPop(); toast(r.say, 4500); haptic(r.ok ? 'ok' : 'err'); } } finally { dailyBusy = false; }
   }
   function onAch(r) {
     if (!r || !r.ach_new || !r.ach_new.length) return;
@@ -2731,7 +2732,7 @@
   }
   async function claimAch(id) {
     if (achBusy) return; achBusy = true; haptic('light');
-    try { const r = await rpc('claim_ach', { item: id }); if (r) { toast(r.say, 4500); haptic(r.ok ? 'ok' : 'err'); onAch(r); } } finally { achBusy = false; }
+    try { const r = await rpc('claim_ach', { item: id }); if (r) { toast(r.say, 4500); haptic(r.ok ? 'ok' : 'err'); } } finally { achBusy = false; }
   }
 
   SFX.setNight(() => dayAlpha() > 0.18);
