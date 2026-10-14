@@ -770,10 +770,18 @@ def _apply(st: dict, action: str, now: float, p: dict):
         st["wake_pending"] = False
         xp_delta = 2
         st["xp"] += xp_delta
+        bonus_coins = _level_up(st)
+        coins_delta += bonus_coins
         h, m = int(hours), int(round((hours - int(hours)) * 60))
+        if m == 60:
+            h += 1
+            m = 0
         left = (f"{h} ч " if h else "") + (f"{m} мин" if m else "")
         place_text = " в палатке" if tent_ready else ""
-        return True, random.choice(SAY["sleep"]) + place_text + f" Проспит около {left.strip()}.", 0, xp_delta
+        say = random.choice(SAY["sleep"]) + place_text + f" Проспит около {left.strip()}."
+        if bonus_coins:
+            say = f"🎉 Новый уровень: {st['level']}! +{bonus_coins} монет. " + say
+        return True, say, coins_delta, xp_delta
 
     elif action == "pet":
         st["happy"] = _clamp(st["happy"] + 6)
@@ -887,11 +895,11 @@ def _today(now: float) -> int:
 
 def _claim_daily(st: dict, stats: dict, user_id: int, now: float):
     """Ежедневный бонус за вход. Возвращает (ok, say, coins_delta, xp_delta).
-    Сначала засчитываем сегодняшний заход (серия обновляется), потом выдаём награду за этот день серии."""
+    Сначала проверяем, не получен ли уже бонус сегодня, затем засчитываем сегодняшний заход и выдаём награду."""
     today = _today(now)
-    ach.touch_day(stats, today)
     if ach.daily_claimed(stats, today):
         return False, "Бонус дня уже получен ✅ Заходите завтра!", 0, 0
+    ach.touch_day(stats, today)
     rw = ach.daily_reward(stats.get("streak", 1))
     coins, xp, item = rw["coins"], rw["xp"], rw["item"]
     _give(st, coins, xp, item)
@@ -1123,7 +1131,11 @@ def admin(get_db, user_id: int, op: str, p: dict, names=None, pet_key=PET_KEY) -
             elif op == "fill":                       # все характеристики на максимум
                 st["hunger"] = st["happy"] = st["energy"] = 100.0
             elif op == "sleep":
-                hours = max(0.05, min(24.0, float(p.get("hours") or 1)))
+                try:
+                    raw_h = float(p.get("hours") or 1)
+                except (TypeError, ValueError):
+                    raw_h = 1.0
+                hours = max(0.05, min(24.0, raw_h))
                 st["room"] = "bedroom"
                 st["sleep_until"] = now + hours * 3600
                 st["wake_pending"] = False

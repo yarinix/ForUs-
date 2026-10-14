@@ -177,7 +177,9 @@ def claim(cur, pet_key: str, ach_id: str, vals: dict):
     if cur.fetchone():
         return "claimed", None
     cur.execute("INSERT INTO pet_ach (pet_key, ach_id, claimed_ts) VALUES (%s, %s, %s)"
-                " ON CONFLICT (pet_key, ach_id) DO NOTHING", (pet_key, ach_id, time.time()))
+                " ON CONFLICT (pet_key, ach_id) DO NOTHING RETURNING 1", (pet_key, ach_id, time.time()))
+    if not cur.fetchone():
+        return "claimed", None
     coins, xp = REWARD[a[6]]
     return "ok", {"coins": coins, "xp": xp, "item": a[7], "name": a[2]}
 
@@ -277,7 +279,11 @@ def admin_daily_reset(stats: dict) -> None:
 def admin_set_streak(stats: dict, today: int, n: int) -> None:
     """Для проверки: подстроить серию так, чтобы сегодняшний бонус был за день n (и его можно было забрать)."""
     n = max(1, min(400, int(n)))
-    _set(stats, "streak", n - 1)
-    _set(stats, "last_day", today - 1)
+    if n == 1:
+        _set(stats, "streak", 0)
+        _set(stats, "last_day", 0)
+    else:
+        _set(stats, "streak", n - 1)
+        _set(stats, "last_day", today - 1)
     _set(stats, "daily_last", 0)
     _set(stats, "streak_max", max(stats.get("streak_max", 0), n - 1))

@@ -84,8 +84,8 @@ pet.ADMIN_IDS = [
 ] or ALLOWED_USER_IDS[:1]
 
 # Если "1" — рисунки принимаются ТОЛЬКО с подписью Telegram (initData).
-# Включай после того, как добавишь отправку initData в static/draw.html.
-REQUIRE_WEBAPP_AUTH = os.getenv("REQUIRE_WEBAPP_AUTH", "0") == "1"
+# По умолчанию включено для защиты от подделки запросов.
+REQUIRE_WEBAPP_AUTH = os.getenv("REQUIRE_WEBAPP_AUTH", "1") == "1"
 
 MAX_UPLOAD_BYTES = 12 * 1024 * 1024  # лимит тела запроса /api/upload
 MAX_STASH_BYTES = 4 * 1024 * 1024  # лимит для рисунков из инлайн-режима
@@ -197,7 +197,9 @@ def validate_webapp_init_data(init_data: str, max_age: int = 86400):
         ).hexdigest()
         if not hmac.compare_digest(calculated, received_hash):
             return None
-        if time.time() - int(pairs.get("auth_date", "0")) > max_age:
+        auth_date = int(pairs.get("auth_date", "0"))
+        now = time.time()
+        if auth_date <= 0 or now - auth_date > max_age or auth_date - now > 300:
             return None
         user = json.loads(pairs.get("user", "{}"))
         if not isinstance(user.get("id"), int):
@@ -868,8 +870,8 @@ def update_memory(user_id, mem_id: int, content: str = None, importance=None) ->
         with conn.cursor() as cursor:
             cursor.execute(
                 "SELECT importance FROM memories WHERE id = %s"
-                " AND (user_id = %s OR user_id IS NULL)",
-                (mem_id, user_id),
+                " AND (user_id = %s OR (user_id IS NULL AND %s = TRUE))",
+                (mem_id, user_id, user_id in COUPLE_USER_IDS),
             )
             row = cursor.fetchone()
             if not row:
@@ -2275,7 +2277,7 @@ COMMANDS_HELP = (
     "📋 <b>Доступные команды бота:</b>\n\n"
     "• /start — приветствие и справка\n"
     "• /command — список команд\n"
-    "• /adduser <telegram_id> — добавить пользователя (только владелец)\n"
+    "• /adduser &lt;telegram_id&gt; — добавить пользователя (только владелец)\n"
     "• /draw — холст для рисования\n"
     "• /pet — игра «Наша выдра»\n"
     "• /remind &lt;когда и что&gt; — напоминание (например: завтра в 18:00 купить цветы)\n"
@@ -2426,23 +2428,24 @@ async def cmd_memory_delete(message: types.Message, command: CommandObject):
 async def cmd_memory_clear(message: types.Message):
     if not is_allowed(message.from_user):
         return
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="🗑 Только мою память", callback_data="mclear:me")],
-            [InlineKeyboardButton(
-                text="💥 Мою и общую память пары", callback_data="mclear:all"
-            )],
-            [InlineKeyboardButton(text="Отмена", callback_data="mclear:cancel")],
-        ]
-    )
-    await message.answer(
+    in_couple = message.from_user.id in COUPLE_USER_IDS
+    rows = [[InlineKeyboardButton(text="🗑 Только мою память", callback_data="mclear:me")]]
+    if in_couple:
+        rows.append([InlineKeyboardButton(
+            text="💥 Мою и общую память пары", callback_data="mclear:all"
+        )])
+    rows.append([InlineKeyboardButton(text="Отмена", callback_data="mclear:cancel")])
+    keyboard = InlineKeyboardMarkup(inline_keyboard=rows)
+    text = (
         "Что очистить?\n\n"
         "• «Только мою» — твои личные записи. Общая память пары и память"
         " партнёра останутся.\n"
         "• «Мою и общую» — ещё и всё, что общее для вас обоих (затронет и"
-        " партнёра!).",
-        reply_markup=keyboard,
+        " партнёра!)."
+        if in_couple
+        else "Очистить твою личную память?"
     )
+    await message.answer(text, reply_markup=keyboard)
 
 
 @dp.callback_query(F.data.startswith("mclear:"))
@@ -2455,11 +2458,12 @@ async def cb_memory_clear(callback: types.CallbackQuery):
     if action == "cancel":
         result = "Отменено, память не тронута."
     elif action in ("me", "all"):
-        await asyncio.to_thread(clear_memory, callback.from_user.id, action == "all")
+        both = action == "all" and callback.from_user.id in COUPLE_USER_IDS
+        await asyncio.to_thread(clear_memory, callback.from_user.id, both)
         result = (
-            "🧹 Твоя личная память очищена."
-            if action == "me"
-            else "🧹 Очищена личная и общая память пары."
+            "🧹 Очищена личная и общая память пары."
+            if both
+            else "🧹 Твоя личная память очищена."
         )
     else:
         await callback.answer()
