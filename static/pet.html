@@ -246,6 +246,8 @@
   @media (max-height: 640px) { #avatar { width: 42px; height: 42px; } .act .em { width: 36px; height: 36px; font-size: 22px; } }
   @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 </style>
+<link rel="stylesheet" href="/pet-garden/garden.css?v=1">
+<script defer src="/pet-garden/garden.js?v=1"></script>
 </head>
 <body>
 
@@ -274,6 +276,7 @@
     <button class="arrow" id="arL" style="left:6px"><span data-icon="arrL" data-k="4"></span><small>Кухня</small></button>
     <button class="arrow" id="arR" style="right:6px"><span data-icon="arrR" data-k="4"></span><small>Спальня</small></button>
     <button class="chipbtn" id="locedit" type="button">🛠 Обустроить</button>
+    <button class="chipbtn" id="gardenentry" type="button" hidden>🌱 Двор</button>
     <div id="bubble"></div>
     <div id="sleepbar"><div id="sleeptxt"></div><button class="chipbtn alt" id="wakebtn">Разбудить</button></div>
   </div>
@@ -3091,6 +3094,7 @@
   }
   const goOut = () => stepOut('go_out'), goIn = () => stepOut('go_in');
   function updateLocBtn() {
+    const ge = $('gardenentry'); if (ge) ge.hidden = !(tab === 'loc' && view.cur === 'forest' && !view.edit && !view.trans && !isGuest() && hasForest(S));
     const b = $('locedit'); if (!b) return;
     b.style.display = (tab === 'loc' && !view.edit && !view.trans && !isGuest() && outdoor(view.cur)) ? 'block' : 'none';
   }
@@ -3258,6 +3262,16 @@
   new ResizeObserver(() => { layout(); }).observe($('stage'));
   window.addEventListener('resize', layout);
   setInterval(() => { const n = performance.now(); frame(n); if (tab === 'wardrobe') wardFrame(n); }, 100);
+
+  // Единственная связь отдельного сада с прежней игрой. Общие деньги обновляются сразу.
+  window.PetGardenBridge = {
+    api, state: () => S, guest: isGuest,
+    canEnter: () => !!(S && hasForest(S) && !isGuest() && tab === 'loc' && view.cur === 'forest' && !view.edit && !view.trans && !busy),
+    sync: st => { if (st) render(st); },
+    sound: name => SFX.play(name), haptic,
+    back: () => { show('loc', { quiet: true, noMove: true }); refresh(false); },
+    telegram: tg,
+  };
 
   window.__pet = { otter, view, drawOtter, newLayer };   // для отладки
 
