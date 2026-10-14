@@ -1095,31 +1095,7 @@
     windowFrame(R, wx, wy, ww, wh, '#8f5630', '#f08a4b', '#e0703a');
     lightPatch(R, wx, wy, ww, wh, H, fy, night, 0.7);                               // пятно света: солнце днём, луна ночью
     view.win.home = { wx, wy, ww, wh, cover: .7 };                                  // где окно и луч — для пылинок (drawMotes)
-    const sx0 = Math.round(W * 0.50), sy = fy - 33, sw = W - sx0 - 4;
-    shadeRect(R, sx0 + 2, sy + 3, sw - 2, 3, .15);                                  // тень полки на стене
-    prop(R, T => {
-      rect(T, sx0, sy, sw, 3, '#a2693a'); rect(T, sx0 + 4, sy + 3, 3, 5, '#7e4d2a'); rect(T, sx0 + sw - 8, sy + 3, 3, 5, '#7e4d2a');
-      ell(T, sx0 + 10, sy - 4, 5, 4, ['#e98062', '#cf6347', '#a94a31']); rect(T, sx0 + 5, sy - 8, 11, 2, '#b4543a');
-      [[-5, -14], [4, -15], [0, -19], [-8, -10], [8, -11]].forEach(([a, b]) => ell(T, sx0 + 10 + a, sy + b + 2, 2.6, 4.2, ['#7fd37e', '#4eaa56', '#2f7f3d']));
-      rect(T, sx0 + 22, sy - 17, 17, 15, '#7e4d2a'); rect(T, sx0 + 24, sy - 15, 13, 11, '#bfe3ff'); ell(T, sx0 + 30, sy - 6, 7, 4, ['#7fd08a', '#4fae5b']); dot(T, sx0 + 33, sy - 12, '#fff6a8');
-      rect(T, sx0 + sw - 17, sy - 10, 4, 10, '#4a79d8'); rect(T, sx0 + sw - 13, sy - 12, 4, 12, '#d8573f'); rect(T, sx0 + sw - 9, sy - 9, 4, 9, '#4aa56b'); rect(T, sx0 + sw - 5, sy - 11, 3, 11, '#e8b84a');
-    });
-    shadeRect(R, W - 21, fy - 61, 17, 19, .16);                                     // тень картины на стене
-    prop(R, T => { rect(T, W - 22, fy - 62, 16, 18, '#f0c585'); rect(T, W - 20, fy - 60, 12, 14, '#f7dba5'); ell(T, W - 14, fy - 51, 3.4, 3, ['#c08a54', '#9a6a3c']); [[-4, -6], [0, -7], [4, -6], [-6, -3]].forEach(([a, b]) => dot(T, W - 14 + a, fy - 51 + b, '#9a6a3c')); });
-    const cx = Math.round(W * 0.47);
-    prop(R, T => { flat(T, cx, baseY + 4, W * 0.42, 14, '#e7b98a'); }, W, H);
-    flat(R, cx, baseY + 4, W * 0.42 - 1, 13, '#f3dcb6'); flat(R, cx, baseY + 4, W * 0.30, 9, '#ecc99a'); flat(R, cx, baseY + 4, W * 0.20, 6, '#f6e3c1');
-    for (let x = cx - W * 0.38; x < cx + W * 0.38; x += 4) { dot(R, x, baseY + 4 - 11, '#d9a773'); dot(R, x + 2, baseY + 4 + 12, '#d9a773'); }
-    const bx = W - 26, by = baseY + 10;
-    shade(R, bx + 1, by + 11, 27, 4.5, .24);                                        // тень лежанки
-    prop(R, T => { ell(T, bx, by, 25, 12, BLUE); flat(T, bx, by - 1, 16, 7, '#efe3cc'); ell(T, bx, by - 2, 16, 6, ['#efe3cc', '#e2d3b6']); [[0, 0], [-4, -3], [0, -4], [4, -3]].forEach(([a, b], i) => ell(T, bx + a, by + b - 1, i ? 1.3 : 2.2, i ? 1.3 : 1.6, ['#cdbb9b'])); });
-    // сундук с игрушками
-    shade(R, 17, baseY + 27, 15, 3, .24);
-    prop(R, T => { rect(T, 6, baseY + 14, 22, 12, '#a9683a'); rect(T, 6, baseY + 14, 22, 4, '#c98450'); rect(T, 15, baseY + 17, 4, 4, '#ffd93d'); rect(T, 6, baseY + 22, 22, 1, '#7e4d2a'); ell(T, 12, baseY + 12, 3.5, 3.5, ['#ff7a8a', '#d9485d']); ell(T, 22, baseY + 12, 3.5, 3.5, ['#7fb0ff', '#3560c4']); });
-    shade(R, W - 52, baseY + 28, 6, 1.8, .22);
-    prop(R, T => { ell(T, W - 53, baseY + 22, 5.5, 5.5, BLUE); for (let i = -4; i <= 4; i++) dot(T, W - 53 + i, baseY + 22 + Math.round(i * .35) - 1, '#fff'); });
-    shade(R, W - 39, baseY + 28, 5, 1.6, .2);
-    prop(R, T => { spr(T, W - 43, baseY + 24, ['bb....bb', 'bbbbbbbb', 'bbbbbbbb', 'bb....bb'], { b: '#fbf1de' }); });
+    // Вся мебель гостиной (полка, картина, ковёр, лежанка, сундук, мячик, косточка) теперь отдельные предметы: см. FURN и STD_PLACE в pet.py.
     return R;
   }
 
@@ -1130,7 +1106,7 @@
     for (let x = 3; x < W; x += 9) for (let y = 1; y < fy - 40; y += 3) if (((x + y) % 2) === 0) dot(R, x, y, '#cfe9d6');
     // плитка над столешницей
     const cy = fy - 24;
-    for (let y = cy - 20; y < cy; y += 5) for (let x = 38; x < W - 28; x += 5) { rect(R, x, y, 4, 4, ((x + y) / 5 | 0) % 2 ? '#9fd8d2' : '#e8fbf7'); }
+    for (let y = cy - 12; y < cy + 8; y += 5) for (let x = 38; x < W - 28; x += 5) { rect(R, x, y, 4, 4, ((x + y) / 5 | 0) % 2 ? '#9fd8d2' : '#e8fbf7'); }
     // окно
     const wx = 6, wy = 16, ww = 24, wh = 26;
     if (night) nightWindow(R, wx, wy, ww, wh);                                      // вид за окном по времени суток
@@ -1144,42 +1120,7 @@
     drawFloor(R, W, H, fy, '#f6ecd6', '#8fcfc8', '#5aa7a0', 'tile');
     aoStrip(R, W, fy);
     lightPatch(R, wx, wy, ww, wh, H, fy, night, 0.38); view.win.kitchen = { wx, wy, ww, wh, cover: .38 };   // луч из окна и пылинки в нём
-    shade(R, Math.round((38 + W - 32) / 2), fy + 1, (W - 70) / 2 + 3, 2.6, .24);   // тень стойки
-    // стойка со столешницей
-    prop(R, T => {
-      rect(T, 36, cy, W - 66, 4, '#e9dcc3'); rect(T, 36, cy, W - 66, 1, '#fffaf0');
-      rect(T, 38, cy + 4, W - 70, fy - cy - 4, '#c98450');
-      for (let x = 38; x < W - 32; x += 17) { rect(T, x + 1, cy + 6, 14, fy - cy - 9, '#d9975f'); rect(T, x + 1, cy + 6, 14, 1, '#f0b78a'); rect(T, x + 6, cy + 11, 4, 2, '#ffe9a8'); }
-    });
-    // мойка и кран
-    prop(R, T => { rect(T, 58, cy - 2, 16, 3, '#aab9c9'); rect(T, 60, cy - 1, 12, 2, '#6f8296'); rect(T, 66, cy - 9, 2, 8, '#c9d4e0'); rect(T, 63, cy - 10, 6, 2, '#c9d4e0'); });
-    // кастрюля, чайник и тарелка с рыбой на столешнице
-    prop(R, T => {
-      ell(T, 46, cy - 5, 6, 5, ['#c8d3df', '#97a8b9', '#6f8296']); rect(T, 40, cy - 10, 12, 2, '#6f8296'); rect(T, 52, cy - 8, 4, 1, '#6f8296');
-      flat(T, 88, cy - 2, 8, 2.5, '#ffffff'); spr(T, 83, cy - 6, ['..oooo...o', '.oooooooo.', 'ookoooooo.', '.oooooooo.', '..oooo...o'], { o: '#ff9a3c', k: OUT });
-    });
-    // холодильник
-    const fx = W - 27;
-    shade(R, fx + 12, fy + 2, 16, 3, .28);                                          // тень холодильника
-    prop(R, T => {
-      rect(T, fx, fy - 56, 24, 58, '#d6e8f7'); rect(T, fx, fy - 56, 24, 2, '#f2faff'); rect(T, fx, fy - 26, 24, 2, '#8aa7c2');
-      rect(T, fx + 18, fy - 48, 2, 14, '#7f9bb6'); rect(T, fx + 18, fy - 20, 2, 14, '#7f9bb6');
-      rect(T, fx + 3, fy - 52, 8, 7, '#ff7a8a'); rect(T, fx + 3, fy - 45, 6, 2, '#ffd93d');
-    });
-    // часы
-    prop(R, T => { ell(T, Math.round(W * 0.52), 22, 6, 6, ['#ffffff', '#e8eef5']); dot(T, Math.round(W * 0.52), 19, OUT); dot(T, Math.round(W * 0.52), 20, OUT); dot(T, Math.round(W * 0.52) + 1, 22, OUT); dot(T, Math.round(W * 0.52) + 2, 22, OUT); });
-    // коврик и миска для еды (главное место)
-    const cx = Math.round(W * 0.47);
-    prop(R, T => { flat(T, cx, baseY + 6, W * 0.36, 12, '#f08a7c'); }, W, H);
-    flat(R, cx, baseY + 6, W * 0.36 - 1, 11, '#f9b5a5'); flat(R, cx, baseY + 6, W * 0.26, 7, '#ffd0c2');
-    const mx = Math.round(W * 0.2), my = baseY + 22;
-    shade(R, mx + 1, my + 8, 15, 3, .22);                                           // тень миски
-    prop(R, T => {
-      ell(T, mx, my, 14, 8, BLUE); flat(T, mx, my - 3, 11, 3.5, '#ffb15c');
-      spr(T, mx - 6, my - 6, ['..oooo..', '.oooooo.o', 'ookooooo.', '.oooooo.o', '..oooo..'], { o: '#ff8a2a', k: OUT });
-      dot(T, mx + 5, my + 4, '#fff'); dot(T, mx + 6, my + 4, '#fff');
-    });
-    // коврик у двери вправо (стрелка)
+    // Стойка, холодильник, часы, коврик и миска теперь отдельные предметы (FURN), их можно переставлять.
     return R;
   }
 
@@ -1198,31 +1139,7 @@
     windowFrame(R, wx, wy, ww, wh, '#4e3763', '#9a62d9', '#7e48c0');
     lightPatch(R, wx, wy, ww, wh, H, fy, night, 0.6);
     view.win.bedroom = { wx, wy, ww, wh, cover: .6 };
-    // кровать справа
-    const bx = W - 50, by = fy - 4;
-    shade(R, bx + 27, by + 31, 32, 4.5, .28);                                       // тень кровати
-    prop(R, T => {
-      rect(T, bx + 2, by - 18, 46, 24, '#7a4a2b'); rect(T, bx + 2, by - 18, 46, 3, '#a9683a'); rect(T, bx + 4, by - 14, 42, 18, '#8d5736');
-      rect(T, bx, by + 4, 50, 22, '#f4efe6');                                         // матрас
-      rect(T, bx, by + 12, 50, 14, '#5f8be8'); rect(T, bx, by + 12, 50, 2, '#9ec0ff');   // одеяло
-      for (let x = bx + 4; x < bx + 48; x += 8) rect(T, x, by + 15, 4, 9, '#4a73cc');
-      ell(T, bx + 12, by + 8, 11, 5, ['#ffffff', '#e8eefc', '#c9d4ee']);                  // подушка
-      rect(T, bx, by + 26, 50, 5, '#7a4a2b'); rect(T, bx, by + 26, 50, 1, '#a9683a');
-    });
-    // тумбочка с лампой
-    const nx = Math.round(W * 0.18);
-    shade(R, 19, baseY + 17, 14, 3, .26);                                           // тень тумбочки
-    prop(R, T => {
-      rect(T, 8, baseY - 2, 20, 18, '#a9683a'); rect(T, 8, baseY - 2, 20, 3, '#c98450'); rect(T, 12, baseY + 6, 12, 5, '#8d5736'); rect(T, 17, baseY + 8, 2, 1, '#ffe9a8');
-      rect(T, 16, baseY - 8, 4, 6, '#6f8296'); ell(T, 18, baseY - 14, 7, 5, ['#fff0a8', '#ffd45c', '#e8a93a']);
-    });
-    for (let y = baseY - 30; y < baseY + 2; y++) for (let x = 0; x < 40; x++) { const d = Math.hypot(x - 18, (y - (baseY - 14)) * 1.2); if (d < 26 && ((x + y) & 1) === 0 && d > 8) dot(R, x, y, '#ffe9a8'); }
-    // круглый коврик и плюшевая игрушка
-    const cx = Math.round(W * 0.47);
-    prop(R, T => { flat(T, cx, baseY + 6, W * 0.4, 13, '#b9a2ee'); }, W, H);
-    flat(R, cx, baseY + 6, W * 0.4 - 1, 12, '#d3c3f8'); flat(R, cx, baseY + 6, W * 0.28, 8, '#bba3f0'); flat(R, cx, baseY + 6, W * 0.16, 4, '#e6dcfb');
-    shade(R, W - 34, baseY + 29, 8, 2, .22);                                        // тень игрушки
-    prop(R, T => { ell(T, W - 34, baseY + 24, 6, 5.5, FUR, { d: .1 }); ell(T, W - 39, baseY + 20, 2.4, 2.4, FUR); ell(T, W - 29, baseY + 20, 2.4, 2.4, FUR); dot(T, W - 36, baseY + 23, OUT); dot(T, W - 32, baseY + 23, OUT); });
+    // Кровать, тумбочка с лампой, ковёр и плюшевая игрушка теперь отдельные предметы (FURN), их можно переставлять.
     return R;
   }
 
@@ -1444,7 +1361,7 @@
   }
   function itemShadow(o, dx) {
     if (o.c.pl === 'wall') { sx.globalAlpha = .26; sx.drawImage(furnSil(o.f), o.x - (o.f.w >> 1) + dx + 1, o.y - (o.f.h >> 1) + 2); sx.globalAlpha = 1; return; }
-    if (o.id === 'picnic') return;                              // плед лежит на земле плашмя — тени у него нет
+    if (o.id === 'picnic' || o.c.flat) return;                  // плед и ковры лежат на земле плашмя — тени у них нет
     const rx = o.f.w * (SHW[o.id] || .9) / 2;
     softShadow(sx, o.x + dx + 1, o.y - 1, rx, Math.max(2, Math.min(4, rx * .24)), .22);
   }
@@ -1512,6 +1429,16 @@
       for (let k = 0; k < n; k++) { const th = k / n * 6.2832; sx.fillRect(Math.round(cx + Math.cos(th) * r), Math.round(cy + Math.sin(th) * r * .38), 1, 1); }
     }
   }
+  // блики на воде: короткие белые чёрточки, вспыхивают то тут, то там
+  function drawGlints(now) {
+    const w = view.water; if (!w) return;
+    for (let i = 0; i < 16; i++) if ((Math.floor(now / 380 + i * 3.7) % 6) === 0) { sx.fillStyle = 'rgba(255,255,255,.8)'; sx.fillRect(Math.round(((i * 37) % 100) / 100 * view.W), w.y0 + 2 + (i * 53) % Math.max(1, w.y1 - w.y0 - 3), 2, 1); }
+  }
+  // drawWater — вся рябь на озере одним вызовом. Рисуется сразу после фона, до предметов и выдры: всё, что стоит на воде, закрывает круги.
+  function drawWater(now, tr) {
+    if (view.cur === 'lake' || (tr && tr.to === 'lake')) drawGlints(now);
+    if (view.cur === 'lake' && !tr) drawRipples(now);
+  }
   // drawLife — все «живые» детали одним вызовом. Зовётся из frame после выдры и мебели.
   // Пылинки — в домашних комнатах (и во время перехода — в обеих); остальное — только в текущей уличной комнате (не во время перехода).
   function drawLife(now, tr) {
@@ -1521,7 +1448,6 @@
     if (room === 'yard' || room === 'forest') drawButterflies(now);
     if (room === 'forest') drawLeaves(now);
     if (room === 'yard' || room === 'forest' || room === 'lake') drawTufts(now, room);
-    if (room === 'lake') drawRipples(now);
   }
 
   // ---------- сцена, комнаты, переходы ----------
@@ -1534,7 +1460,7 @@
     forest:  { title: 'Лес',         out: true, act: 'forage', icon: 'mush', label: 'Искать грибы',  sub: 'ягоды и монетки',     left: 'yard',   right: 'lake' },
     lake:    { title: 'Озеро',       out: true, act: 'angle',  icon: 'rod',  label: 'Рыбачить',      sub: 'вдруг клюнет рыбка',  left: 'forest', right: null },
   };
-  const GLOW = { lamppost: { y: 0.8, r: 24 }, campfire: { y: 0.55, r: 28 }, lamp: { y: 0.78, r: 22 } };
+  const GLOW = { lamppost: { y: 0.8, r: 24 }, campfire: { y: 0.55, r: 28 }, lamp: { y: 0.78, r: 22 }, nightstand: { y: 0.84, r: 26 } };
   const view = { K: 3, W: 112, H: 150, rooms: {}, cur: 'home', trans: null, baseY: 0, ox: 0 };
   const sc = $('pixcv'), sx = sc.getContext('2d'); sx.imageSmoothingEnabled = false;
 
@@ -1573,6 +1499,7 @@
       if (p >= 1) { view.trans = null; view.cur = tr.to; onRoomShown(); }
     } else { drawRoom(view.cur, 0); view.fx = [[view.cur, 0]]; }
     if (out) cloudShadows(now, view.W, view.fy);              // тени облаков бегут по земле
+    drawWater(now, tr);                                        // круги и блики на воде — ПОД мебелью и выдрой (лодка или скамейка их закрывают)
     for (const [r, dx] of view.fx) drawItems(r, dx, false, now);
     const blink = (Math.floor(now / 160) % 31) === 0;
     const hop = look === 'play' ? -Math.round(Math.abs(Math.sin(now / 130)) * 7) : look === 'walk' ? -(Math.floor(now / 150) % 2) : (look === 'sleep' || look === 'sleepy' ? (Math.floor(now / 900) % 2) : (Math.floor(now / 650) % 2));
@@ -1586,8 +1513,8 @@
     }
     view.curOx = ox;
     if (doorOpen) { const d = view.door; sx.fillStyle = '#2e1a10'; sx.fillRect(d.x, d.y, d.w, d.h); sx.fillStyle = '#7a4a28'; sx.fillRect(d.x + 3, d.y + (d.h >> 1), d.w - 6, d.h >> 1); sx.fillStyle = '#b8723a'; sx.fillRect(d.x, d.y, 4, d.h); }
-    // тень выдры: мягкий двойной овал; когда выдра подпрыгивает, тень сжимается и бледнеет
-    sx.globalAlpha = alpha; { const lift = Math.max(0, -hop), k = 1 - Math.min(.45, lift * .07); softShadow(sx, ox + 1, view.baseY + 2, 19 * kk * k, 3.6 * k, .3 * (1 - Math.min(.5, lift * .08))); }
+    // тень выдры: мягкий двойной овал прямо под лапками (подошвы на baseY + 5); когда выдра подпрыгивает, тень сжимается и бледнеет
+    sx.globalAlpha = alpha; { const lift = Math.max(0, -hop), k = 1 - Math.min(.45, lift * .07); softShadow(sx, ox + 1, view.baseY + 5, 17 * kk * k, 3.4 * k, .32 * (1 - Math.min(.5, lift * .08))); }
     const tentSleeping = !!(S && S.sleeping && out && S.placed && S.placed.tent && S.placed.tent.room === view.cur);
     if (!tentSleeping) {
       const backV = !!view.fish && !(view.fish.hit && now - view.fish.t0 > 3900);
@@ -1603,7 +1530,6 @@
       sx.drawImage(B.c, bx - 7, by - 7);
     }
     drawLife(now, tr);                                       // пылинки, бабочки, листья, трава, круги на воде
-    if (view.cur === 'lake' || (tr && tr.to === 'lake')) { const w = view.water; if (w) for (let i = 0; i < 16; i++) if ((Math.floor(now / 380 + i * 3.7) % 6) === 0) { sx.fillStyle = 'rgba(255,255,255,.8)'; sx.fillRect(Math.round(((i * 37) % 100) / 100 * view.W), w.y0 + 2 + (i * 53) % Math.max(1, w.y1 - w.y0 - 3), 2, 1); } }
     drawVignette(); drawWarmTint(out);                       // виньетка и тёплый свет заката
     { const a = dayAlpha() * (out ? 0.75 : 1); if (a > 0.01) { sx.fillStyle = 'rgba(10,16,64,' + a.toFixed(3) + ')'; sx.fillRect(0, 0, view.W, view.H); } }
     { const a = dayAlpha(); if (a > 0.04) {
@@ -2106,6 +2032,63 @@
       for (let x = 0; x < 56; x++) dot(L, x, yy(x), '#6e4527');
       ['#ff5a6a', '#ffd93d', '#4fa8ff', '#4eaa56'].forEach((c, k) => { for (let x = 3 + k * 4; x < 55; x += 16) rect(L, x, yy(x) + 1, 2, 3, c); }); } },
   };
+  // ---------- стандартная мебель дома ----------
+  // Раньше она была запечена в картинки комнат. Теперь это обычные предметы (их id и места по умолчанию — STD_PLACE в pet.py).
+  // std(w, h, fn) — рисует с отступом в 1 px, чтобы обводка не обрезалась по краю.
+  const std = (w, h, fn) => ({ w: w + 2, h: h + 2, draw: (L) => { L.x.save(); L.x.translate(1, 1); fn(L); L.x.restore(); } });
+  // rug — ковёр: цветной овал с ободком и бахромой (flat — одноцветные овалы поверх друг друга)
+  const rug = (w, h, cols, fringe) => (L) => {
+    const cx = w / 2, cy = h / 2;
+    flat(L, cx, cy, w / 2, h / 2, cols[0]);
+    cols.slice(1).forEach((c, i) => flat(L, cx, cy, w / 2 * (1 - .28 * (i + 1)) - 1, h / 2 * (1 - .24 * (i + 1)) - .5, c));
+    if (fringe) for (let x = cx - w * .38; x < cx + w * .38; x += 4) { dot(L, x, cy - h * .4, fringe); dot(L, x + 2, cy + h * .4, fringe); }
+  };
+  Object.assign(FURN, {
+    shelf: std(60, 27, (L) => {
+      rect(L, 0, 19, 60, 3, '#a2693a'); rect(L, 4, 22, 3, 5, '#7e4d2a'); rect(L, 52, 22, 3, 5, '#7e4d2a');
+      ell(L, 10, 15, 5, 4, ['#e98062', '#cf6347', '#a94a31']); rect(L, 5, 11, 11, 2, '#b4543a');
+      [[-5, -14], [4, -15], [0, -19], [-8, -10], [8, -11]].forEach(([a, b]) => ell(L, 10 + a, 19 + b + 2, 2.6, 4.2, ['#7fd37e', '#4eaa56', '#2f7f3d']));
+      rect(L, 22, 2, 17, 15, '#7e4d2a'); rect(L, 24, 4, 13, 11, '#bfe3ff'); ell(L, 30, 13, 7, 4, ['#7fd08a', '#4fae5b']); dot(L, 33, 7, '#fff6a8');
+      rect(L, 43, 9, 4, 10, '#4a79d8'); rect(L, 47, 7, 4, 12, '#d8573f'); rect(L, 51, 10, 4, 9, '#4aa56b'); rect(L, 55, 8, 3, 11, '#e8b84a'); }),
+    hpicture: std(16, 18, (L) => {
+      rect(L, 0, 0, 16, 18, '#f0c585'); rect(L, 2, 2, 12, 14, '#f7dba5'); ell(L, 8, 11, 3.4, 3, ['#c08a54', '#9a6a3c']);
+      [[-4, -6], [0, -7], [4, -6], [-6, -3]].forEach(([a, b]) => dot(L, 8 + a, 11 + b, '#9a6a3c')); }),
+    hrug: std(96, 28, rug(96, 28, ['#e7b98a', '#f3dcb6', '#ecc99a', '#f6e3c1'], '#d9a773')),
+    lounger: std(52, 25, (L) => {
+      ell(L, 26, 12, 25, 12, BLUE); flat(L, 26, 11, 16, 7, '#efe3cc'); ell(L, 26, 10, 16, 6, ['#efe3cc', '#e2d3b6']);
+      [[0, 0], [-4, -3], [0, -4], [4, -3]].forEach(([a, b], i) => ell(L, 26 + a, 12 + b - 1, i ? 1.3 : 2.2, i ? 1.3 : 1.6, ['#cdbb9b'])); }),
+    chest: std(22, 18, (L) => {
+      rect(L, 0, 6, 22, 12, '#a9683a'); rect(L, 0, 6, 22, 4, '#c98450'); rect(L, 9, 9, 4, 4, '#ffd93d'); rect(L, 0, 14, 22, 1, '#7e4d2a');
+      ell(L, 6, 4, 3.5, 3.5, ['#ff7a8a', '#d9485d']); ell(L, 16, 4, 3.5, 3.5, ['#7fb0ff', '#3560c4']); }),
+    ball: std(12, 12, (L) => { ell(L, 6, 6, 5.5, 5.5, BLUE); for (let i = -4; i <= 4; i++) dot(L, 6 + i, 6 + Math.round(i * .35) - 1, '#fff'); }),
+    bone: std(8, 4, (L) => { spr(L, 0, 0, ['bb....bb', 'bbbbbbbb', 'bbbbbbbb', 'bb....bb'], { b: '#fbf1de' }); }),
+    counter: std(64, 34, (L) => {
+      rect(L, 0, 10, 64, 4, '#e9dcc3'); rect(L, 0, 10, 64, 1, '#fffaf0'); rect(L, 2, 14, 60, 20, '#c98450');
+      for (let x = 2; x < 62; x += 17) { rect(L, x + 1, 16, 14, 15, '#d9975f'); rect(L, x + 1, 16, 14, 1, '#f0b78a'); rect(L, x + 6, 21, 4, 2, '#ffe9a8'); }
+      rect(L, 22, 8, 16, 3, '#aab9c9'); rect(L, 24, 9, 12, 2, '#6f8296'); rect(L, 30, 1, 2, 8, '#c9d4e0'); rect(L, 27, 0, 6, 2, '#c9d4e0');
+      ell(L, 10, 5, 6, 5, ['#c8d3df', '#97a8b9', '#6f8296']); rect(L, 4, 0, 12, 2, '#6f8296'); rect(L, 16, 2, 4, 1, '#6f8296');
+      flat(L, 52, 8, 8, 2.5, '#ffffff'); spr(L, 47, 4, ['..oooo...o', '.oooooooo.', 'ookoooooo.', '.oooooooo.', '..oooo...o'], { o: '#ff9a3c', k: OUT }); }),
+    fridge: std(24, 58, (L) => {
+      rect(L, 0, 0, 24, 58, '#d6e8f7'); rect(L, 0, 0, 24, 2, '#f2faff'); rect(L, 0, 30, 24, 2, '#8aa7c2');
+      rect(L, 18, 8, 2, 14, '#7f9bb6'); rect(L, 18, 36, 2, 14, '#7f9bb6'); rect(L, 3, 4, 8, 7, '#ff7a8a'); rect(L, 3, 11, 6, 2, '#ffd93d'); }),
+    kclock: std(13, 13, (L) => { ell(L, 6, 6, 6, 6, ['#ffffff', '#e8eef5']); dot(L, 6, 3, OUT); dot(L, 6, 4, OUT); dot(L, 7, 6, OUT); dot(L, 8, 6, OUT); }),
+    krug: std(88, 24, rug(88, 24, ['#f08a7c', '#f9b5a5', '#ffd0c2'])),
+    bowl: std(29, 17, (L) => {
+      ell(L, 14, 8, 14, 8, BLUE); flat(L, 14, 5, 11, 3.5, '#ffb15c');
+      spr(L, 8, 2, ['..oooo..', '.oooooo.o', 'ookooooo.', '.oooooo.o', '..oooo..'], { o: '#ff8a2a', k: OUT });
+      dot(L, 19, 12, '#fff'); dot(L, 20, 12, '#fff'); }),
+    bed: std(50, 49, (L) => {
+      rect(L, 2, 0, 46, 24, '#7a4a2b'); rect(L, 2, 0, 46, 3, '#a9683a'); rect(L, 4, 4, 42, 18, '#8d5736');
+      rect(L, 0, 22, 50, 22, '#f4efe6'); rect(L, 0, 30, 50, 14, '#5f8be8'); rect(L, 0, 30, 50, 2, '#9ec0ff');
+      for (let x = 4; x < 48; x += 8) rect(L, x, 33, 4, 9, '#4a73cc');
+      ell(L, 12, 26, 11, 5, ['#ffffff', '#e8eefc', '#c9d4ee']); rect(L, 0, 44, 50, 5, '#7a4a2b'); rect(L, 0, 44, 50, 1, '#a9683a'); }),
+    nightstand: std(20, 35, (L) => {
+      rect(L, 0, 17, 20, 18, '#a9683a'); rect(L, 0, 17, 20, 3, '#c98450'); rect(L, 4, 25, 12, 5, '#8d5736'); rect(L, 9, 27, 2, 1, '#ffe9a8');
+      rect(L, 8, 11, 4, 6, '#6f8296'); ell(L, 10, 5, 7, 5, ['#fff0a8', '#ffd45c', '#e8a93a']); }),
+    brug: std(96, 26, rug(96, 26, ['#b9a2ee', '#d3c3f8', '#bba3f0', '#e6dcfb'])),
+    plush: std(16, 13, (L) => {
+      ell(L, 8, 7, 6, 5.5, FUR, { d: .1 }); ell(L, 3, 3, 2.4, 2.4, FUR); ell(L, 13, 3, 2.4, 2.4, FUR); dot(L, 6, 6, OUT); dot(L, 10, 6, OUT); }),
+  });
   const FC = {};
   function furnLayer(id) {
     if (FC[id]) return FC[id];
@@ -2218,8 +2201,8 @@
     document.querySelectorAll('#shopseg button').forEach(b => b.classList.toggle('on', b.dataset.k === shopTab));
     renderWearSeg();                                          // подразделы одежды (видны только на вкладке «Одежда»)
     const box = $('shoplist'); box.textContent = '';
-    // base — стартовая еда (бесконечная), legacy — старая одежда, снятая с продажи (у кого уже куплена, носит дальше)
-    let ids = Object.keys(CAT).filter(id => CAT[id].k === shopTab && !CAT[id].base && !CAT[id].legacy);
+    // base — стартовая еда (бесконечная), legacy — старая одежда, снятая с продажи (у кого уже куплена, носит дальше), std — стандартная мебель дома (есть у всех)
+    let ids = Object.keys(CAT).filter(id => CAT[id].k === shopTab && !CAT[id].base && !CAT[id].legacy && !CAT[id].std);
     if (shopTab === 'wear') {
       if (wearSlot !== 'all') ids = ids.filter(id => CAT[id].s === wearSlot);
       // порядок: по слотам (голова → спина), внутри слота от обычного к легендарному — цена растёт вместе с редкостью
@@ -2427,13 +2410,14 @@
       const c = CAT[id], f = c && furnLayer(id); if (!f) continue;
       const p = pxOf(c, it); out.push({ id, c, f, x: p.x, y: p.y });
     }
-    out.sort((a, b) => ((a.c.pl === 'wall') ? 0 : 1) - ((b.c.pl === 'wall') ? 0 : 1) || a.y - b.y);
+    const lay = (o) => o.c.pl === 'wall' ? 0 : o.c.flat ? 1 : 2;               // стена → ковры → остальное
+    out.sort((a, b) => lay(a) - lay(b) || a.y - b.y);
     return out;
   }
   function drawItems(room, dx, front, now) {
     if (!front) for (const o of roomItems(room)) itemShadow(o, dx);   // тени всех предметов комнаты — под выдрой и под самими предметами
     for (const o of roomItems(room)) {
-      if ((o.c.pl !== 'wall' && o.y > view.baseY + 4) !== front) continue;
+      if ((o.c.pl !== 'wall' && !o.c.flat && o.y > view.baseY + 4) !== front) continue;   // ковры всегда позади выдры
       const x = o.x - (o.f.w >> 1) + dx, y = o.c.pl === 'wall' ? o.y - (o.f.h >> 1) : o.y - o.f.h;
       sx.drawImage(o.f.c, x, y);
       if (o.id === 'aquarium') {
@@ -2507,7 +2491,8 @@
   }
   function editDown(e) {
     if (view.trans || !S) return;
-    const [lx, ly] = toLocal(e), hit = hitItem(lx, ly);
+    const [lx, ly] = toLocal(e); let hit = hitItem(lx, ly);
+    if (hit && sel && sel !== hit && CAT[hit].flat && !CAT[sel].flat) hit = null;   // ковёр большой: тап по нему двигает выбранную вещь, а не выбирает ковёр
     if (hit) { sel = hit; renderEditList(); }
     if (!sel || !placedHere(sel)) return;
     const p = pxOf(CAT[sel], S.placed[sel]);
