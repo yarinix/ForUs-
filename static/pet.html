@@ -1034,6 +1034,24 @@
     });
   }
 
+  // ---------- ТЕНИ: помощники ----------
+  // Цвет теней — холодный фиолетовый, а не чёрный: тени получаются мягче и «пиксельнее».
+  const SH = 'rgba(46,24,64,';
+  // softShadow — мягкая тень-овал на холсте g: внешний овал светлее, внутренний темнее (мягкий край без размытия)
+  function softShadow(g, cx, cy, rx, ry, a) {
+    for (const [k, aa] of [[1, a], [.62, a * .85]]) {
+      g.fillStyle = SH + aa.toFixed(3) + ')';
+      const RX = rx * k, RY = Math.max(.9, ry * k), n = Math.ceil(RY);
+      for (let dy = -n; dy <= n; dy++) { const w = Math.round(RX * Math.sqrt(Math.max(0, 1 - (dy / (RY + .6)) ** 2))); if (w > 0) g.fillRect(Math.round(cx) - w, Math.round(cy) + dy, w * 2, 1); }
+    }
+  }
+  // shade — тень на полу под предметом, запечённая в картинку комнаты (рисуется ДО предмета, чтобы он её закрыл)
+  const shade = (R, cx, cy, rx, ry, a = .22) => softShadow(R.x, cx, cy, rx, ry, a);
+  // shadeRect — прямоугольная тень (под полкой, у основания дома и забора)
+  function shadeRect(R, x, y, w, h, a) { R.x.fillStyle = SH + a.toFixed(3) + ')'; R.x.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h)); }
+  // aoStrip — затенение в углу «стена — пол»: тёмная полоска на полу вдоль стены, ближе к стене темнее. Комната получает объём.
+  function aoStrip(R, W, fy) { [.26, .17, .1, .05].forEach((a, i) => shadeRect(R, 0, fy + i, W, 1, a)); }
+
   // ---------- ДЕНЬ И НОЧЬ В ДОМЕ ----------
   // Раньше комнаты рисовались один раз, поэтому окно всегда показывало день (а в спальне — всегда ночь).
   // Теперь каждая комната строится в двух вариантах: день (view.rooms) и ночь (view.roomsN). Отличаются только окно
@@ -1071,11 +1089,14 @@
     rect(R, 0, fy - 15, W, 15, '#d9a468'); rect(R, 0, fy - 15, W, 1, '#f0c48a'); rect(R, 0, fy - 1, W, 1, '#6e4527');
     for (let x = 6; x < W; x += 14) { rect(R, x, fy - 12, 10, 9, '#c78f55'); rect(R, x, fy - 12, 10, 1, '#e3b278'); }
     drawFloor(R, W, H, fy, WOOD[0], WOOD[1], WOOD[3], 'wood');
+    aoStrip(R, W, fy);
     const wx = 5, wy = 12, ww = 36, wh = Math.min(40, fy - 28);
     if (night) nightWindow(R, wx, wy, ww, wh); else dayWindow(R, wx, wy, ww, wh);   // вид за окном по времени суток
     windowFrame(R, wx, wy, ww, wh, '#8f5630', '#f08a4b', '#e0703a');
     lightPatch(R, wx, wy, ww, wh, H, fy, night, 0.7);                               // пятно света: солнце днём, луна ночью
+    view.win.home = { wx, wy, ww, wh, cover: .7 };                                  // где окно и луч — для пылинок (drawMotes)
     const sx0 = Math.round(W * 0.50), sy = fy - 33, sw = W - sx0 - 4;
+    shadeRect(R, sx0 + 2, sy + 3, sw - 2, 3, .15);                                  // тень полки на стене
     prop(R, T => {
       rect(T, sx0, sy, sw, 3, '#a2693a'); rect(T, sx0 + 4, sy + 3, 3, 5, '#7e4d2a'); rect(T, sx0 + sw - 8, sy + 3, 3, 5, '#7e4d2a');
       ell(T, sx0 + 10, sy - 4, 5, 4, ['#e98062', '#cf6347', '#a94a31']); rect(T, sx0 + 5, sy - 8, 11, 2, '#b4543a');
@@ -1083,16 +1104,21 @@
       rect(T, sx0 + 22, sy - 17, 17, 15, '#7e4d2a'); rect(T, sx0 + 24, sy - 15, 13, 11, '#bfe3ff'); ell(T, sx0 + 30, sy - 6, 7, 4, ['#7fd08a', '#4fae5b']); dot(T, sx0 + 33, sy - 12, '#fff6a8');
       rect(T, sx0 + sw - 17, sy - 10, 4, 10, '#4a79d8'); rect(T, sx0 + sw - 13, sy - 12, 4, 12, '#d8573f'); rect(T, sx0 + sw - 9, sy - 9, 4, 9, '#4aa56b'); rect(T, sx0 + sw - 5, sy - 11, 3, 11, '#e8b84a');
     });
+    shadeRect(R, W - 21, fy - 61, 17, 19, .16);                                     // тень картины на стене
     prop(R, T => { rect(T, W - 22, fy - 62, 16, 18, '#f0c585'); rect(T, W - 20, fy - 60, 12, 14, '#f7dba5'); ell(T, W - 14, fy - 51, 3.4, 3, ['#c08a54', '#9a6a3c']); [[-4, -6], [0, -7], [4, -6], [-6, -3]].forEach(([a, b]) => dot(T, W - 14 + a, fy - 51 + b, '#9a6a3c')); });
     const cx = Math.round(W * 0.47);
     prop(R, T => { flat(T, cx, baseY + 4, W * 0.42, 14, '#e7b98a'); }, W, H);
     flat(R, cx, baseY + 4, W * 0.42 - 1, 13, '#f3dcb6'); flat(R, cx, baseY + 4, W * 0.30, 9, '#ecc99a'); flat(R, cx, baseY + 4, W * 0.20, 6, '#f6e3c1');
     for (let x = cx - W * 0.38; x < cx + W * 0.38; x += 4) { dot(R, x, baseY + 4 - 11, '#d9a773'); dot(R, x + 2, baseY + 4 + 12, '#d9a773'); }
     const bx = W - 26, by = baseY + 10;
+    shade(R, bx + 1, by + 11, 27, 4.5, .24);                                        // тень лежанки
     prop(R, T => { ell(T, bx, by, 25, 12, BLUE); flat(T, bx, by - 1, 16, 7, '#efe3cc'); ell(T, bx, by - 2, 16, 6, ['#efe3cc', '#e2d3b6']); [[0, 0], [-4, -3], [0, -4], [4, -3]].forEach(([a, b], i) => ell(T, bx + a, by + b - 1, i ? 1.3 : 2.2, i ? 1.3 : 1.6, ['#cdbb9b'])); });
     // сундук с игрушками
+    shade(R, 17, baseY + 27, 15, 3, .24);
     prop(R, T => { rect(T, 6, baseY + 14, 22, 12, '#a9683a'); rect(T, 6, baseY + 14, 22, 4, '#c98450'); rect(T, 15, baseY + 17, 4, 4, '#ffd93d'); rect(T, 6, baseY + 22, 22, 1, '#7e4d2a'); ell(T, 12, baseY + 12, 3.5, 3.5, ['#ff7a8a', '#d9485d']); ell(T, 22, baseY + 12, 3.5, 3.5, ['#7fb0ff', '#3560c4']); });
+    shade(R, W - 52, baseY + 28, 6, 1.8, .22);
     prop(R, T => { ell(T, W - 53, baseY + 22, 5.5, 5.5, BLUE); for (let i = -4; i <= 4; i++) dot(T, W - 53 + i, baseY + 22 + Math.round(i * .35) - 1, '#fff'); });
+    shade(R, W - 39, baseY + 28, 5, 1.6, .2);
     prop(R, T => { spr(T, W - 43, baseY + 24, ['bb....bb', 'bbbbbbbb', 'bbbbbbbb', 'bb....bb'], { b: '#fbf1de' }); });
     return R;
   }
@@ -1116,6 +1142,9 @@
     // плинтус и пол (плитка)
     rect(R, 0, fy - 4, W, 4, '#9fd8d2'); rect(R, 0, fy - 1, W, 1, '#4a8a86');
     drawFloor(R, W, H, fy, '#f6ecd6', '#8fcfc8', '#5aa7a0', 'tile');
+    aoStrip(R, W, fy);
+    lightPatch(R, wx, wy, ww, wh, H, fy, night, 0.38); view.win.kitchen = { wx, wy, ww, wh, cover: .38 };   // луч из окна и пылинки в нём
+    shade(R, Math.round((38 + W - 32) / 2), fy + 1, (W - 70) / 2 + 3, 2.6, .24);   // тень стойки
     // стойка со столешницей
     prop(R, T => {
       rect(T, 36, cy, W - 66, 4, '#e9dcc3'); rect(T, 36, cy, W - 66, 1, '#fffaf0');
@@ -1131,6 +1160,7 @@
     });
     // холодильник
     const fx = W - 27;
+    shade(R, fx + 12, fy + 2, 16, 3, .28);                                          // тень холодильника
     prop(R, T => {
       rect(T, fx, fy - 56, 24, 58, '#d6e8f7'); rect(T, fx, fy - 56, 24, 2, '#f2faff'); rect(T, fx, fy - 26, 24, 2, '#8aa7c2');
       rect(T, fx + 18, fy - 48, 2, 14, '#7f9bb6'); rect(T, fx + 18, fy - 20, 2, 14, '#7f9bb6');
@@ -1143,6 +1173,7 @@
     prop(R, T => { flat(T, cx, baseY + 6, W * 0.36, 12, '#f08a7c'); }, W, H);
     flat(R, cx, baseY + 6, W * 0.36 - 1, 11, '#f9b5a5'); flat(R, cx, baseY + 6, W * 0.26, 7, '#ffd0c2');
     const mx = Math.round(W * 0.2), my = baseY + 22;
+    shade(R, mx + 1, my + 8, 15, 3, .22);                                           // тень миски
     prop(R, T => {
       ell(T, mx, my, 14, 8, BLUE); flat(T, mx, my - 3, 11, 3.5, '#ffb15c');
       spr(T, mx - 6, my - 6, ['..oooo..', '.oooooo.o', 'ookooooo.', '.oooooo.o', '..oooo..'], { o: '#ff8a2a', k: OUT });
@@ -1160,13 +1191,16 @@
     rect(R, 0, fy - 15, W, 15, '#6a4f7e'); rect(R, 0, fy - 15, W, 1, '#8f72a6'); rect(R, 0, fy - 1, W, 1, '#3a2a48');
     for (let x = 6; x < W; x += 14) { rect(R, x, fy - 12, 10, 9, '#5d4470'); rect(R, x, fy - 12, 10, 1, '#7a5e90'); }
     drawFloor(R, W, H, fy, '#a8745e', '#966450', '#6a4437', 'wood');
+    aoStrip(R, W, fy);
     // окно: днём — дневное небо, ночью — звёздное; свет на полу солнечный или лунный
     const wx = 5, wy = 12, ww = 34, wh = Math.min(40, fy - 28);
     if (night) nightWindow(R, wx, wy, ww, wh); else dayWindow(R, wx, wy, ww, wh);
     windowFrame(R, wx, wy, ww, wh, '#4e3763', '#9a62d9', '#7e48c0');
     lightPatch(R, wx, wy, ww, wh, H, fy, night, 0.6);
+    view.win.bedroom = { wx, wy, ww, wh, cover: .6 };
     // кровать справа
     const bx = W - 50, by = fy - 4;
+    shade(R, bx + 27, by + 31, 32, 4.5, .28);                                       // тень кровати
     prop(R, T => {
       rect(T, bx + 2, by - 18, 46, 24, '#7a4a2b'); rect(T, bx + 2, by - 18, 46, 3, '#a9683a'); rect(T, bx + 4, by - 14, 42, 18, '#8d5736');
       rect(T, bx, by + 4, 50, 22, '#f4efe6');                                         // матрас
@@ -1177,6 +1211,7 @@
     });
     // тумбочка с лампой
     const nx = Math.round(W * 0.18);
+    shade(R, 19, baseY + 17, 14, 3, .26);                                           // тень тумбочки
     prop(R, T => {
       rect(T, 8, baseY - 2, 20, 18, '#a9683a'); rect(T, 8, baseY - 2, 20, 3, '#c98450'); rect(T, 12, baseY + 6, 12, 5, '#8d5736'); rect(T, 17, baseY + 8, 2, 1, '#ffe9a8');
       rect(T, 16, baseY - 8, 4, 6, '#6f8296'); ell(T, 18, baseY - 14, 7, 5, ['#fff0a8', '#ffd45c', '#e8a93a']);
@@ -1186,6 +1221,7 @@
     const cx = Math.round(W * 0.47);
     prop(R, T => { flat(T, cx, baseY + 6, W * 0.4, 13, '#b9a2ee'); }, W, H);
     flat(R, cx, baseY + 6, W * 0.4 - 1, 12, '#d3c3f8'); flat(R, cx, baseY + 6, W * 0.28, 8, '#bba3f0'); flat(R, cx, baseY + 6, W * 0.16, 4, '#e6dcfb');
+    shade(R, W - 34, baseY + 29, 8, 2, .22);                                        // тень игрушки
     prop(R, T => { ell(T, W - 34, baseY + 24, 6, 5.5, FUR, { d: .1 }); ell(T, W - 39, baseY + 20, 2.4, 2.4, FUR); ell(T, W - 29, baseY + 20, 2.4, 2.4, FUR); dot(T, W - 36, baseY + 23, OUT); dot(T, W - 32, baseY + 23, OUT); });
     return R;
   }
@@ -1219,6 +1255,14 @@
     g.globalAlpha = 0.95 - n * 0.6;
     [[2.4, .16, 0], [1.5, .34, 40], [3.1, .06, 80]].forEach(([sp, yy, off]) => { const x = ((now / 1000 * sp + off) % (W + 70)) - 36; g.drawImage(SKYSPR.cloud.c, Math.round(x), Math.round(fy * yy)); });
     g.globalAlpha = 1;
+    // птицы: днём пересекают небо, крылья машут в два кадра
+    if (h >= 7 && h <= 17.5) {
+      g.fillStyle = '#34405e';
+      [[8.5, 0, .22], [6, 55, .34]].forEach(([sp, off, yy], bi) => {
+        const x = Math.round(((now / 1000 * sp + off) % (W + 50)) - 25), y = Math.round(fy * yy + Math.sin(now / 650 + bi * 2) * 3);
+        (Math.floor(now / 190 + bi) % 2 ? ['x...x', '.x.x.', '..x..'] : ['..x..', '.x.x.', 'x...x']).forEach((row, ry) => { for (let rx = 0; rx < 5; rx++) if (row[rx] === 'x') g.fillRect(x + rx, y + ry, 1, 1); });
+      });
+    }
   }
 
   function pine(L, cx, by, h, cs) {
@@ -1258,14 +1302,17 @@
     for (let x = 48; x < W + 8; x += 8 + Math.floor(r() * 6)) pine(R, x, fy + 1, 13 + Math.floor(r() * 9), GREEN.far);
     meadow(R, W, H, fy, ['#8fe085', '#78d072', '#62bb61', '#52a455'], 5, '#a8f09a', '#3f8f48', 70);
     dirtPath(R, 24, W, baseY + 8, 8, 9);
+    shadeRect(R, 50, fy + 12, W - 50, 2, .2);                                        // тень забора на траве
     prop(R, T => {
       for (let x = 50; x < W + 6; x += 6) { rect(T, x, fy - 3, 4, 14, '#f7efdc'); rect(T, x + 1, fy - 4, 2, 1, '#f7efdc'); rect(T, x, fy - 3, 1, 14, '#d9cba8'); }
       rect(T, 48, fy + 1, W, 2, '#d9cba8'); rect(T, 48, fy + 7, W, 2, '#d9cba8');
     });
+    [[W - 12, fy + 14], [58, fy + 16]].forEach(([x, y]) => shade(R, x + 3, y + 6, 12, 2.6, .24));   // тени кустов
     // кусты у забора
     [[W - 12, fy + 14], [58, fy + 16]].forEach(([x, y]) => prop(R, T => { ell(T, x, y, 9, 6, GREEN.bright); ell(T, x + 6, y + 1, 6, 4.5, GREEN.bright); dot(T, x - 3, y - 2, '#ff8ab8'); dot(T, x + 2, y - 1, '#ffd93d'); dot(T, x + 6, y - 1, '#ff8ab8'); }));
     // указатель «Лес»
     const px = W - 24;
+    shade(R, px + 7.5, baseY + 12, 9, 2.4, .24);                                    // тень указателя
     prop(R, T => {
       rect(T, px + 6, baseY - 14, 3, 26, '#8f5e35');
       spr(T, px, baseY - 20, ['bbbbbbbbbbbb...', 'bbbbbbbbbbbbb..', 'bbbbbbbbbbbbbb.', 'bbbbbbbbbbbbbbb', 'bbbbbbbbbbbbbb.', 'bbbbbbbbbbbbb..', 'bbbbbbbbbbbb...'], { b: '#e8b878' });
@@ -1273,6 +1320,7 @@
     });
     // дом: задняя стена, крыша, дверь, окно
     const wb = baseY - 1, dx0 = 6, dw = 24, dh = 38;
+    shadeRect(R, 0, wb + 3, 54, 2, .2); shadeRect(R, 0, wb + 5, 54, 2, .12);       // тень дома на земле
     prop(R, T => {
       rect(T, 0, wb - 72, 44, 72, '#f5d9a8');
       for (let y = wb - 72; y < wb; y += 5) rect(T, 0, y, 44, 1, '#e0bd86');
@@ -1302,10 +1350,14 @@
     hills(R, W, fy, '#78b896', 9, 7, 6);
     for (let x = -2; x < W + 6; x += 6 + Math.floor(r() * 4)) pine(R, x, fy + 2, 16 + Math.floor(r() * 10), GREEN.far);
     meadow(R, W, H, fy, ['#62b36c', '#4f9d5d', '#418853', '#357449'], 8, '#7fcf86', '#2c6a40', 90);
-    for (let x = 2; x < W + 8; x += 12 + Math.floor(r() * 6)) pine(R, x, fy + 7 + Math.floor(r() * 4), 30 + Math.floor(r() * 14), GREEN.deep);
+    for (let x = 2; x < W + 8; x += 12 + Math.floor(r() * 6)) {   // тот же порядок случайных чисел, что и раньше, — ёлки стоят на тех же местах
+      const by = fy + 7 + Math.floor(r() * 4), hh = 30 + Math.floor(r() * 14);
+      shade(R, x + 3, by, hh * .22, 2.6, .24); pine(R, x, by, hh, GREEN.deep);   // тень ёлки падает вправо
+    }
     for (let i = 0; i < 70; i++) { const x = Math.floor(r() * W), y = fy + 8 + Math.floor(r() * (H - fy - 8)); dot(R, x, y, ['#c98a4a', '#e0a35a', '#a86b36'][i % 3]); }
     dirtPath(R, 0, W, baseY + 8, 8, 12);
     [[20, fy + 18], [W - 34, fy + 26], [W * 0.55, fy + 14]].forEach(([x, y]) => fern(R, Math.round(x), Math.round(y)));
+    shade(R, 39, baseY + 30, 12, 3, .24); shade(R, W - 20, baseY + 30, 6, 1.6, .22); shade(R, W - 12, baseY + 32, 5, 1.4, .2);   // тени пенька и грибов
     // пенёк и маленькие грибочки у тропы
     prop(R, T => {
       ell(T, 36, baseY + 22, 9, 4, ['#d9a468', '#b07a47']); rect(T, 28, baseY + 22, 17, 7, '#8f5e35'); ell(T, 36, baseY + 22, 7, 2.6, ['#e6c08a', '#d9a468']); rect(T, 31, baseY + 25, 1, 4, '#6e4527'); rect(T, 38, baseY + 24, 1, 5, '#6e4527');
@@ -1313,6 +1365,7 @@
       spr(T, W - 14, baseY + 27, ['.rrr.', 'rwrwr', '.sss.', '.sss.'], { r: '#e8505b', w: '#ffffff', s: '#f6e6c8' });
     });
     // кроны сверху и стволы по краям
+    for (const [x, w] of [[2, 9], [W - 11, 9]]) shade(R, x + (w >> 1) + 3, baseY + 9, w * 1.3, 3, .26);   // тени стволов
     for (let x = -4; x < W + 8; x += 9) { const d = 4 + Math.floor(r() * 9); ell(R, x, d, 8, 6 + Math.floor(r() * 4), ['#3f9a58', '#2f8048', '#22663a', '#1a5236']); }
     prop(R, T => {
       for (const [x, w] of [[2, 9], [W - 11, 9]]) {
@@ -1345,6 +1398,132 @@
     return R;
   }
 
+  // =====================================================================
+  // ТЕНИ, СВЕТ И «ЖИВОСТЬ» МИРА
+  // Запечённые тени (shade, aoStrip) лежат прямо в картинках комнат, а всё, что движется или меняется со временем,
+  // рисуется поверх сцены каждый кадр: тени предметов и выдры, пылинки в солнечном луче, птицы, бабочки, листья,
+  // трава на ветру, круги на воде, тени облаков, виньетка и тёплый свет заката (см. frame ниже).
+  // =====================================================================
+  // дневное/ночное состояние: насколько сейчас «день» (1 — полдень, 0 — глубокая ночь)
+  const dayK = () => 1 - Math.min(1, dayAlpha() / 0.2);
+
+  // виньетка: углы кадра чуть темнее. Рисуется один раз при layout() «пиксельным» способом — узором Байера, без размытия
+  const BAYER4 = [[0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5]];
+  function buildVignette(W, H) {
+    const L = newLayer(W, H), r0 = .74;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const dx = (x / (W - 1) - .5) * 2, dy = (y / (H - 1) - .5) * 2, t = (Math.sqrt(dx * dx * .9 + dy * dy * .8) - r0) / (1 - r0);   // 0 в центре … 1 в углах
+      if (t <= 0 || t <= (BAYER4[y & 3][x & 3] + .5) / 16) continue;
+      L.x.fillStyle = 'rgba(14,8,40,' + (t > .75 ? .16 : t > .4 ? .11 : .07) + ')'; L.x.fillRect(x, y, 1, 1);
+    }
+    return L;
+  }
+  function drawVignette() { if (view.vig) sx.drawImage(view.vig.c, 0, 0); }
+
+  // тёплый свет рассвета и заката: оранжевая дымка, сильнее всего около 18:50 и 6:35
+  function drawWarmTint(out) {
+    const h = gameHour(), k = Math.max(1 - Math.abs(h - 18.8) / 1.7, 1 - Math.abs(h - 6.6) / 1.3, 0);
+    if (k < .02) return;
+    sx.fillStyle = 'rgba(255,150,80,' + (.14 * k * (out ? 1 : .6)).toFixed(3) + ')'; sx.fillRect(0, 0, view.W, view.H);
+  }
+
+  // тени облаков бегут по земле на улице (только днём) — со скоростью, близкой к скорости облаков в небе
+  function cloudShadows(now, W, fy) {
+    const h = gameHour(); if (h < 7.5 || h > 17.5) return;
+    [[2.4, 0, 44, 9, 30], [1.5, 40, 34, 7, 48]].forEach(([sp, off, rx, ry, y]) => softShadow(sx, ((now / 1000 * sp + off) % (W + 120)) - 60, fy + y, rx, ry, .07));
+  }
+
+  // тень предмета мебели: пол — овал под основанием (узкие вещи вроде фонаря получают узкую тень), стена — силуэт со сдвигом вниз-вправо
+  const SHW = { lamppost: .5, lamp: .5, birdhouse: .55, tree: .6, plant: .62, cactus: .62, campfire: .8 };
+  const SILC = new WeakMap();
+  function furnSil(f) {
+    let s = SILC.get(f.c); if (s) return s;
+    s = document.createElement('canvas'); s.width = f.c.width; s.height = f.c.height;
+    const g = s.getContext('2d'); g.drawImage(f.c, 0, 0); g.globalCompositeOperation = 'source-in'; g.fillStyle = 'rgb(46,24,64)'; g.fillRect(0, 0, s.width, s.height);
+    SILC.set(f.c, s); return s;
+  }
+  function itemShadow(o, dx) {
+    if (o.c.pl === 'wall') { sx.globalAlpha = .26; sx.drawImage(furnSil(o.f), o.x - (o.f.w >> 1) + dx + 1, o.y - (o.f.h >> 1) + 2); sx.globalAlpha = 1; return; }
+    if (o.id === 'picnic') return;                              // плед лежит на земле плашмя — тени у него нет
+    const rx = o.f.w * (SHW[o.id] || .9) / 2;
+    softShadow(sx, o.x + dx + 1, o.y - 1, rx, Math.max(2, Math.min(4, rx * .24)), .22);
+  }
+
+  // ---------- «живость»: мелкие движущиеся детали ----------
+  // пылинки в луче из окна: поднимаются вдоль луча (тот же конус, что и пятно света на полу) и мерцают. Ночью — голубоватые и тусклее.
+  const MOTES = (() => { const r = mulberry(77); return Array.from({ length: 18 }, () => ({ a: r(), u: r(), sp: .5 + r() * .8, ph: r() * 6.28 })); })();
+  function drawMotes(now, room, dx) {
+    const w = view.win && view.win[room]; if (!w) return;
+    const day = dayAlpha() < .18, maxA = (view.H - w.wy - w.wh) * w.cover, col = day ? '255,247,205' : '190,205,255';
+    for (const m of MOTES) {
+      const along = ((m.a + now * 0.000012 * m.sp) % 1) * maxA, y = w.wy + w.wh + along + Math.sin(now / 900 * m.sp + m.ph) * 1.2;
+      const left = w.wx + along * .55, right = w.wx + w.ww + along * 1.0, x = left + (right - left) * clamp(m.u + Math.sin(now / 2400 * m.sp + m.ph) * .08, 0, 1);
+      const tw = .28 + .55 * Math.max(0, Math.sin(now / 420 * m.sp + m.ph));
+      sx.fillStyle = 'rgba(' + col + ',' + (tw * (day ? 1 : .5)).toFixed(2) + ')'; sx.fillRect(Math.round(x + dx), Math.round(y), 1, 1);
+    }
+  }
+  // бабочки (днём, двор и лес): порхают по восьмёркам, крылья машут в два кадра
+  const BFLY = [{ ph: .3, cx: .3, cy: 16, c: '#ff8ab8', l: '#ffd1e4' }, { ph: 2.1, cx: .62, cy: 34, c: '#ffd93d', l: '#fff3a8' }, { ph: 4.2, cx: .8, cy: 22, c: '#8ac8ff', l: '#d6eeff' }];
+  function drawButterflies(now) {
+    const k = dayK(); if (k < .3) return;
+    sx.globalAlpha = k;
+    for (const b of BFLY) {
+      const x = Math.round(view.W * b.cx + Math.sin(now / 2300 + b.ph) * 26 + Math.sin(now / 900 + b.ph * 2) * 5), y = Math.round(view.fy + 10 + b.cy + Math.sin(now / 1700 + b.ph * 2) * 9);
+      const open = Math.floor(now / 140 + b.ph * 7) % 2 === 0;
+      for (const [a, c, col] of open ? [[-2, -1, b.c], [2, -1, b.c], [-1, -1, b.l], [1, -1, b.l], [-1, 0, b.c], [1, 0, b.c]] : [[-1, -1, b.c], [1, -1, b.c]]) { sx.fillStyle = col; sx.fillRect(x + a, y + c, 1, 1); }
+      sx.fillStyle = '#3a2440'; sx.fillRect(x, y, 1, 2);
+    }
+    sx.globalAlpha = 1;
+  }
+  // листья (лес): плавно падают, покачиваясь
+  function drawLeaves(now) {
+    const cols = ['#e0a35a', '#d9722e', '#9fd06a', '#f0c850'];
+    for (let i = 0; i < 8; i++) {
+      const x = Math.round(((i * 37 + 13) % 100) / 100 * view.W + Math.sin(now / 800 + i * 1.9) * 7), y = Math.round(((now / 1000 * (7 + (i % 3) * 3) + i * 23) % (view.H + 12)) - 6);
+      if (y < 4 || y > view.H - 6) continue;
+      sx.fillStyle = cols[i % 4]; sx.fillRect(x, y, 1, 1); sx.fillRect(x + 1, y + (Math.floor(now / 300 + i) % 2), 1, 1);
+    }
+  }
+  // трава на переднем плане колышется на ветру (по три травинки в пучке, вершинка смещается в такт)
+  const TUFT_COL = { yard: ['#3f8f48', '#58bd5a', '#8fe085'], forest: ['#2c6a40', '#3f9a58', '#7fcf86'], lake: ['#3f8f48', '#62b762', '#b4f0a4'] };
+  function makeTufts(room) {
+    const r = mulberry(room.length * 131 + room.charCodeAt(0)), y0 = view.baseY + 16, out = [];
+    for (let i = 0; i < 16; i++) out.push({ x: Math.floor(r() * view.W), y: Math.round(y0 + r() * Math.max(2, view.H - 3 - y0)), ph: r() * 4, h: 3 + Math.floor(r() * 3) });
+    return out;
+  }
+  function drawTufts(now, room) {
+    const T = (view.tufts[room] = view.tufts[room] || makeTufts(room)), pal = TUFT_COL[room] || TUFT_COL.yard;
+    for (const t of T) {
+      const sway = [-1, 0, 1, 0][Math.floor(now / 420 + t.ph) % 4];
+      for (const [bx, hh] of [[-1, t.h - 1], [0, t.h], [1, t.h - 2]]) for (let k = 0; k < hh; k++) {
+        sx.fillStyle = k === hh - 1 ? pal[2] : k < 1 ? pal[0] : pal[1];
+        sx.fillRect(t.x + bx + Math.round(sway * k / hh), t.y - k, 1, 1);
+      }
+    }
+  }
+  // круги на воде: три расходящихся кольца, в разное время и в разных местах
+  function drawRipples(now) {
+    const w = view.water; if (!w) return;
+    for (let i = 0; i < 3; i++) {
+      const per = 3400, t0 = now + i * 1130, c = Math.floor(t0 / per), t = (t0 % per) / per;
+      const cx = ((c * 61 + i * 29) % 100) / 100 * (view.W - 20) + 10, cy = w.y0 + 4 + ((c * 37 + i * 17) % Math.max(1, w.y1 - w.y0 - 7)), r = 1.5 + t * 8;
+      sx.fillStyle = 'rgba(235,248,255,' + ((1 - t) * .55).toFixed(2) + ')';
+      const n = Math.ceil(r * 4) + 8;
+      for (let k = 0; k < n; k++) { const th = k / n * 6.2832; sx.fillRect(Math.round(cx + Math.cos(th) * r), Math.round(cy + Math.sin(th) * r * .38), 1, 1); }
+    }
+  }
+  // drawLife — все «живые» детали одним вызовом. Зовётся из frame после выдры и мебели.
+  // Пылинки — в домашних комнатах (и во время перехода — в обеих); остальное — только в текущей уличной комнате (не во время перехода).
+  function drawLife(now, tr) {
+    for (const [r, dx] of view.fx) drawMotes(now, r, dx);
+    if (tr) return;
+    const room = view.cur;
+    if (room === 'yard' || room === 'forest') drawButterflies(now);
+    if (room === 'forest') drawLeaves(now);
+    if (room === 'yard' || room === 'forest' || room === 'lake') drawTufts(now, room);
+    if (room === 'lake') drawRipples(now);
+  }
+
   // ---------- сцена, комнаты, переходы ----------
   const K_PREF = 3;
   const ROOMS = {
@@ -1367,8 +1546,10 @@
     sc.style.width = (W * K) + 'px'; sc.style.height = (H * K) + 'px'; sc.style.left = Math.floor((r.width - W * K) / 2) + 'px'; sc.style.top = Math.floor((r.height - H * K) / 2) + 'px';
     const fy = Math.round(H * 0.5), baseY = fy + Math.round((H - fy) * 0.5);
     view.baseY = baseY; view.fy = fy; view.ox = Math.round(W * 0.47); view.oxOut = Math.round(W * 0.58);
+    view.win = {}; view.tufts = {};                                              // окна (для пылинок) и пучки травы — пересчитываются вместе с комнатами
     view.rooms = { home: buildHome(W, H, fy, baseY, false), kitchen: buildKitchen(W, H, fy, baseY, false), bedroom: buildBedroom(W, H, fy, baseY, false), yard: buildYard(W, H, fy, baseY), forest: buildForest(W, H, fy, baseY), lake: buildLake(W, H, fy, baseY) };
     view.roomsN = { home: buildHome(W, H, fy, baseY, true), kitchen: buildKitchen(W, H, fy, baseY, true), bedroom: buildBedroom(W, H, fy, baseY, true) };   // ночные варианты домашних комнат
+    view.vig = buildVignette(W, H);                                                  // виньетка по размеру кадра
   }
 
   const ease = (p) => p < .5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
@@ -1391,6 +1572,7 @@
       look = 'walk';
       if (p >= 1) { view.trans = null; view.cur = tr.to; onRoomShown(); }
     } else { drawRoom(view.cur, 0); view.fx = [[view.cur, 0]]; }
+    if (out) cloudShadows(now, view.W, view.fy);              // тени облаков бегут по земле
     for (const [r, dx] of view.fx) drawItems(r, dx, false, now);
     const blink = (Math.floor(now / 160) % 31) === 0;
     const hop = look === 'play' ? -Math.round(Math.abs(Math.sin(now / 130)) * 7) : look === 'walk' ? -(Math.floor(now / 150) % 2) : (look === 'sleep' || look === 'sleepy' ? (Math.floor(now / 900) % 2) : (Math.floor(now / 650) % 2));
@@ -1404,7 +1586,8 @@
     }
     view.curOx = ox;
     if (doorOpen) { const d = view.door; sx.fillStyle = '#2e1a10'; sx.fillRect(d.x, d.y, d.w, d.h); sx.fillStyle = '#7a4a28'; sx.fillRect(d.x + 3, d.y + (d.h >> 1), d.w - 6, d.h >> 1); sx.fillStyle = '#b8723a'; sx.fillRect(d.x, d.y, 4, d.h); }
-    sx.globalAlpha = alpha * 0.28 / 0.28; sx.fillStyle = 'rgba(40,20,20,.28)'; const hw = Math.round(19 * kk); for (let i = -hw; i <= hw; i++) { const h = Math.round(Math.sqrt(1 - (i / (hw + 1)) ** 2) * 3); sx.fillRect(ox + i, view.baseY - 1 - h + 3, 1, h * 2 - 1); }
+    // тень выдры: мягкий двойной овал; когда выдра подпрыгивает, тень сжимается и бледнеет
+    sx.globalAlpha = alpha; { const lift = Math.max(0, -hop), k = 1 - Math.min(.45, lift * .07); softShadow(sx, ox + 1, view.baseY + 2, 19 * kk * k, 3.6 * k, .3 * (1 - Math.min(.5, lift * .08))); }
     const tentSleeping = !!(S && S.sleeping && out && S.placed && S.placed.tent && S.placed.tent.room === view.cur);
     if (!tentSleeping) {
       const backV = !!view.fish && !(view.fish.hit && now - view.fish.t0 > 3900);
@@ -1419,7 +1602,9 @@
       const B = newLayer(14, 14); ell(B, 7, 7, 5.5, 5.5, BLUE); for (let i = -4; i <= 4; i++) dot(B, 7 + i, 6 + Math.round(i * .35), '#fff'); outline(B);
       sx.drawImage(B.c, bx - 7, by - 7);
     }
+    drawLife(now, tr);                                       // пылинки, бабочки, листья, трава, круги на воде
     if (view.cur === 'lake' || (tr && tr.to === 'lake')) { const w = view.water; if (w) for (let i = 0; i < 16; i++) if ((Math.floor(now / 380 + i * 3.7) % 6) === 0) { sx.fillStyle = 'rgba(255,255,255,.8)'; sx.fillRect(Math.round(((i * 37) % 100) / 100 * view.W), w.y0 + 2 + (i * 53) % Math.max(1, w.y1 - w.y0 - 3), 2, 1); } }
+    drawVignette(); drawWarmTint(out);                       // виньетка и тёплый свет заката
     { const a = dayAlpha() * (out ? 0.75 : 1); if (a > 0.01) { sx.fillStyle = 'rgba(10,16,64,' + a.toFixed(3) + ')'; sx.fillRect(0, 0, view.W, view.H); } }
     { const a = dayAlpha(); if (a > 0.04) {
       for (const [r, dx] of view.fx) for (const o of roomItems(r)) { const g = GLOW[o.id]; if (!g) continue; const gx = o.x + dx, gy = o.y - o.f.h * g.y, k = Math.min(1, a / 0.2), gr = sx.createRadialGradient(gx, gy, 1, gx, gy, g.r);
@@ -2246,6 +2431,7 @@
     return out;
   }
   function drawItems(room, dx, front, now) {
+    if (!front) for (const o of roomItems(room)) itemShadow(o, dx);   // тени всех предметов комнаты — под выдрой и под самими предметами
     for (const o of roomItems(room)) {
       if ((o.c.pl !== 'wall' && o.y > view.baseY + 4) !== front) continue;
       const x = o.x - (o.f.w >> 1) + dx, y = o.c.pl === 'wall' ? o.y - (o.f.h >> 1) : o.y - o.f.h;
