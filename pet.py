@@ -173,6 +173,34 @@ CATALOG = {
     "campfire":  {"k": "furn", "n": "Костёр",         "p": 90,  "pl": "floor", "w": "out"},
     "boat":      {"k": "furn", "n": "Лодочка",        "p": 120, "pl": "floor", "w": "out"},
     "tent":      {"k": "furn", "n": "Палатка",        "p": 140, "pl": "floor", "w": "out"},
+    # --- стандартная мебель дома: есть у всех с самого начала, стоит на своих местах, но её можно убирать и переставлять.
+    #     std — стандартная (в магазине не продаётся и в достижениях «собрать мебель» не считается);
+    #     flat — ковёр: лежит на полу под выдрой и другой мебелью. Рисунки лежат в pet.html под теми же id.
+    "shelf":      {"k": "furn", "n": "Полка с цветами",   "p": 0, "pl": "wall",  "std": True},
+    "hpicture":   {"k": "furn", "n": "Картина с цветком", "p": 0, "pl": "wall",  "std": True},
+    "hrug":       {"k": "furn", "n": "Ковёр в гостиной",  "p": 0, "pl": "floor", "std": True, "flat": True},
+    "lounger":    {"k": "furn", "n": "Лежанка",           "p": 0, "pl": "floor", "std": True},
+    "chest":      {"k": "furn", "n": "Сундук с игрушками", "p": 0, "pl": "floor", "std": True},
+    "ball":       {"k": "furn", "n": "Мячик",             "p": 0, "pl": "floor", "std": True},
+    "bone":       {"k": "furn", "n": "Косточка",          "p": 0, "pl": "floor", "std": True},
+    "counter":    {"k": "furn", "n": "Кухонная стойка",   "p": 0, "pl": "floor", "std": True},
+    "fridge":     {"k": "furn", "n": "Холодильник",       "p": 0, "pl": "floor", "std": True},
+    "kclock":     {"k": "furn", "n": "Кухонные часы",     "p": 0, "pl": "wall",  "std": True},
+    "krug":       {"k": "furn", "n": "Коврик на кухне",   "p": 0, "pl": "floor", "std": True, "flat": True},
+    "bowl":       {"k": "furn", "n": "Миска",             "p": 0, "pl": "floor", "std": True},
+    "bed":        {"k": "furn", "n": "Кровать",           "p": 0, "pl": "floor", "std": True},
+    "nightstand": {"k": "furn", "n": "Тумбочка с лампой", "p": 0, "pl": "floor", "std": True},
+    "brug":       {"k": "furn", "n": "Ковёр в спальне",   "p": 0, "pl": "floor", "std": True, "flat": True},
+    "plush":      {"k": "furn", "n": "Плюшевая игрушка",  "p": 0, "pl": "floor", "std": True},
+}
+
+# Где стандартная мебель стоит по умолчанию: id -> (комната, x в %, y в %). Числа — как расставлено в игре сначала.
+STD_PLACE = {
+    "shelf": ("home", 73, 59), "hpicture": ("home", 89, 33), "hrug": ("home", 47, 74), "lounger": ("home", 80, 82),
+    "chest": ("home", 13, 88), "ball": ("home", 59, 90), "bone": ("home", 70, 89),
+    "counter": ("kitchen", 52, 0), "fridge": ("kitchen", 88, 0), "kclock": ("kitchen", 52, 33), "krug": ("kitchen", 47, 74),
+    "bowl": ("kitchen", 20, 92),
+    "bed": ("bedroom", 81, 29), "nightstand": ("bedroom", 14, 71), "brug": ("bedroom", 47, 75), "plush": ("bedroom", 74, 91),
 }
 
 SAY = {
@@ -456,6 +484,15 @@ def _save_items(cur, st: dict, pet_key=PET_KEY) -> None:
             )
 
 
+def _ensure_std(st: dict) -> None:
+    """Стандартная мебель дома есть у каждого питомца с самого начала: если вещи нет в базе — создаём на её месте по умолчанию.
+    Если игрок убрал её в кладовую, запись остаётся (room пустая) и вторично не создаётся."""
+    for iid, (room, x, y) in STD_PLACE.items():
+        if iid not in st["items"]:
+            st["items"][iid] = {"qty": 1, "worn": False, "room": room, "x": x, "y": y}
+            _touch(st, iid)
+
+
 def _load(cur, lock: bool, pet_key=PET_KEY) -> dict:
     cur.execute(
         "INSERT INTO pet_state (pet_key, name, coins, updated_ts) VALUES (%s, %s, %s, %s)"
@@ -470,6 +507,7 @@ def _load(cur, lock: bool, pet_key=PET_KEY) -> dict:
     row = cur.fetchone()
     st = dict(zip(_COLUMNS, row))
     st["items"] = _load_items(cur, pet_key)
+    _ensure_std(st)
     return st
 
 
@@ -629,8 +667,9 @@ def _apply(st: dict, action: str, now: float, p: dict):
             return False, REFUSE["bad_place"], 0, 0
         if target in OUTDOOR and "forest" not in locs:
             return False, REFUSE["loc_locked"], 0, 0
-        if it.get("room") != target:
-            others = sum(1 for oid, o in items.items() if o.get("room") == target and oid != iid)
+        if it.get("room") != target and not c.get("std"):          # стандартную мебель лимит не касается
+            others = sum(1 for oid, o in items.items()
+                         if o.get("room") == target and oid != iid and not CATALOG.get(oid, {}).get("std"))
             if others >= (MAX_PER_ROOM_OUT if target in OUTDOOR else MAX_PER_ROOM):
                 return False, REFUSE["room_full"], 0, 0
         it["room"] = target
@@ -872,7 +911,7 @@ def _claim_daily(st: dict, stats: dict, user_id: int, now: float):
 
 
 def _ach_vals(st: dict, stats: dict) -> dict:
-    kinds = [CATALOG[i]["k"] for i in st.get("items", {}) if i in CATALOG and not CATALOG[i].get("legacy")]
+    kinds = [CATALOG[i]["k"] for i in st.get("items", {}) if i in CATALOG and not CATALOG[i].get("legacy") and not CATALOG[i].get("std")]
     return ach.values(stats, st["level"], kinds.count("wear"), kinds.count("furn"), len(unlocked_locs(st)))
 
 
@@ -1099,6 +1138,7 @@ def admin(get_db, user_id: int, op: str, p: dict, names=None, pet_key=PET_KEY) -
                 cur.execute("DELETE FROM pet_quests WHERE pet_key=%s", (pet_key,))
                 ach.reset(cur, pet_key)
                 st["items"] = {}
+                _ensure_std(st)
                 msg = "Игра сброшена с нуля 🔄"
             elif op == "reset_stats":                # только персонаж, вещи остаются
                 keep = {k: st[k] for k in ("name", "coins")}
@@ -1108,6 +1148,7 @@ def admin(get_db, user_id: int, op: str, p: dict, names=None, pet_key=PET_KEY) -
             elif op == "clear_items":
                 cur.execute("DELETE FROM pet_items WHERE pet_key=%s", (pet_key,))
                 st["items"] = {}
+                _ensure_std(st)                      # дом снова обставлен стандартной мебелью
             elif op in ("loc_unlock", "loc_lock"):
                 for lid in LOCATIONS:
                     if op == "loc_unlock":
