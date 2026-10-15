@@ -337,26 +337,44 @@ class WebAppHandler(BaseHTTPRequestHandler):
             except Exception:
                 self._reply(404, b"Drawing page not found")
         elif path == "/pet":
-            try:
-                with open(os.path.join(BASE_DIR, "static", "pet.html"), "rb") as f:
-                    content = f.read()
-                self._reply(200, content, "text/html; charset=utf-8")
-            except Exception:
+            # Поддерживаем оба варианта раскладки: файлы в static/ (production)
+            # и рядом с app.py (плоская раскладка исходников).
+            candidates = (
+                os.path.join(BASE_DIR, "static", "pet.html"),
+                os.path.join(BASE_DIR, "pet.html"),
+            )
+            page = next((candidate for candidate in candidates if os.path.isfile(candidate)), None)
+            if page is None:
                 self._reply(404, b"Pet page not found")
+            else:
+                try:
+                    with open(page, "rb") as f:
+                        self._reply(200, f.read(), "text/html; charset=utf-8")
+                except OSError:
+                    self._reply(404, b"Pet page not found")
         elif path.startswith("/pet-garden/"):
-            # Только известные файлы, без произвольного доступа к static.
+            # Только известные файлы. CSS и JS могут находиться в static/garden/
+            # или рядом с app.py, в зависимости от раскладки проекта.
             assets = {
-                "garden.js": "application/javascript; charset=utf-8",
-                "garden.css": "text/css; charset=utf-8",
-                "assets/clearing.webp": "image/webp",
+                "garden.js": ("application/javascript; charset=utf-8", "garden.js"),
+                "garden.css": ("text/css; charset=utf-8", "garden.css"),
+                "assets/clearing.webp": ("image/webp", None),
             }
             asset = path[len("/pet-garden/"):]
             if asset not in assets:
                 self._reply(404)
                 return
+            content_type, flat_name = assets[asset]
+            candidates = [os.path.join(BASE_DIR, "static", "garden", asset)]
+            if flat_name:
+                candidates.append(os.path.join(BASE_DIR, flat_name))
+            source = next((candidate for candidate in candidates if os.path.isfile(candidate)), None)
+            if source is None:
+                self._reply(404)
+                return
             try:
-                with open(os.path.join(BASE_DIR, "static", "garden", asset), "rb") as f:
-                    self._reply(200, f.read(), assets[asset])
+                with open(source, "rb") as f:
+                    self._reply(200, f.read(), content_type)
             except OSError:
                 self._reply(404)
         elif path.startswith("/img/"):
