@@ -249,8 +249,8 @@
 
 
 
-<link rel="stylesheet" href="/pet-garden/garden.css?v=4">
-<script defer src="/pet-garden/garden.js?v=4"></script>
+<link rel="stylesheet" href="/pet-garden/garden.css?v=5">
+<script defer src="/pet-garden/garden.js?v=5"></script>
 </head>
 <body>
 
@@ -3273,6 +3273,7 @@
     canEnter: () => !!(S && hasForest(S) && !isGuest() && !busy),
     sync: st => { if (st) render(st); },
     sound: name => SFX.play(name), haptic,
+    gardenOtterFrame: now => { const o = drawOtter(now, S && S.sleeping ? 'sleep' : 'idle', Math.floor(now / 160) % 31 === 0, null, { s: 0.82, back: false }); return o && o.c; },
     back: () => { show('loc', { quiet: true, noMove: true }); refresh(false); },
     telegram: tg,
   };
