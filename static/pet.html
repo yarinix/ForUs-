@@ -247,12 +247,10 @@
   @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 </style>
 
-/* Вход в отдельный сад: кнопка в стиле пиксельной игры. */
-#gardenentry { position:absolute; z-index:8; left:12px; bottom:14px; top:auto; right:auto; padding:8px 12px; border:2px solid #65452b; border-radius:3px; color:#fff3c8; background:#527b43; box-shadow:0 3px 0 #3a512f,inset 0 1px 0 #a4c67a; font:800 13px ui-rounded,system-ui,sans-serif; text-shadow:1px 1px #354a2c; image-rendering:pixelated; }
-#gardenentry:active { transform:translateY(2px); box-shadow:0 1px 0 #3a512f; }
 
-<link rel="stylesheet" href="/pet-garden/garden.css?v=3">
-<script defer src="/pet-garden/garden.js?v=3"></script>
+
+<link rel="stylesheet" href="/pet-garden/garden.css?v=4">
+<script defer src="/pet-garden/garden.js?v=4"></script>
 </head>
 <body>
 
@@ -3272,7 +3270,7 @@
   // Мост между экраном питомца и отдельным садом. Сервер остаётся источником истины для монет и действий.
   window.PetGardenBridge = {
     api, state: () => S, guest: isGuest,
-    canEnter: () => !!(S && hasForest(S) && !isGuest() && tab === 'loc' && view.cur === 'yard' && !view.edit && !view.trans && !busy),
+    canEnter: () => !!(S && hasForest(S) && !isGuest() && !busy),
     sync: st => { if (st) render(st); },
     sound: name => SFX.play(name), haptic,
     back: () => { show('loc', { quiet: true, noMove: true }); refresh(false); },
