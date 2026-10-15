@@ -23,8 +23,14 @@
     const r = (x, y, w, h, c) => rect(x, y, w, h, c, ctx);
     const e = (x, y, rx, ry, c) => ellipse(x, y, rx, ry, c, ctx);
     if (type === 'bed') {
-      r(2, 5, 20, 16, '#704b30'); r(2, 4, 20, 2, '#cfa576'); r(2, 19, 20, 3, '#a5784b');
-      r(4, 7, 16, 12, '#976843'); for (let y = 8; y < 19; y += 4) r(5, y, 14, 1, '#6f492f'); return;
+      // Миниатюрная деревянная грядка: тёплые доски, торцевые бруски и борозды.
+      r(2, 5, 20, 16, '#533722'); r(3, 4, 18, 16, '#98643a');
+      r(2, 4, 20, 3, '#d5a66a'); r(3, 5, 18, 1, '#f0cc8b');
+      r(2, 18, 20, 3, '#80502f'); r(3, 20, 18, 1, '#bd8750');
+      r(4, 7, 16, 10, '#5b402b');
+      for (let y = 8; y < 18; y += 4) { r(5, y, 14, 2, '#765036'); r(5, y, 14, 1, '#a77a4b'); }
+      r(3, 7, 2, 10, '#d2a16a'); r(19, 7, 2, 10, '#d2a16a');
+      r(4, 7, 1, 2, '#f0cf91'); r(19, 7, 1, 2, '#f0cf91'); return;
     }
     if (type === 'coin' || type === 'harvest') {
       if (type === 'coin') { e(12, 12, 8, 8, '#a37530'); e(12, 11, 7, 7, '#edc35d'); r(10, 6, 3, 10, '#ffe9a0'); r(7, 10, 8, 2, '#cf9a3b'); }
@@ -302,15 +308,28 @@
   function drawHero(now) {
     const x = Math.round(hero.x), y = Math.round(hero.y), moving = Math.abs(hero.tx - hero.x) + Math.abs(hero.ty - hero.y) > 1;
     const bob = moving && !window.matchMedia('(prefers-reduced-motion: reduce)').matches ? Math.round(Math.sin(now / 90)) : 0;
-    ellipse(x, y + 1, 10, 3, '#3b5a3c55');
-    ellipse(x - 9, y - 7, 6, 3, '#785334'); ellipse(x - 9, y - 8, 5, 2, '#ae7d4f');
-    rect(x - 6, y - 8 + bob, 4, 7, '#68482f'); rect(x + 3, y - 8 + bob, 4, 7, '#68482f');
-    ellipse(x, y - 11 + bob, 9, 9, '#805936'); ellipse(x, y - 13 + bob, 8, 8, '#bd905d');
-    ellipse(x, y - 9 + bob, 5, 6, '#e5c397');
-    ellipse(x - 5, y - 25 + bob, 3, 3, '#785334'); ellipse(x + 5, y - 25 + bob, 3, 3, '#785334');
-    ellipse(x, y - 20 + bob, 9, 8, '#875d38'); ellipse(x, y - 21 + bob, 8, 7, '#c99a66');
-    ellipse(x, y - 17 + bob, 6, 4, '#eed1a7'); rect(x - 4, y - 22 + bob, 2, 2, '#392c25'); rect(x + 3, y - 22 + bob, 2, 2, '#392c25'); rect(x - 4, y - 22 + bob, 1, 1, '#fff4d8'); rect(x + 3, y - 22 + bob, 1, 1, '#fff4d8');
-    rect(x - 1, y - 19 + bob, 3, 2, '#654b39'); rect(x - 9, y - 25 + bob, 18, 2, '#d7bb77'); rect(x - 6, y - 29 + bob, 12, 4, '#e6cf91'); rect(x - 6, y - 26 + bob, 12, 1, '#8d864d');
+    // Выдра собрана из крупных пиксельных форм, с тёмным контуром и мягким светом.
+    ellipse(x, y + 1, 11, 3, '#344d2d66');
+    // хвост и лапки
+    ellipse(x - 9, y - 7, 7, 4, '#573a28'); ellipse(x - 10, y - 8, 5, 2, '#9a6841');
+    rect(x - 7, y - 9 + bob, 4, 8, '#493022'); rect(x + 4, y - 9 + bob, 4, 8, '#493022');
+    rect(x - 6, y - 9 + bob, 3, 5, '#a87549'); rect(x + 4, y - 9 + bob, 3, 5, '#a87549');
+    ellipse(x, y - 11 + bob, 10, 10, '#513523'); ellipse(x, y - 12 + bob, 8, 9, '#9a6842');
+    ellipse(x, y - 10 + bob, 5, 6, '#d7ad79'); rect(x - 4, y - 14 + bob, 2, 2, '#e8c798');
+    // ушки и голова
+    rect(x - 8, y - 27 + bob, 5, 5, '#503322'); rect(x - 7, y - 26 + bob, 3, 3, '#bd8755');
+    rect(x + 3, y - 27 + bob, 5, 5, '#503322'); rect(x + 4, y - 26 + bob, 3, 3, '#bd8755');
+    ellipse(x, y - 21 + bob, 10, 9, '#513523'); ellipse(x, y - 22 + bob, 8, 8, '#b98150');
+    rect(x - 6, y - 26 + bob, 3, 2, '#d5a16a'); rect(x + 3, y - 26 + bob, 3, 2, '#d5a16a');
+    // светлая мордочка, глаза и нос
+    ellipse(x, y - 18 + bob, 6, 4, '#efd5a6'); rect(x - 5, y - 22 + bob, 2, 3, '#30251e');
+    rect(x + 3, y - 22 + bob, 2, 3, '#30251e'); rect(x - 4, y - 23 + bob, 1, 1, '#fff3d7');
+    rect(x + 4, y - 23 + bob, 1, 1, '#fff3d7'); rect(x - 1, y - 19 + bob, 3, 2, '#503126');
+    rect(x - 3, y - 16 + bob, 1, 1, '#b77d64'); rect(x + 3, y - 16 + bob, 1, 1, '#b77d64');
+    // маленькая соломенная шляпа
+    rect(x - 10, y - 26 + bob, 20, 2, '#74502d'); rect(x - 8, y - 27 + bob, 16, 2, '#c99b4f');
+    rect(x - 6, y - 31 + bob, 12, 4, '#e8cb7d'); rect(x - 5, y - 30 + bob, 10, 1, '#f4dfa0');
+    rect(x - 6, y - 27 + bob, 12, 1, '#8f6b36'); rect(x + 3, y - 27 + bob, 3, 1, '#66844a');
   }
   function draw(now) {
     if (!opened) return;
@@ -325,14 +344,33 @@
     }
     // Ограждение идёт по границе именно открытого сада и меняется с расширениями.
     const right = GX + G.area.cols * T, bottom = GY + G.area.rows * T;
-    for (let x = GX - 5; x <= right + 5; x += 21) { rect(x, GY - 7, 2, 9, '#966d42'); rect(x, GY - 7, 2, 2, '#d2b278'); }
-    rect(GX - 5, GY - 4, right - GX + 12, 2, '#bb9663');
-    for (let y = GY + 5; y < bottom; y += 21) { rect(right + 3, y, 3, 10, '#a77f4c'); rect(right + 3, y, 3, 2, '#d8b883'); }
-    rect(right + 4, GY, 1, bottom - GY, '#bf9d68');
+    for (let x = GX - 5; x <= right + 5; x += 21) {
+      rect(x, GY - 8, 5, 12, '#573b27'); rect(x + 1, GY - 8, 3, 9, '#bd8a4d');
+      rect(x + 1, GY - 8, 3, 2, '#e4bd7a'); rect(x + 2, GY - 5, 1, 4, '#d7a564');
+    }
+    rect(GX - 5, GY - 5, right - GX + 12, 4, '#754b2c');
+    rect(GX - 5, GY - 5, right - GX + 12, 1, '#d7aa68');
+    rect(GX - 5, GY - 2, right - GX + 12, 1, '#4d3525');
+    for (let y = GY + 5; y < bottom; y += 21) {
+      rect(right + 2, y, 5, 12, '#604029'); rect(right + 3, y, 3, 9, '#bc884a');
+      rect(right + 3, y, 3, 2, '#e4bd7a'); rect(right + 4, y + 3, 1, 4, '#d7a564');
+    }
+    rect(right + 4, GY, 3, bottom - GY, '#81532f'); rect(right + 4, GY, 1, bottom - GY, '#d7aa68');
     for (const b of G.beds) {
       const x = GX + b.x * T + 3, y = GY + b.y * T + 5;
-      rect(x, y, T - 6, T - 9, '#684a30'); rect(x, y, T - 6, 2, '#d1ad75'); rect(x + 1, y + 2, T - 8, T - 13, b.dry ? '#a27a50' : '#896447'); rect(x, y + T - 12, T - 6, 3, '#b88c55');
-      for (let row = 6; row < T - 13; row += 6) { rect(x + 3, y + row, T - 12, 1, b.dry ? '#835f3d' : '#65492f'); rect(x + 5, y + row + 1, T - 16, 1, b.dry ? '#b48a5b' : '#9b7750'); }
+      // Объёмная деревянная рамка с угловыми колышками и тёмной влажной землёй.
+      rect(x - 1, y + 2, T - 4, T - 7, '#4c3324');
+      rect(x, y + 1, T - 6, T - 9, '#80502f');
+      rect(x + 1, y + 2, T - 8, T - 12, b.dry ? '#a27a50' : '#65472f');
+      rect(x, y, T - 6, 4, '#c99358'); rect(x + 1, y, T - 8, 1, '#f0cb8b');
+      rect(x, y + 4, 2, T - 15, '#e0b476'); rect(x + T - 8, y + 4, 2, T - 15, '#bd854a');
+      rect(x, y + T - 13, T - 6, 4, '#9b673a'); rect(x + 1, y + T - 13, T - 8, 1, '#d6a267');
+      // Текстура рыхлой почвы и отдельные борозды.
+      for (let row = 7; row < T - 15; row += 7) {
+        rect(x + 4, y + row, T - 14, 2, b.dry ? '#835f3d' : '#493323');
+        rect(x + 5, y + row + 2, T - 16, 1, b.dry ? '#c09a6b' : '#99704a');
+      }
+      [[2,4],[T-9,4],[2,T-14],[T-9,T-14]].forEach(([dx,dy]) => { rect(x + dx, y + dy, 3, 3, '#e4b978'); rect(x + dx, y + dy, 1, 3, '#f2d49a'); });
       if (b.crop) {
         cx.save(); cx.translate(x + 6, y + 2); sprite(cx, b.crop, b.stage, G.catalog.crops[b.crop].color); cx.restore();
         if (b.ready) { const a = (Math.sin(now / 600) + 1) / 2; rect(x + T - 12, y + 2, 3, 3, '#f6df92'); rect(x + T - 13, y + 3, 5, 1, '#fff1bc'); if (a > .5) rect(x + 3, y + 2, 1, 1, '#fff1bc'); }

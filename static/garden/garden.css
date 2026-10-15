@@ -8,11 +8,11 @@ body.pet-garden-open #app { visibility: hidden; }
 #pet-garden button:focus-visible { outline: 3px solid #7a9d6a; outline-offset: 2px; }
 #pet-garden button:disabled { cursor: default; opacity: .45; }
 #pet-garden .g-header { padding: 12px 16px 10px; background: var(--paper); display: flex; align-items: center; gap: 12px; border-bottom: 2px solid #c5af80; flex: 0 0 auto; }
-#pet-garden .g-back, #pet-garden .g-close { width: 42px; height: 42px; border: 1px solid #d8c498; background: #f7e8c6; border-radius: 14px; font-size: 24px; flex: 0 0 auto; }
+#pet-garden .g-back, #pet-garden .g-close { width: 42px; height: 42px; border: 1px solid #d8c498; background: #f7e8c6; border-radius: 5px; font-size: 24px; flex: 0 0 auto; box-shadow: inset 0 0 0 2px #fff0cf, 0 3px 0 #87613d; }
 #pet-garden .g-heading { flex: 1; min-width: 0; }
 #pet-garden .g-heading h1 { font-family: Georgia, serif; font-size: 25px; line-height: 1.1; margin: 0; font-weight: 700; }
 #pet-garden .g-heading small { display: block; font-size: 11px; margin-top: 5px; color: var(--muted); }
-#pet-garden .g-wallet { font-weight: 800; white-space: nowrap; background: #f3dfac; border: 1px solid #d5b575; border-radius: 13px; padding: 9px 11px; font-size: 15px; }
+#pet-garden .g-wallet { font-weight: 800; white-space: nowrap; background: #f3dfac; border: 1px solid #d5b575; border-radius: 5px; padding: 9px 11px; font-size: 15px; box-shadow: inset 0 0 0 2px #fff0cf, 0 3px 0 #987345; }
 #pet-garden .g-status { display: flex; justify-content: space-between; align-items: center; gap: 7px; padding: 8px 16px; font-size: 11px; color: #f7f3dd; background: #556b4c; flex: 0 0 auto; }
 #pet-garden .g-stage { position: relative; flex: 1; min-height: 165px; overflow: hidden; background: #66864b; }
 #pet-garden .g-scroll { position: absolute; inset: 0; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; touch-action: pan-x pan-y; }
@@ -24,7 +24,7 @@ body.pet-garden-open #app { visibility: hidden; }
 #pet-garden .g-cell:focus-visible { outline-offset: -3px; }
 #pet-garden .g-zoom { position: absolute; right: 10px; bottom: 10px; display: flex; gap: 4px; z-index: 1; }
 #pet-garden .g-zoom button { background: #fff4dded; border: 1px solid #b69460; border-radius: 11px; width: 38px; height: 38px; font-size: 20px; box-shadow: 0 2px 5px #24321933; }
-#pet-garden .g-sign { position: absolute; left: 12px; top: 12px; background: #fff2d5ed; box-shadow: 0 2px 8px #21381922; border: 1px solid #c1a16c; border-radius: 12px; padding: 6px 10px; font-size: 10px; pointer-events: none; max-width: 70%; }
+#pet-garden .g-sign { position: absolute; left: 12px; top: 12px; background: #fff2d5ed; box-shadow: 0 2px 8px #21381922; border: 1px solid #c1a16c; border-radius: 4px; padding: 6px 10px; font-size: 10px; pointer-events: none; max-width: 70%; }
 #pet-garden .g-care { padding: 12px 16px; background: var(--paper); border-top: 2px solid #c5af80; flex: 0 0 auto; min-height: 113px; }
 #pet-garden .g-care-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
 #pet-garden .g-care-text { flex: 1; min-width: 0; }
@@ -34,12 +34,12 @@ body.pet-garden-open #app { visibility: hidden; }
 #pet-garden .g-progress { height: 5px; border-radius: 6px; background: #e5d7b7; margin-top: 6px; overflow: hidden; }
 #pet-garden .g-progress div { height: 100%; background: #89a36b; transition: width .3s; }
 #pet-garden .g-actions { display: flex; gap: 6px; overflow-x: auto; }
-#pet-garden .g-btn { border: 1px solid #c9b287; border-radius: 11px; background: #f6e7c6; padding: 10px 12px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+#pet-garden .g-btn { border: 1px solid #c9b287; border-radius: 4px; background: #f6e7c6; padding: 10px 12px; box-shadow: inset 0 0 0 2px #fff1d3, 0 3px 0 #9b7447; font-size: 12px; font-weight: 700; white-space: nowrap; }
 #pet-garden .g-btn.primary { background: #5d794f; border-color: #42603b; color: #fff8e9; box-shadow: 0 2px 0 #365132; }
 #pet-garden .g-btn.gold { background: #e6bb61; border-color: #be9349; }
 #pet-garden .g-btn.danger { color: #97534b; }
 #pet-garden .g-nav { display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid #d9c69d; background: #f7ecd2; padding: 7px 10px 9px; flex: 0 0 auto; }
-#pet-garden .g-nav button { position: relative; border: 0; background: transparent; border-radius: 12px; padding: 5px; font-size: 10px; font-weight: 700; color: #80765f; display: flex; flex-direction: column; align-items: center; gap: 3px; }
+#pet-garden .g-nav button { position: relative; border: 0; background: transparent; border-radius: 4px; padding: 5px; font-size: 10px; font-weight: 700; color: #80765f; display: flex; flex-direction: column; align-items: center; gap: 3px; }
 #pet-garden .g-nav button.on { background: #e2e7cc; color: #43603a; }
 #pet-garden .g-nav canvas { width: 28px; height: 28px; image-rendering: pixelated; }
 #pet-garden .g-nav .g-badge { position: absolute; top: 0; right: 15%; background: #c17a45; color: #fff9e9; padding: 1px 5px; border-radius: 6px; font-size: 9px; }
@@ -71,3 +71,13 @@ body.pet-garden-open #app { visibility: hidden; }
 @media (min-width: 700px) { #pet-garden .g-header, #pet-garden .g-status, #pet-garden .g-care, #pet-garden .g-nav { padding-left: max(18px, calc((100vw - 760px) / 2)); padding-right: max(18px, calc((100vw - 760px) / 2)); } #pet-garden .g-care { min-height: 105px; } }
 @media (max-height: 610px) { #pet-garden .g-header { padding-top: 7px; padding-bottom: 7px; } #pet-garden .g-care { padding-top: 8px; padding-bottom: 8px; min-height: 95px; } #pet-garden .g-nav { padding-top: 3px; padding-bottom: 4px; } }
 @media (prefers-reduced-motion: reduce) { #pet-garden .g-progress div { transition: none; } }
+
+/* Пиксельная отделка: дерево, кремовая бумага и прямые края вместо мягкого app UI. */
+#pet-garden { --paper: #f8e8c4; --edge: #8b6038; background: #d9c18b; }
+#pet-garden .g-header { border-bottom: 3px solid #8c6038; box-shadow: inset 0 -3px 0 #e8c78a; }
+#pet-garden .g-heading h1, #pet-garden .g-sheet-title { text-shadow: 1px 1px 0 #e2c58c; }
+#pet-garden .g-care, #pet-garden .g-nav { border-color: #8c6038; box-shadow: inset 0 3px 0 #fff1cf; }
+#pet-garden .g-cell.selected { box-shadow: inset 0 0 0 2px #fff0a8, inset 0 0 0 4px #9c6c39; }
+#pet-garden .g-row { border-radius: 5px; border-color: #c2a16a; box-shadow: inset 0 0 0 2px #fff4d9; }
+#pet-garden .g-sheet-box, #pet-garden .g-confirm-box { border-radius: 8px; border-width: 3px; border-color: #8c6038; }
+#pet-garden .g-message { border-radius: 5px; border: 2px solid #8c6038; box-shadow: 0 3px 0 #654329; }
