@@ -7,9 +7,7 @@
   let root, G = null, selected = { x: 0, y: 0 }, opened = false, busy = false, sheet = null, shopTab = 'seed', zoom = 1;
   let timer, refreshBusy = false, pending = null, mode = null, messageTimer, confirmResolve, lastFocus;
   let hero = { x: 99, y: 238, tx: 99, ty: 238 }, effects = [], lastFrame = 0, animation, canvas, cx, scale = 1;
-  let bgReady = false, centered = false;
-  const bg = new Image(); bg.src = '/pet-garden/assets/clearing.webp';
-  bg.onload = () => { bgReady = true; if (opened) draw(performance.now()); };
+  let centered = false;
   const bridge = () => window.PetGardenBridge;
   const fmt = n => Number(n || 0).toLocaleString('ru-RU');
   const hours = sec => sec < 3600 ? Math.max(1, Math.ceil(sec / 60)) + ' мин' : Math.ceil(sec / 3600) + ' ч';
@@ -309,86 +307,176 @@
     const world = q('g-world'); world.style.width = width + 'px'; world.style.height = (width / W * H) + 'px'; world.style.marginTop = Math.max(0, (stage.clientHeight - width / W * H) / 2) + 'px'; scale = width / W;
     if (G && !centered) { centered = true; q('g-scroll').scrollLeft = Math.max(0, (GX + G.area.cols * T / 2) * scale - stage.clientWidth / 2); q('g-scroll').scrollTop = Math.max(0, (GY + G.area.rows * T / 2) * scale - stage.clientHeight / 2); }
   }
+  // Сцена в том же крупном пиксельном стиле, что задний двор основной игры.
+  function drawTree(x, y, s, color = '#315f43') {
+    x = Math.round(x); y = Math.round(y); s = Math.max(1, Math.round(s));
+    rect(x - s, y - 2*s, 2*s, s, color);
+    rect(x - 2*s, y - s, 4*s, s, color);
+    rect(x - 3*s, y, 6*s, s, color);
+    rect(x - s, y + s, 2*s, 3*s, '#765132');
+    rect(x - s, y - 2*s, s, s, '#4f8150'); rect(x - 2*s, y - s, s, s, '#477949');
+  }
+  function drawCloud(x, y, k) {
+    const c = '#fff4d5', shade = '#d6eef0';
+    rect(x, y + 4*k, 30*k, 6*k, shade); rect(x + 5*k, y + 2*k, 20*k, 6*k, c);
+    rect(x + 10*k, y, 9*k, 5*k, c); rect(x + 2*k, y + 5*k, 27*k, 3*k, c);
+  }
+  function drawFlower(x, y, petal, sway = 0) {
+    x = Math.round(x + sway); y = Math.round(y);
+    rect(x, y - 5, 1, 5, '#397447'); rect(x - 2, y - 3, 2, 1, '#76a858');
+    rect(x + 1, y - 4, 2, 1, '#70a253');
+    rect(x - 2, y - 8, 2, 2, petal); rect(x, y - 10, 2, 2, petal);
+    rect(x + 2, y - 8, 2, 2, petal); rect(x, y - 6, 2, 2, '#ffd965');
+  }
+  function drawScene(now) {
+    // Небо, ступенчатые холмы и дальний лес, всё собрано из жёстких пикселей.
+    rect(0, 0, W, H, '#86c8d8'); rect(0, 0, W, 48, '#78bbd0');
+    rect(0, 48, W, 24, '#a4d5d5');
+    drawCloud(68 + Math.round(Math.sin(now/8500)*5), 28, 2);
+    drawCloud(392 + Math.round(Math.sin(now/9700+1)*6), 51, 1);
+    rect(0, 89, 72, 16, '#84ad70'); rect(0, 81, 50, 8, '#92bd7c');
+    rect(370, 94, 206, 13, '#789e67'); rect(415, 83, 161, 11, '#8db77a');
+    rect(0, 101, W, 32, '#6d9560'); rect(0, 108, W, 18, '#759e63');
+    for (let x=8; x<W; x+=31) {
+      drawTree(x, 110 + ((x*7)%13), 2 + ((x*3)%2), x%3 ? '#396a4d' : '#47794f');
+    }
+    // Тёплая лужайка с плиточной травой, точечными цветами и солнечными бликами.
+    rect(0, 126, W, H-126, '#76ad5d'); rect(0, 148, W, H-148, '#7bb763');
+    rect(0, 184, W, 53, '#82bd68'); rect(0, 276, W, 108, '#75ad5c');
+    for (let i=0;i<100;i++) {
+      const x=(i*73+19)%W, y=133+(i*47+11)%(H-136);
+      rect(x,y,1+(i%4===0?1:0),1, i%3===0?'#a3cf70':i%3===1?'#659b54':'#8bbd64');
+    }
+    // Маленький сарайчик на краю участка, нарисованный в тех же тёплых цветах, что дом в игре.
+    rect(20, 105, 67, 83, '#82502f'); rect(25, 110, 56, 74, '#e9c98f');
+    for (let y=116;y<180;y+=8) { rect(26,y,54,1,'#f7dfae'); rect(26,y+6,54,1,'#c9a56c'); }
+    rect(16, 101, 74, 9, '#a94736'); rect(21, 93, 64, 9, '#c8543e');
+    for(let x=22;x<84;x+=12){rect(x,95,8,3,'#e17458');rect(x+1,98,8,2,'#9d3e31');}
+    rect(48, 150, 20, 34, '#a86637'); rect(51,153,14,27,'#bd7943');
+    rect(54,161,8,10,'#75462c'); rect(61,168,2,2,'#ffe07d');
+    rect(29,124,14,16,'#6c9da0'); rect(31,126,10,12,'#c7e8d7'); rect(35,126,2,12,'#8c6039'); rect(31,131,10,2,'#8c6039');
+    rect(26,142,20,3,'#91613a'); rect(29,145,2,5,'#4c7746'); drawFlower(33,145,'#f4899d'); drawFlower(40,145,'#ffd65c');
+    // Дорожка из уложенных крупных светлых камней ведёт прямо к калитке.
+    rect(269, 215, 43, 169, '#b79764'); rect(278,215,25,169,'#cfb37a');
+    for(let i=0;i<10;i++) {
+      const y=226+i*17, offset=(i%2)*7;
+      rect(273+offset,y,15,7,'#e0c78f'); rect(276+offset,y+1,10,2,'#f0dba8');
+      rect(291-offset,y+8,14,6,'#b18d5d'); rect(293-offset,y+8,10,2,'#d2b67d');
+    }
+    // Пикетный забор задаёт глубину сада, с проёмом перед дорожкой.
+    rect(94, 76, 388, 3, '#805331'); rect(95, 81, 385, 3, '#c08a50');
+    rect(97, 77, 380, 1, '#edc78a');
+    for(let x=99;x<480;x+=13) {
+      if(x>267&&x<316) continue;
+      rect(x,67,7,20,'#8f6037'); rect(x+1,66,5,18,'#d4a368');
+      rect(x+2,67,2,2,'#f1d195'); rect(x+1,80,5,2,'#a87543');
+    }
+    // Небольшие камни, ромашки и пучки травы по краям площадки.
+    for(let i=0;i<13;i++) {
+      const x=(i*47+20)%W, y=206+(i*31)%154;
+      if(x>GX-8&&x<GX+G.area.cols*T+8&&y>GY-8&&y<GY+G.area.rows*T+8) continue;
+      if(i%3===0) { rect(x,y,8,4,'#a28c66'); rect(x+1,y,5,1,'#d0bd8e'); }
+      else drawFlower(x,y+7,['#fff0c2','#f08ba1','#f1d05b'][i%3],Math.sin(now/380+i)*1.4);
+    }
+    // Крошечные бабочки, двигаются только днём и не мигают при reduced motion.
+    if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches && !G.weather.night) {
+      for(let i=0;i<3;i++) {
+        const x=Math.round((110+i*147+Math.sin(now/520+i*2)*12)%W), y=167+i*19+Math.round(Math.sin(now/370+i)*5);
+        const c=['#f77da7','#ffe26d','#a4c8ff'][i], flap=Math.floor(now/150+i)%2;
+        rect(x-3,y,3,1,c); rect(x+1,y-flap,3,1,c); rect(x,y,2,1,'#72543a');
+      }
+    }
+  }
   function drawHero(now) {
     const x = Math.round(hero.x), y = Math.round(hero.y), moving = Math.abs(hero.tx - hero.x) + Math.abs(hero.ty - hero.y) > 1;
     const bob = moving && !window.matchMedia('(prefers-reduced-motion: reduce)').matches ? Math.round(Math.sin(now / 90)) : 0;
-    // Выдра собрана из крупных пиксельных форм, с тёмным контуром и мягким светом.
-    ellipse(x, y + 1, 11, 3, '#344d2d66');
-    // хвост и лапки
-    ellipse(x - 9, y - 7, 7, 4, '#573a28'); ellipse(x - 10, y - 8, 5, 2, '#9a6841');
-    rect(x - 7, y - 9 + bob, 4, 8, '#493022'); rect(x + 4, y - 9 + bob, 4, 8, '#493022');
-    rect(x - 6, y - 9 + bob, 3, 5, '#a87549'); rect(x + 4, y - 9 + bob, 3, 5, '#a87549');
-    ellipse(x, y - 11 + bob, 10, 10, '#513523'); ellipse(x, y - 12 + bob, 8, 9, '#9a6842');
-    ellipse(x, y - 10 + bob, 5, 6, '#d7ad79'); rect(x - 4, y - 14 + bob, 2, 2, '#e8c798');
-    // ушки и голова
-    rect(x - 8, y - 27 + bob, 5, 5, '#503322'); rect(x - 7, y - 26 + bob, 3, 3, '#bd8755');
-    rect(x + 3, y - 27 + bob, 5, 5, '#503322'); rect(x + 4, y - 26 + bob, 3, 3, '#bd8755');
-    ellipse(x, y - 21 + bob, 10, 9, '#513523'); ellipse(x, y - 22 + bob, 8, 8, '#b98150');
-    rect(x - 6, y - 26 + bob, 3, 2, '#d5a16a'); rect(x + 3, y - 26 + bob, 3, 2, '#d5a16a');
-    // светлая мордочка, глаза и нос
-    ellipse(x, y - 18 + bob, 6, 4, '#efd5a6'); rect(x - 5, y - 22 + bob, 2, 3, '#30251e');
-    rect(x + 3, y - 22 + bob, 2, 3, '#30251e'); rect(x - 4, y - 23 + bob, 1, 1, '#fff3d7');
-    rect(x + 4, y - 23 + bob, 1, 1, '#fff3d7'); rect(x - 1, y - 19 + bob, 3, 2, '#503126');
-    rect(x - 3, y - 16 + bob, 1, 1, '#b77d64'); rect(x + 3, y - 16 + bob, 1, 1, '#b77d64');
-    // маленькая соломенная шляпа
-    rect(x - 10, y - 26 + bob, 20, 2, '#74502d'); rect(x - 8, y - 27 + bob, 16, 2, '#c99b4f');
-    rect(x - 6, y - 31 + bob, 12, 4, '#e8cb7d'); rect(x - 5, y - 30 + bob, 10, 1, '#f4dfa0');
-    rect(x - 6, y - 27 + bob, 12, 1, '#8f6b36'); rect(x + 3, y - 27 + bob, 3, 1, '#66844a');
+    ellipse(x, y + 1, 13, 4, '#35543b88');
+    // Берём настоящую выдру из сцены игры, включая её мордочку и экипировку.
+    let frame = null;
+    try { frame = bridge()?.gardenOtterFrame?.(now); } catch (_) {}
+    if (frame) {
+      cx.imageSmoothingEnabled = false;
+      cx.drawImage(frame, x - 34, y - 76 + bob, 68, 76);
+      return;
+    }
+    // Надёжный резервный рисунок, если основной игровой холст ещё не готов.
+    ellipse(x, y-17+bob, 17, 20, '#493022'); ellipse(x, y-19+bob, 14, 17, '#a87549');
+    ellipse(x, y-5+bob, 10, 8, '#ead3a7');
+    rect(x-10,y-34+bob,5,7,'#503322'); rect(x+5,y-34+bob,5,7,'#503322');
+    rect(x-7,y-25+bob,3,4,'#30251e'); rect(x+4,y-25+bob,3,4,'#30251e');
+    rect(x-2,y-19+bob,5,3,'#503126');
+    rect(x-17,y-39+bob,34,4,'#74502d'); rect(x-13,y-46+bob,26,8,'#e8cb7d');
   }
   function draw(now) {
     if (!opened) return;
-    if (bgReady) cx.drawImage(bg, 0, 0, W, H);
-    else { rect(0, 0, W, H, '#93b264'); for (let i = 0; i < 140; i++) rect((i * 47) % W, (i * 59) % H, 2, 1, '#abc479'); }
+    cx.clearRect(0,0,W,H); drawScene(now);
     if (!G) return;
-    // Лёгкая тень закрытых участков и аккуратная сетка пригодной для посадок земли.
+    // Открытые клетки выглядят как ухоженная земля, закрытая часть постепенно зарастает.
     for (let y = 0; y < 6; y++) for (let x = 0; x < 8; x++) {
       const px = GX + x * T, py = GY + y * T, locked = x >= G.area.cols || y >= G.area.rows;
-      if (locked) { rect(px, py, T, T, '#36543765'); if ((x + y) % 3 === 0) { rect(px + 16, py + 21, 2, 4, '#517e44'); rect(px + 18, py + 18, 2, 6, '#6d9651'); } }
-      else { rect(px + 1, py + 1, T - 2, T - 2, '#e8ebbb10'); rect(px, py + T - 1, T, 1, '#567c3625'); rect(px + T - 1, py, 1, T, '#567c3625'); }
+      if (locked) {
+        rect(px,py,T,T,'#37543742');
+        if ((x+y)%3===0) drawFlower(px+20,py+29,'#e9909d');
+      } else {
+        rect(px+2,py+3,T-4,T-4,'#41674618');
+        rect(px+2,py+T-3,T-4,1,'#365d3a30'); rect(px+T-3,py+2,1,T-4,'#d6e8a025');
+      }
     }
-    // Ограждение идёт по границе именно открытого сада и меняется с расширениями.
-    const right = GX + G.area.cols * T, bottom = GY + G.area.rows * T;
-    for (let x = GX - 5; x <= right + 5; x += 21) {
-      rect(x, GY - 8, 5, 12, '#573b27'); rect(x + 1, GY - 8, 3, 9, '#bd8a4d');
-      rect(x + 1, GY - 8, 3, 2, '#e4bd7a'); rect(x + 2, GY - 5, 1, 4, '#d7a564');
+    const right=GX+G.area.cols*T, bottom=GY+G.area.rows*T;
+    // Тёплые клумбовые бордюры и частокол вокруг участка.
+    rect(GX-6,GY-10,right-GX+12,3,'#654228'); rect(GX-6,GY-8,right-GX+12,2,'#d2a064');
+    rect(GX-6,bottom+5,right-GX+12,3,'#654228'); rect(GX-6,bottom+5,right-GX+12,2,'#c99358');
+    for(let x=GX-5;x<=right+2;x+=18) {
+      if(x>GX+T*0.6 && x<GX+T*1.4) continue;
+      rect(x,GY-15,4,9,'#865733');rect(x+1,GY-15,2,7,'#d7a66c');rect(x,GY-15,4,2,'#f0ce91');
+      rect(x,bottom+1,4,9,'#865733');rect(x+1,bottom+1,2,7,'#d7a66c');
     }
-    rect(GX - 5, GY - 5, right - GX + 12, 4, '#754b2c');
-    rect(GX - 5, GY - 5, right - GX + 12, 1, '#d7aa68');
-    rect(GX - 5, GY - 2, right - GX + 12, 1, '#4d3525');
-    for (let y = GY + 5; y < bottom; y += 21) {
-      rect(right + 2, y, 5, 12, '#604029'); rect(right + 3, y, 3, 9, '#bc884a');
-      rect(right + 3, y, 3, 2, '#e4bd7a'); rect(right + 4, y + 3, 1, 4, '#d7a564');
+    for(let y=GY;y<bottom;y+=18) {
+      rect(GX-8,y,3,9,'#83542f');rect(GX-7,y,1,7,'#d1a064');
+      rect(right+5,y,3,9,'#83542f');rect(right+6,y,1,7,'#d1a064');
     }
-    rect(right + 4, GY, 3, bottom - GY, '#81532f'); rect(right + 4, GY, 1, bottom - GY, '#d7aa68');
+    // Каменные шаги внутри сада.
+    for(let i=0;i<G.area.rows;i++) {
+      const py=GY+i*T+T-10;
+      rect(GX+T+4,py,15,4,'#bfa271');rect(GX+T+6,py,10,1,'#e4d09d');
+    }
     for (const b of G.beds) {
-      const x = GX + b.x * T + 3, y = GY + b.y * T + 5;
-      // Объёмная деревянная рамка с угловыми колышками и тёмной влажной землёй.
-      rect(x - 1, y + 2, T - 4, T - 7, '#4c3324');
-      rect(x, y + 1, T - 6, T - 9, '#80502f');
-      rect(x + 1, y + 2, T - 8, T - 12, b.dry ? '#a27a50' : '#65472f');
-      rect(x, y, T - 6, 4, '#c99358'); rect(x + 1, y, T - 8, 1, '#f0cb8b');
-      rect(x, y + 4, 2, T - 15, '#e0b476'); rect(x + T - 8, y + 4, 2, T - 15, '#bd854a');
-      rect(x, y + T - 13, T - 6, 4, '#9b673a'); rect(x + 1, y + T - 13, T - 8, 1, '#d6a267');
-      // Текстура рыхлой почвы и отдельные борозды.
-      for (let row = 7; row < T - 15; row += 7) {
-        rect(x + 4, y + row, T - 14, 2, b.dry ? '#835f3d' : '#493323');
-        rect(x + 5, y + row + 2, T - 16, 1, b.dry ? '#c09a6b' : '#99704a');
-      }
-      [[2,4],[T-9,4],[2,T-14],[T-9,T-14]].forEach(([dx,dy]) => { rect(x + dx, y + dy, 3, 3, '#e4b978'); rect(x + dx, y + dy, 1, 3, '#f2d49a'); });
-      if (b.crop) {
-        cx.save(); cx.translate(x + 6, y + 2); sprite(cx, b.crop, b.stage, G.catalog.crops[b.crop].color); cx.restore();
-        if (b.ready) { const a = (Math.sin(now / 600) + 1) / 2; rect(x + T - 12, y + 2, 3, 3, '#f6df92'); rect(x + T - 13, y + 3, 5, 1, '#fff1bc'); if (a > .5) rect(x + 3, y + 2, 1, 1, '#fff1bc'); }
-        if (b.dry) { rect(x + T - 13, y + 4, 4, 6, '#82bbc4'); rect(x + T - 12, y + 2, 2, 2, '#b9dde0'); }
-        if (b.fertilized) rect(x + 2, y + T - 14, 2, 2, '#e7c668');
+      const x=GX+b.x*T+3,y=GY+b.y*T+5;
+      // Квадратная грядка с несколькими слоями досок, тёмной землёй и видимыми креплениями.
+      rect(x-2,y+4,T-4,T-8,'#4c3324');rect(x,y+2,T-7,T-10,'#85542f');
+      rect(x+3,y+6,T-13,T-18,b.dry?'#9c754d':'#503a2b');
+      rect(x,y+1,T-7,4,'#d2a164');rect(x+2,y+2,T-11,1,'#f2d194');
+      rect(x,y+T-10,T-7,4,'#9a6438');rect(x+2,y+T-9,T-11,1,'#d8a36a');
+      rect(x+1,y+5,2,T-16,'#e1b675');rect(x+T-10,y+5,2,T-16,'#b77b45');
+      for(let row=11;row<T-13;row+=8){rect(x+6,y+row,T-19,2,b.dry?'#896541':'#402e23');rect(x+7,y+row+2,T-21,1,'#9b7650');}
+      for(const [dx,dy] of [[3,5],[T-11,5],[3,T-14],[T-11,T-14]]) {rect(x+dx,y+dy,3,3,'#edc585');rect(x+dx,y+dy,1,3,'#fff0bb');}
+      if(b.crop){
+        cx.save();cx.translate(x+7,y+1);cx.scale(1.12,1.12);sprite(cx,b.crop,b.stage,G.catalog.crops[b.crop].color);cx.restore();
+        if(b.ready){rect(x+T-14,y+4,3,3,'#ffe98a');rect(x+T-16,y+5,7,1,'#fff8d3');rect(x+T-13,y+2,1,2,'#fff8d3');}
+        if(b.dry){rect(x+T-13,y+7,3,5,'#82bbc4');rect(x+T-12,y+5,2,2,'#c9f0ee');}
+        if(b.fertilized){rect(x+3,y+T-15,3,3,'#ffe27a');rect(x+4,y+T-16,1,1,'#fff6c8');}
       }
     }
-    const drawables = G.decor.map(d => ({ y: GY + d.y * T + T, draw: () => { cx.save(); cx.translate(GX + d.x * T + 3, GY + d.y * T + 4); cx.scale(1.5, 1.5); sprite(cx, d.item); cx.restore(); } }));
-    drawables.push({ y: hero.y, draw: () => drawHero(now) }); drawables.sort((a, b) => a.y - b.y).forEach(d => d.draw());
-    if (G.auto_water) { cx.save(); cx.translate(GX - 34, GY + 13); sprite(cx, 'sprinkler'); cx.restore(); }
-    if (G.upgrades.includes('well')) { cx.save(); cx.translate(GX - 37, GY + 54); sprite(cx, 'well'); cx.restore(); }
-    if (G.weather.night) { rect(0, 0, W, H, '#233d6666'); G.decor.filter(d => d.item === 'lantern').forEach(d => { ellipse(GX + d.x * T + 20, GY + d.y * T + 13, 16, 12, '#ffe7a526'); rect(GX + d.x * T + 16, GY + d.y * T + 15, 6, 6, '#ffeab9'); }); }
-    if (G.weather.rain && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) for (let i = 0; i < 36; i++) { const y = ((now / 22 + i * 59) % H), x = (i * 83) % W; rect(x, y, 1, 5, '#c3e7d075'); }
-    effects = effects.filter(e => now - e.born < 900); effects.forEach(e => { const t = (now - e.born) / 900; for (let i = 0; i < 5; i++) rect(e.x + Math.cos(i * 1.3) * t * 17, e.y - t * 20 + Math.sin(i * 1.3) * 7, 2, 2, e.color); });
+    const drawables=G.decor.map(d=>({y:GY+d.y*T+T,draw:()=>{cx.save();cx.translate(GX+d.x*T+4,GY+d.y*T+2);cx.scale(1.5,1.5);sprite(cx,d.item);cx.restore();}}));
+    drawables.push({y:hero.y,draw:()=>drawHero(now)});drawables.sort((a,b)=>a.y-b.y).forEach(d=>d.draw());
+    if(G.auto_water){cx.save();cx.translate(GX-30,GY+13);cx.scale(1.15,1.15);sprite(cx,'sprinkler');cx.restore();}
+    if(G.upgrades.includes('well')){cx.save();cx.translate(GX-32,GY+54);cx.scale(1.2,1.2);sprite(cx,'well');cx.restore();}
+    // Указатель участка как деревянная табличка у калитки.
+    rect(392,106,89,27,'#533a28');rect(395,108,83,22,'#d8b575');rect(397,110,79,2,'#f2d89f');
+    for(let x=404;x<468;x+=9) rect(x,116,5,2,'#5b7542');
+    rect(409,121,53,2,'#745131');
+    if (G.weather.night) {
+      rect(0,0,W,H,'#1b31534d');
+      G.decor.filter(d=>d.item==='lantern').forEach(d=>{
+        ellipse(GX+d.x*T+20,GY+d.y*T+13,20,15,'#ffe7a526');
+        rect(GX+d.x*T+17,GY+d.y*T+14,6,7,'#ffeab9');
+      });
+    }
+    if(G.weather.rain&&!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      for(let i=0;i<38;i++){const y=((now/22+i*59)%H),x=(i*83)%W;rect(x,y,1,5,'#d8f0e9a8');}
+    }
+    effects=effects.filter(e=>now-e.born<900);
+    effects.forEach(e=>{const t=(now-e.born)/900;for(let i=0;i<5;i++)rect(e.x+Math.cos(i*1.3)*t*17,e.y-t*20+Math.sin(i*1.3)*7,2,2,e.color);});
   }
   function animate(now) {
     if (!opened || document.hidden) return;
