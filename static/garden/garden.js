@@ -98,7 +98,11 @@
     document.addEventListener('visibilitychange', () => { if (!opened) return; if (document.hidden) cancelAnimationFrame(animation); else { lastFrame = 0; animate(performance.now()); load(); } });
   }
   async function open() {
-    if (!bridge()?.canEnter()) return;
+    const b = bridge();
+    if (!b || !b.canEnter()) {
+      if (root && !root.hidden) notify('Сначала откройте лес и вернитесь на задний двор.');
+      return;
+    }
     opened = true; root.hidden = false; document.body.classList.add('pet-garden-open');
     G = null; pending = null; mode = null; sheet = null; centered = false; renderCare(); size();
     bridge().sound('door'); bridge().haptic('light');
