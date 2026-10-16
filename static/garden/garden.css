@@ -1,201 +1,110 @@
-/* Всё оформление ограничено отдельным экраном сада. Остальная игра не меняется. */
+/* Экран сада в стиле основной игры: тёмно-синие карточки, скруглённые углы, синие кнопки. Остальная игра не меняется. */
 #gardenentry[hidden], #pet-garden[hidden] { display: none !important; }
-#gardenentry { position: absolute; z-index: 3; right: 10px; top: 10px; color: #392817; background: linear-gradient(#f5daa1, #d9b774); border: 2px solid #775035; box-shadow: 0 3px 0 #483022; }
+#gardenentry { position: absolute; z-index: 3; right: 10px; top: 10px; }
 body.pet-garden-open #app { visibility: hidden; }
-#pet-garden { --ink: #493c2e; --muted: #7c725e; --paper: #fff4d9; --edge: #a67b49; --green: #53744b; --gold: #c98a33; position: fixed; inset: 0; z-index: 11; background: #ecdfbf; color: var(--ink); font-family: ui-rounded, 'SF Pro Rounded', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; padding: env(safe-area-inset-top, 0px) 0 env(safe-area-inset-bottom, 0px); user-select: none; }
+
+#pet-garden {
+  --bg: #0c1633; --card: #182a5c; --card2: #203570; --line: rgba(120,160,255,.22);
+  --text: #f3f6ff; --dim: #9fb2e6; --blue: #2f7bff; --coin: #ffcf3d; --ok: #3ddc84;
+  position: fixed; inset: 0; z-index: 11; color: var(--text);
+  background: radial-gradient(120% 60% at 50% 0, #1a2f6b 0, var(--bg) 62%);
+  font-family: ui-rounded, "SF Pro Rounded", system-ui, -apple-system, "Segoe UI", sans-serif;
+  display: flex; flex-direction: column; gap: 9px; overflow: hidden; user-select: none; -webkit-user-select: none;
+  padding: calc(env(safe-area-inset-top, 0px) + 8px) 12px calc(env(safe-area-inset-bottom, 0px) + 8px);
+  max-width: 480px; margin: 0 auto; -webkit-tap-highlight-color: transparent;
+}
 #pet-garden * { box-sizing: border-box; }
 #pet-garden button { font: inherit; color: inherit; cursor: pointer; touch-action: manipulation; }
-#pet-garden button:focus-visible { outline: 3px solid #7a9d6a; outline-offset: 2px; }
-#pet-garden button:disabled { cursor: default; opacity: .45; }
-#pet-garden .g-header { padding: 12px 16px 10px; background: var(--paper); display: flex; align-items: center; gap: 12px; border-bottom: 2px solid #c5af80; flex: 0 0 auto; }
-#pet-garden .g-back, #pet-garden .g-close { width: 42px; height: 42px; border: 1px solid #d8c498; background: #f7e8c6; border-radius: 5px; font-size: 24px; flex: 0 0 auto; box-shadow: inset 0 0 0 2px #fff0cf, 0 3px 0 #87613d; }
+#pet-garden button:focus-visible { outline: 3px solid #5aa0ff; outline-offset: 2px; }
+#pet-garden button:disabled { cursor: default; opacity: .4; }
+
+/* шапка */
+#pet-garden .g-header { display: flex; align-items: center; gap: 11px; flex: 0 0 auto; padding: 9px 12px;
+  background: linear-gradient(180deg, var(--card2), var(--card)); border: 1.5px solid var(--line); border-radius: 20px; box-shadow: 0 6px 18px rgba(0,0,0,.28); }
+#pet-garden .g-back, #pet-garden .g-close { flex: 0 0 auto; width: 42px; height: 42px; border: 0; border-radius: 14px; font-size: 26px; line-height: 1; font-weight: 800; color: #fff;
+  background: linear-gradient(180deg, #3b86ff, #2563d8); box-shadow: 0 3px 0 rgba(4,10,30,.6); }
 #pet-garden .g-heading { flex: 1; min-width: 0; }
-#pet-garden .g-heading h1 { font-family: Georgia, serif; font-size: 25px; line-height: 1.1; margin: 0; font-weight: 700; }
-#pet-garden .g-heading small { display: block; font-size: 11px; margin-top: 5px; color: var(--muted); }
-#pet-garden .g-wallet { font-weight: 800; white-space: nowrap; background: #f3dfac; border: 1px solid #d5b575; border-radius: 5px; padding: 9px 11px; font-size: 15px; box-shadow: inset 0 0 0 2px #fff0cf, 0 3px 0 #987345; }
-#pet-garden .g-status { display: flex; justify-content: space-between; align-items: center; gap: 7px; padding: 8px 16px; font-size: 11px; color: #f7f3dd; background: #556b4c; flex: 0 0 auto; }
-#pet-garden .g-stage { position: relative; flex: 1; min-height: 165px; overflow: hidden; background: #66864b; }
-#pet-garden .g-scroll { position: absolute; inset: 0; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; touch-action: pan-x pan-y; }
+#pet-garden .g-heading h1 { margin: 0; font-size: 19px; line-height: 1.15; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#pet-garden .g-heading small { display: block; margin-top: 3px; font-size: 12px; font-weight: 700; color: var(--dim); }
+#pet-garden .g-wallet { font-weight: 800; font-size: 17px; white-space: nowrap; background: rgba(8,16,40,.55); border: 1.5px solid var(--line); border-radius: 18px; padding: 7px 13px; }
+#pet-garden .g-status { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex: 0 0 auto; min-height: 34px; padding: 0 14px;
+  font-size: 13px; font-weight: 800; background: rgba(8,16,40,.6); border: 1.5px solid var(--line); border-radius: 17px; }
+#pet-garden .g-status span:last-child { color: var(--dim); }
+#pet-garden .g-offline { border-color: #ff6a6a; background: rgba(120,30,40,.45); }
+
+/* карта */
+#pet-garden .g-stage { position: relative; flex: 1; min-height: 165px; overflow: hidden; border-radius: 22px; border: 2px solid var(--line); box-shadow: 0 8px 22px rgba(0,0,0,.35); background: #1f5f34; }
+#pet-garden .g-scroll { position: absolute; inset: 0; overflow: auto; overscroll-behavior: contain; scrollbar-width: none; touch-action: pan-x pan-y; }
+#pet-garden .g-scroll::-webkit-scrollbar { display: none; }
 #pet-garden .g-world { position: relative; margin: 0 auto; }
-#pet-garden .g-map { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
+#pet-garden .g-map { display: block; width: 100%; height: 100%; image-rendering: pixelated; image-rendering: crisp-edges; }
 #pet-garden .g-hits { position: absolute; inset: 0; }
-#pet-garden .g-cell { position: absolute; background: transparent; border: 0; border-radius: 2px; padding: 0; }
-#pet-garden .g-cell.selected { box-shadow: inset 0 0 0 2px #ffe6a0, 0 0 0 1px #634d29; }
+#pet-garden .g-cell { position: absolute; background: transparent; border: 0; border-radius: 6px; padding: 0; -webkit-tap-highlight-color: transparent; }
+#pet-garden .g-cell.selected { box-shadow: inset 0 0 0 2px #fff, inset 0 0 0 4px rgba(47,123,255,.9), 0 0 14px rgba(90,160,255,.7); background: rgba(120,170,255,.14); }
 #pet-garden .g-cell:focus-visible { outline-offset: -3px; }
-#pet-garden .g-zoom { position: absolute; right: 10px; bottom: 10px; display: flex; gap: 4px; z-index: 1; }
-#pet-garden .g-zoom button { background: #fff4dded; border: 1px solid #b69460; border-radius: 11px; width: 38px; height: 38px; font-size: 20px; box-shadow: 0 2px 5px #24321933; }
-#pet-garden .g-sign { position: absolute; left: 12px; top: 12px; background: #fff2d5ed; box-shadow: 0 2px 8px #21381922; border: 1px solid #c1a16c; border-radius: 4px; padding: 6px 10px; font-size: 10px; pointer-events: none; max-width: 70%; }
-#pet-garden .g-care { padding: 12px 16px; background: var(--paper); border-top: 2px solid #c5af80; flex: 0 0 auto; min-height: 113px; }
-#pet-garden .g-care-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+#pet-garden .g-zoom { position: absolute; right: 10px; bottom: 10px; display: flex; gap: 6px; z-index: 1; }
+#pet-garden .g-zoom button { width: 38px; height: 38px; font-size: 21px; font-weight: 800; color: #fff; background: rgba(8,16,40,.68); border: 1.5px solid var(--line); border-radius: 13px; backdrop-filter: blur(3px); }
+#pet-garden .g-zoom button:active, #pet-garden .g-btn:active, #pet-garden .g-back:active { transform: translateY(2px); }
+#pet-garden .g-sign { position: absolute; left: 8px; top: 10px; z-index: 1; max-width: 70%; pointer-events: none; padding: 5px 11px; font-size: 12.5px; font-weight: 800;
+  background: rgba(8,16,40,.68); border: 1.5px solid var(--line); border-radius: 12px; }
+
+/* панель ухода */
+#pet-garden .g-care { flex: 0 0 auto; min-height: 118px; padding: 11px 13px; background: linear-gradient(180deg, var(--card2), var(--card)); border: 1.5px solid var(--line); border-radius: 22px; box-shadow: 0 6px 18px rgba(0,0,0,.28); }
+#pet-garden .g-care-head { display: flex; align-items: center; gap: 11px; margin-bottom: 9px; }
 #pet-garden .g-care-text { flex: 1; min-width: 0; }
-#pet-garden .g-care-text b { display: block; font-size: 15px; }
-#pet-garden .g-care-text small { display: block; font-size: 11px; line-height: 1.45; color: var(--muted); margin-top: 2px; }
-#pet-garden .g-care-icon, #pet-garden .g-item-icon { width: 42px; height: 42px; image-rendering: pixelated; flex: 0 0 auto; background: #e9ebcd; border-radius: 12px; }
-#pet-garden .g-progress { height: 5px; border-radius: 6px; background: #e5d7b7; margin-top: 6px; overflow: hidden; }
-#pet-garden .g-progress div { height: 100%; background: #89a36b; transition: width .3s; }
-#pet-garden .g-actions { display: flex; gap: 6px; overflow-x: auto; }
-#pet-garden .g-btn { border: 1px solid #c9b287; border-radius: 4px; background: #f6e7c6; padding: 10px 12px; box-shadow: inset 0 0 0 2px #fff1d3, 0 3px 0 #9b7447; font-size: 12px; font-weight: 700; white-space: nowrap; }
-#pet-garden .g-btn.primary { background: #5d794f; border-color: #42603b; color: #fff8e9; box-shadow: 0 2px 0 #365132; }
-#pet-garden .g-btn.gold { background: #e6bb61; border-color: #be9349; }
-#pet-garden .g-btn.danger { color: #97534b; }
-#pet-garden .g-nav { display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid #d9c69d; background: #f7ecd2; padding: 7px 10px 9px; flex: 0 0 auto; }
-#pet-garden .g-nav button { position: relative; border: 0; background: transparent; border-radius: 4px; padding: 5px; font-size: 10px; font-weight: 700; color: #80765f; display: flex; flex-direction: column; align-items: center; gap: 3px; }
-#pet-garden .g-nav button.on { background: #e2e7cc; color: #43603a; }
-#pet-garden .g-nav canvas { width: 28px; height: 28px; image-rendering: pixelated; }
-#pet-garden .g-nav .g-badge { position: absolute; top: 0; right: 15%; background: #c17a45; color: #fff9e9; padding: 1px 5px; border-radius: 6px; font-size: 9px; }
-#pet-garden .g-message { position: absolute; z-index: 7; left: 50%; top: 112px; transform: translateX(-50%); max-width: 90%; width: max-content; background: #fff6e5; color: #4b3c2b; border: 1px solid #b8a17c; border-radius: 14px; box-shadow: 0 6px 20px #2d402b33; padding: 12px 16px; font-size: 12px; line-height: 1.4; text-align: center; pointer-events: none; }
+#pet-garden .g-care-text b { display: block; font-size: 16px; font-weight: 800; }
+#pet-garden .g-care-text small { display: block; margin-top: 2px; font-size: 12px; line-height: 1.4; color: var(--dim); font-weight: 600; }
+#pet-garden .g-care-icon, #pet-garden .g-item-icon { width: 44px; height: 44px; flex: 0 0 auto; image-rendering: pixelated; image-rendering: crisp-edges; background: radial-gradient(circle at 50% 35%, #2c4a96, #14224a); border: 1.5px solid var(--line); border-radius: 14px; padding: 2px; }
+#pet-garden .g-progress { height: 7px; margin-top: 7px; border-radius: 4px; background: rgba(255,255,255,.12); overflow: hidden; }
+#pet-garden .g-progress div { height: 100%; border-radius: 4px; background: linear-gradient(90deg, #3ddc84, #8dff9e); transition: width .3s; }
+#pet-garden .g-actions { display: flex; gap: 7px; overflow-x: auto; padding: 1px 1px 4px; scrollbar-width: none; }
+#pet-garden .g-actions::-webkit-scrollbar { display: none; }
+#pet-garden .g-btn { flex: 0 0 auto; white-space: nowrap; font-size: 13px; font-weight: 800; color: #fff; padding: 9px 14px; border: 0; border-radius: 13px;
+  background: rgba(255,255,255,.14); box-shadow: 0 3px 0 rgba(4,10,30,.6); }
+#pet-garden .g-btn.primary { background: linear-gradient(180deg, #3b86ff, #2563d8); }
+#pet-garden .g-btn.gold { background: linear-gradient(180deg, #ffd95a, #f0a91c); color: #3a2606; }
+#pet-garden .g-btn.danger { color: #ff9aa6; }
+
+/* нижнее меню как в игре */
+#pet-garden .g-nav { flex: 0 0 auto; display: grid; grid-template-columns: repeat(4, 1fr); padding: 5px; background: rgba(8,16,40,.72); border: 1.5px solid var(--line); border-radius: 22px; }
+#pet-garden .g-nav button { position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 0 5px; border: 0; border-radius: 17px; background: none;
+  font-size: 11.5px; font-weight: 800; color: var(--dim); }
+#pet-garden .g-nav button.on { color: #fff; background: linear-gradient(180deg, #3b86ff, #2563d8); box-shadow: 0 3px 10px rgba(47,123,255,.45); }
+#pet-garden .g-nav canvas { width: 28px; height: 28px; image-rendering: pixelated; image-rendering: crisp-edges; background: none; border: 0; padding: 0; }
+#pet-garden .g-nav .g-badge { position: absolute; top: 2px; right: 20%; min-width: 18px; padding: 1px 5px; border-radius: 9px; font-size: 10px; font-weight: 800; text-align: center; background: #ff5a6a; color: #fff; box-shadow: 0 0 0 2px #14224a; }
+
+/* всплывашка */
+#pet-garden .g-message { position: absolute; z-index: 7; left: 50%; top: 96px; transform: translateX(-50%); max-width: 88%; width: max-content; padding: 10px 15px; font-size: 13.5px; font-weight: 800; line-height: 1.3; text-align: center;
+  color: #2a2140; background: #fff; border-radius: 16px; box-shadow: 0 5px 14px rgba(0,0,0,.35); pointer-events: none; }
 #pet-garden .g-message[hidden] { display: none; }
-#pet-garden .g-sheet { position: absolute; inset: 0; z-index: 5; display: flex; align-items: flex-end; justify-content: center; background: #26352180; }
-#pet-garden .g-sheet[hidden] { display: none; }
-#pet-garden .g-sheet-box { width: 100%; max-width: 680px; max-height: 83%; display: flex; flex-direction: column; background: var(--paper); border: 2px solid #b99b66; border-radius: 23px 23px 0 0; box-shadow: 0 -8px 30px #18251633; }
-#pet-garden .g-sheet-head { display: flex; align-items: center; gap: 12px; padding: 16px; flex: 0 0 auto; }
-#pet-garden .g-sheet-title { flex: 1; font-size: 20px; font-family: Georgia, serif; font-weight: 700; }
-#pet-garden .g-close { width: 34px; height: 34px; font-size: 20px; }
-#pet-garden .g-tabs { display: flex; gap: 6px; padding: 0 16px 12px; flex-shrink: 0; }
-#pet-garden .g-tabs button { flex: 1; padding: 8px 6px; font-size: 11px; border: 1px solid #cfba92; border-radius: 10px; background: #f6e7c9; }
-#pet-garden .g-tabs button.on { background: #5d794f; color: #fff6e5; border-color: #5d794f; }
+
+/* окна */
+#pet-garden .g-sheet { position: absolute; inset: 0; z-index: 5; display: flex; align-items: flex-end; justify-content: center; background: rgba(4,8,22,.62); }
+#pet-garden .g-sheet[hidden], #pet-garden .g-confirm[hidden] { display: none; }
+#pet-garden .g-sheet-box { width: 100%; max-height: 84%; display: flex; flex-direction: column; background: linear-gradient(180deg, var(--card2), var(--card)); border: 1.5px solid var(--line); border-bottom: 0; border-radius: 24px 24px 0 0; box-shadow: 0 -8px 30px rgba(0,0,0,.4); }
+#pet-garden .g-sheet-head { display: flex; align-items: center; gap: 12px; flex: 0 0 auto; padding: 14px 16px 10px; }
+#pet-garden .g-sheet-title { flex: 1; font-size: 19px; font-weight: 800; }
+#pet-garden .g-close { width: 36px; height: 36px; font-size: 22px; border-radius: 12px; }
+#pet-garden .g-tabs { display: flex; gap: 6px; flex-shrink: 0; padding: 0 16px 10px; }
+#pet-garden .g-tabs button { flex: 1; padding: 8px 6px; font-size: 12.5px; font-weight: 800; color: var(--dim); background: rgba(8,16,40,.6); border: 1.5px solid var(--line); border-radius: 13px; }
+#pet-garden .g-tabs button.on { color: #fff; border-color: transparent; background: linear-gradient(180deg, #3b86ff, #2563d8); }
 #pet-garden .g-sheet-body { padding: 0 16px 20px; overflow-y: auto; overscroll-behavior: contain; }
-#pet-garden .g-row { display: flex; align-items: center; gap: 10px; border: 1px solid #dfcca5; background: #fff8e8; border-radius: 14px; padding: 11px; margin-bottom: 8px; }
-#pet-garden .g-row-text { flex: 1; min-width: 0; font-size: 13px; }
-#pet-garden .g-row-text b { display: block; }
-#pet-garden .g-row-text small { display: block; font-size: 10px; color: var(--muted); line-height: 1.45; margin-top: 4px; }
-#pet-garden .g-row .g-btn { padding: 9px 10px; font-size: 11px; }
-#pet-garden .g-note { font-size: 12px; color: var(--muted); line-height: 1.65; padding: 5px 0 10px; }
-#pet-garden .g-intro { padding: 16px; border: 1px solid #d0bf94; border-radius: 16px; background: #eef0d9; margin-bottom: 13px; font-size: 12px; line-height: 1.6; }
-#pet-garden .g-intro h3 { margin: 0 0 6px; color: #53744b; font-family: Georgia, serif; font-size: 22px; }
-#pet-garden .g-confirm { position: absolute; inset: 0; z-index: 6; background: #25321e99; display: flex; align-items: center; justify-content: center; padding: 24px; }
-#pet-garden .g-confirm[hidden] { display: none; }
-#pet-garden .g-confirm-box { max-width: 340px; background: var(--paper); border: 2px solid #b99b66; padding: 23px; border-radius: 20px; line-height: 1.6; font-size: 14px; box-shadow: 0 10px 35px #15211255; }
+#pet-garden .g-sheet-body > .g-btn { display: block; width: 100%; margin-top: 8px; padding: 12px 14px; }
+#pet-garden .g-row { display: flex; align-items: center; gap: 10px; padding: 10px; margin-bottom: 8px; background: rgba(8,16,40,.5); border: 1.5px solid var(--line); border-radius: 16px; }
+#pet-garden .g-row-text { flex: 1; min-width: 0; font-size: 14px; }
+#pet-garden .g-row-text b { display: block; font-weight: 800; }
+#pet-garden .g-row-text small { display: block; margin-top: 3px; font-size: 11.5px; line-height: 1.4; color: var(--dim); font-weight: 600; }
+#pet-garden .g-row .g-btn { padding: 9px 11px; font-size: 12.5px; }
+#pet-garden .g-note { padding: 4px 0 10px; font-size: 13px; line-height: 1.55; color: var(--dim); font-weight: 600; }
+#pet-garden .g-intro { margin-bottom: 12px; padding: 14px 16px; font-size: 13.5px; line-height: 1.55; background: rgba(61,220,132,.1); border: 1.5px solid rgba(61,220,132,.35); border-radius: 16px; }
+#pet-garden .g-intro h3 { margin: 0 0 6px; font-size: 19px; font-weight: 800; color: #8dff9e; }
+#pet-garden .g-confirm { position: absolute; inset: 0; z-index: 6; display: flex; align-items: center; justify-content: center; padding: 24px; background: rgba(4,8,22,.7); }
+#pet-garden .g-confirm-box { max-width: 340px; padding: 20px; font-size: 14.5px; line-height: 1.5; font-weight: 700; background: linear-gradient(180deg, var(--card2), var(--card)); border: 1.5px solid var(--line); border-radius: 22px; box-shadow: 0 10px 35px rgba(0,0,0,.5); }
 #pet-garden .g-confirm-box .g-actions { margin-top: 16px; }
-#pet-garden .g-offline { background: #a35f43; }
-@media (min-width: 700px) { #pet-garden .g-header, #pet-garden .g-status, #pet-garden .g-care, #pet-garden .g-nav { padding-left: max(18px, calc((100vw - 760px) / 2)); padding-right: max(18px, calc((100vw - 760px) / 2)); } #pet-garden .g-care { min-height: 105px; } }
-@media (max-height: 610px) { #pet-garden .g-header { padding-top: 7px; padding-bottom: 7px; } #pet-garden .g-care { padding-top: 8px; padding-bottom: 8px; min-height: 95px; } #pet-garden .g-nav { padding-top: 3px; padding-bottom: 4px; } }
-@media (prefers-reduced-motion: reduce) { #pet-garden .g-progress div { transition: none; } }
-
-/* Пиксельная отделка: дерево, кремовая бумага и прямые края вместо мягкого app UI. */
-#pet-garden { --paper: #f8e8c4; --edge: #8b6038; background: #d9c18b; }
-#pet-garden .g-header { border-bottom: 3px solid #8c6038; box-shadow: inset 0 -3px 0 #e8c78a; }
-#pet-garden .g-heading h1, #pet-garden .g-sheet-title { text-shadow: 1px 1px 0 #e2c58c; }
-#pet-garden .g-care, #pet-garden .g-nav { border-color: #8c6038; box-shadow: inset 0 3px 0 #fff1cf; }
-#pet-garden .g-cell.selected { box-shadow: inset 0 0 0 2px #fff0a8, inset 0 0 0 4px #9c6c39; }
-#pet-garden .g-row { border-radius: 5px; border-color: #c2a16a; box-shadow: inset 0 0 0 2px #fff4d9; }
-#pet-garden .g-sheet-box, #pet-garden .g-confirm-box { border-radius: 8px; border-width: 3px; border-color: #8c6038; }
-#pet-garden .g-message { border-radius: 5px; border: 2px solid #8c6038; box-shadow: 0 3px 0 #654329; }
-
-
-/* Единый стиль с пиксельным задним двором игры: тёплое дерево, бумага, прямые грани. */
-#gardenentry {
-  color:#fff2d2!important; background:#426d45!important; border:2px solid #284c34!important;
-  border-radius:3px!important; box-shadow:inset 0 0 0 2px #83a764,0 4px 0 #263b2a,2px 5px 0 #f0d79c!important;
-  font-weight:900; letter-spacing:.2px; padding:8px 12px!important; text-shadow:1px 2px #29432f;
+@media (max-height: 640px) {
+  #pet-garden { gap: 6px; }
+  #pet-garden .g-care { min-height: 96px; padding: 8px 12px; }
+  #pet-garden .g-care-head { margin-bottom: 5px; }
+  #pet-garden .g-header { padding: 6px 12px; }
 }
-#pet-garden {
-  --ink:#493b2a; --muted:#777052; --paper:#f3e2b8; --edge:#754d2c; --green:#456d43; --gold:#bc8134;
-  color:var(--ink); background:#79a958; font-family:ui-rounded,'SF Pro Rounded',system-ui,sans-serif;
-  image-rendering:pixelated;
-}
-#pet-garden .g-header {
-  position:relative; gap:11px; padding:10px 14px 12px; color:#fff3d0;
-  background:#385f40; border-bottom:4px solid #284831;
-  box-shadow:inset 0 2px 0 #78965b, inset 0 -2px 0 #527447;
-}
-#pet-garden .g-back,#pet-garden .g-close {
-  color:#fff2d2; background:#8b5b34; border:2px solid #56371f; border-radius:3px;
-  box-shadow:inset 0 0 0 2px #bc8852,0 3px 0 #402c20; text-shadow:1px 1px #533820;
-}
-#pet-garden .g-back {font-size:30px;line-height:1}
-#pet-garden .g-heading h1 {font-family:Georgia,serif;font-size:24px;letter-spacing:.4px;text-shadow:2px 2px #294831}
-#pet-garden .g-heading small {color:#d6dda9;font-size:11px}
-#pet-garden .g-wallet {
-  color:#513a22; background:#e7c676; border:2px solid #855d31; border-radius:3px;
-  box-shadow:inset 0 0 0 2px #f8e5a9,0 3px 0 #543d28;
-}
-#pet-garden .g-status {
-  min-height:32px; padding:7px 14px; color:#f8edca; background:#617b4d;
-  border-bottom:2px solid #46623c; font-size:11px; font-weight:800; letter-spacing:.2px;
-}
-#pet-garden .g-stage {
-  background:#77ad5c; border:0; box-shadow:inset 0 3px 0 #a9cb77, inset 0 -3px 0 #4a753e;
-  image-rendering:pixelated;
-}
-#pet-garden .g-world {image-rendering:pixelated}
-#pet-garden .g-map {image-rendering:pixelated; image-rendering:crisp-edges}
-#pet-garden .g-sign {
-  left:10px;top:10px;padding:7px 10px;color:#493b2a;background:#f3e2b8;
-  border:2px solid #78532f;border-radius:2px;box-shadow:2px 3px 0 #473b2a;
-  font-size:10px;font-weight:900;letter-spacing:.25px;
-}
-#pet-garden .g-zoom {right:10px;bottom:10px;gap:5px}
-#pet-garden .g-zoom button {
-  color:#fff1d2;background:#426d45;border:2px solid #2c4c33;border-radius:2px;
-  box-shadow:inset 0 0 0 2px #73965a,0 3px 0 #273c2b;font-weight:900;
-}
-#pet-garden .g-zoom button:active,#pet-garden .g-btn:active {transform:translateY(2px);box-shadow:inset 0 0 0 2px #fff0c9,0 1px 0 #513d29}
-#pet-garden .g-care {
-  min-height:122px;padding:10px 13px 11px;background:#f3e2b8;border-top:4px solid #8b6038;
-  box-shadow:inset 0 3px 0 #fff0cc;
-}
-#pet-garden .g-care-head {gap:10px;margin-bottom:9px}
-#pet-garden .g-care-icon,#pet-garden .g-item-icon {
-  border:2px solid #9b7644;border-radius:3px;background:#dce5bd;image-rendering:pixelated;
-  box-shadow:2px 2px 0 #c5ad7c;
-}
-#pet-garden .g-care-text b {color:#405c39;font-family:Georgia,serif;font-size:16px}
-#pet-garden .g-care-text small {color:#73684e;font-size:11px}
-#pet-garden .g-progress {height:7px;background:#d9c89e;border:1px solid #b8a579;border-radius:0}
-#pet-garden .g-progress div {background:#6e9b50}
-#pet-garden .g-actions {gap:7px;padding:2px 2px 5px}
-#pet-garden .g-btn {
-  color:#503b25;background:#ead7a8;border:2px solid #8c6639;border-radius:2px;
-  padding:9px 11px;box-shadow:inset 0 0 0 2px #fff0cb,0 3px 0 #63492e;
-  font-size:12px;font-weight:900;letter-spacing:.1px;
-}
-#pet-garden .g-btn.primary {color:#fff4d5;background:#4c7546;border-color:#2e5135;box-shadow:inset 0 0 0 2px #80a460,0 3px 0 #29432e}
-#pet-garden .g-btn.gold {background:#e6bd61;border-color:#92652d;color:#49351e}
-#pet-garden .g-btn.danger {color:#863f36}
-#pet-garden .g-nav {
-  padding:6px 9px 8px;background:#eee0bb;border-top:3px solid #8a6038;
-  box-shadow:inset 0 2px 0 #fff0cc;
-}
-#pet-garden .g-nav button {
-  color:#786c50;border-radius:2px;padding:5px 3px;font-size:10px;font-weight:900;
-  letter-spacing:.15px;gap:3px;
-}
-#pet-garden .g-nav button.on {color:#f9f0d3;background:#527346;box-shadow:inset 0 0 0 2px #86a465,0 2px 0 #354e34}
-#pet-garden .g-nav canvas {width:26px;height:26px;image-rendering:pixelated}
-#pet-garden .g-nav .g-badge {background:#b8493b;border:1px solid #f6deb1;color:#fff4d5}
-#pet-garden .g-message {
-  top:104px;padding:11px 14px;color:#493b2a;background:#f8eccd;border:2px solid #80552d;
-  border-radius:2px;box-shadow:2px 3px 0 #453923;font-size:12px;font-weight:800;
-}
-#pet-garden .g-sheet {background:#1d302b9c}
-#pet-garden .g-sheet-box {
-  max-width:560px;background:#f3e2b8;border:3px solid #78512f;border-bottom:0;
-  border-radius:3px 3px 0 0;box-shadow:0 -5px 0 #c39a60,0 -10px 28px #1d2d2366;
-}
-#pet-garden .g-sheet-head {padding:14px 15px 12px;border-bottom:2px solid #d1b984}
-#pet-garden .g-sheet-title {color:#405c39;font-family:Georgia,serif;font-size:21px;text-shadow:1px 1px #dfc991}
-#pet-garden .g-close {width:36px;height:36px;font-size:22px}
-#pet-garden .g-tabs {gap:5px;padding:11px 14px}
-#pet-garden .g-tabs button {
-  color:#665438;background:#ead7a8;border:2px solid #b49865;border-radius:2px;
-  font-size:11px;font-weight:900;box-shadow:inset 0 0 0 2px #fff0ca;
-}
-#pet-garden .g-tabs button.on {color:#fff2d2;background:#4c7546;border-color:#35583a;box-shadow:inset 0 0 0 2px #82a465}
-#pet-garden .g-sheet-body {padding:0 14px 18px}
-#pet-garden .g-row {
-  gap:9px;padding:10px;margin-bottom:8px;background:#fff5dc;border:2px solid #c8ad79;
-  border-radius:2px;box-shadow:inset 0 0 0 2px #fffdf1;
-}
-#pet-garden .g-row-text b {color:#405c39;font-family:Georgia,serif}
-#pet-garden .g-row-text small,#pet-garden .g-note {color:#76694d}
-#pet-garden .g-intro {background:#e2e8c9;border:2px solid #8ea16d;border-radius:2px}
-#pet-garden .g-intro h3 {font-family:Georgia,serif;color:#476b43}
-#pet-garden .g-confirm {background:#23372caa}
-#pet-garden .g-confirm-box {background:#f3e2b8;border:3px solid #78512f;border-radius:3px;box-shadow:4px 5px 0 #26372a}
-#pet-garden .g-offline {background:#a35f43}
-@media (max-height:610px) {
-  #pet-garden .g-care {min-height:98px;padding-top:7px;padding-bottom:7px}
-  #pet-garden .g-care-head {margin-bottom:5px}
-  #pet-garden .g-nav {padding-top:3px;padding-bottom:4px}
-}
+@media (prefers-reduced-motion: reduce) { #pet-garden * { transition: none !important; animation: none !important; } }
