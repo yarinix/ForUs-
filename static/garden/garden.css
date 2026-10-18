@@ -66,7 +66,7 @@ body.pet-garden-open #app { visibility: hidden; }
 #pet-garden .g-btn.danger { color: #ff9aa6; }
 
 /* нижнее меню как в игре */
-#pet-garden .g-nav { flex: 0 0 auto; display: grid; grid-template-columns: repeat(4, 1fr); padding: 5px; background: rgba(8,16,40,.72); border: 1.5px solid var(--line); border-radius: 22px; }
+#pet-garden .g-nav { flex: 0 0 auto; display: grid; grid-template-columns: repeat(5, 1fr); padding: 5px; background: rgba(8,16,40,.72); border: 1.5px solid var(--line); border-radius: 22px; }
 #pet-garden .g-nav button { position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 0 5px; border: 0; border-radius: 17px; background: none;
   font-size: 11.5px; font-weight: 800; color: var(--dim); }
 #pet-garden .g-nav button.on { color: #fff; background: linear-gradient(180deg, #3b86ff, #2563d8); box-shadow: 0 3px 10px rgba(47,123,255,.45); }
@@ -108,3 +108,6 @@ body.pet-garden-open #app { visibility: hidden; }
   #pet-garden .g-header { padding: 6px 12px; }
 }
 @media (prefers-reduced-motion: reduce) { #pet-garden * { transition: none !important; animation: none !important; } }
+
+#pet-garden .g-care .g-actions { flex-wrap: wrap; overflow: visible; }
+#pet-garden .g-hits.g-placing { pointer-events: none; }
