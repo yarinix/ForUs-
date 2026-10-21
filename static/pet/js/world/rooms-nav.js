@@ -53,8 +53,7 @@
       const r = await api('/api/pet/action', Object.assign({ action: name }, extra || {}));
       const before = S;
       const fishUp = r.ok && name === 'angle' && r.state && before && ((r.state.inv || {}).fish || 0) > ((before.inv || {}).fish || 0);
-      const fishAnim = r.ok && name === 'angle' && view.cur === 'lake' && view.water;
-      if (fishAnim) await playFishing(fishUp);
+      const fishAnim = false;                                  // рыбалка теперь — мини-игра (js/otter/fishing.js)
       if (r.state) {
         render(r.state); seenTs = Math.max(seenTs, r.state.last_ts || 0);
         if (r.ok && before) {
@@ -76,13 +75,20 @@
       else say('Связь с Бубликом потерялась, попробуй ещё раз 📡');
     } finally { if (btn) setTimeout(() => btn.classList.remove('press'), 90); busy = false; }
   }
-  document.querySelectorAll('.act').forEach(b => b.addEventListener('click', () => { if (b.dataset.a === 'feed') openFeedSheet(); else act(b.dataset.a, b); }));
-  // касание выдры = «погладить»
+  document.querySelectorAll('.act').forEach(b => b.addEventListener('click', () => {
+    if (b.id === 'fishbtn') fishTap();
+    else if (b.dataset.a === 'feed') openFeedSheet();
+    else if (b.dataset.a === 'angle') openFishing();          // рыбалка — отдельная мини-игра
+    else act(b.dataset.a, b);
+  }));
+  // касание выдры = «погладить», касание мебели = выдра ей пользуется, в рыбалке — то же, что большая кнопка
   $('pixcv').addEventListener('pointerdown', (e) => {
+    if (view.fishGame) { fishTap(); return; }
     if (view.edit) { editDown(e); return; }
     if (busy || view.trans) return;
-    const r = $('pixcv').getBoundingClientRect();
-    if (otterHit((e.clientX - r.left) / view.K, (e.clientY - r.top) / view.K)) act('pet', null);
+    const r = $('pixcv').getBoundingClientRect(), lx = (e.clientX - r.left) / view.K, ly = (e.clientY - r.top) / view.K;
+    if (otterHit(lx, ly)) { act('pet', null); return; }
+    const id = useHit(lx, ly); if (id) useFurn(id);
   });
 
   // навигация (Главная / Меню и разделы) — см. блок «ОДЕЖДА, МЕБЕЛЬ, МАГАЗИН, МЕНЮ» ниже

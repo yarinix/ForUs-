@@ -80,6 +80,10 @@ from pet_data.clothes import RARITY, SLOTS, CONFLICTS, _wear, WEAR  # noqa: E402
 from pet_data.food import FOOD  # noqa: E402
 from pet_data.furniture import FURNITURE, STD_PLACE  # noqa: E402,F401
 from pet_data.texts import SAY, REFUSE  # noqa: E402,F401
+from pet_data import fishing  # noqa: E402
+from pet_data.furniture_use import USE, SAY_CD as USE_SAY_CD  # noqa: E402
+
+_USE_CD = {}   # (питомец, вещь) -> когда последний раз давали награду за действие с мебелью
 
 CATALOG = {**FOOD, **WEAR, **FURNITURE}   # порядок как раньше: еда → одежда → мебель
 
@@ -231,7 +235,8 @@ def _mood(st: dict) -> str:
 
 
 def public_catalog() -> dict:
-    return CATALOG
+    # use — что выдра делает с этой мебелью (rest / play / watch …): клиент выбирает по нему позу и эффекты
+    return {k: ({**v, "use": USE[k]["k"]} if k in USE else v) for k, v in CATALOG.items()}
 
 
 def public_state(st: dict, names=None, now: float = None, uid=None, quests_view=None, ach_view=None, daily_view=None) -> dict:
@@ -395,7 +400,7 @@ def _apply(st: dict, action: str, now: float, p: dict):
         st["wake_pending"] = False
         st["happy"] = _clamp(st["happy"] - 3)
         return True, random.choice(SAY["wake"]), 0, 0
-    if asleep and action in ("move", "feed", "play", "sleep", "pet", "forage", "angle", "go_out", "go_in"):
+    if asleep and action in ("move", "feed", "play", "sleep", "pet", "forage", "angle", "use", "go_out", "go_in"):
         return False, REFUSE["asleep"], 0, 0
     locs = unlocked_locs(st)
 
@@ -572,17 +577,49 @@ def _apply(st: dict, action: str, now: float, p: dict):
         st["energy"] = _clamp(st["energy"] - 5)
         st["happy"] = _clamp(st["happy"] + 5)
         st["hunger"] = _clamp(st["hunger"] - 3)
-        caught = random.random() < 0.45
+        # мини-игра присылает силу заброса (x: 0–100) и подсёк ли игрок рыбу (y: 1/0); старый клиент — ничего
+        if p.get("x") is None or p.get("y") is None:
+            caught = "fish_std" if random.random() < 0.45 else None
+        else:
+            caught = fishing.roll(_int(p.get("x"), 50), _int(p.get("y"), 0) == 1)
+        st["_catch"] = caught
         if caught:
-            st["coins"] += 5
-            coins_delta = 5
-            xp_delta = 12
-            fish = items.setdefault("fish", _new_item())
-            if fish["qty"] < MAX_FOOD:
-                fish["qty"] += 1
-                _touch(st, "fish")
+            f = fishing.FISH[caught]
+            st["coins"] += f["c"]
+            coins_delta = f["c"]
+            xp_delta = f["xp"]
+            if f["food"]:
+                fish = items.setdefault("fish", _new_item())
+                if fish["qty"] < MAX_FOOD:
+                    fish["qty"] += 1
+                    _touch(st, "fish")
         else:
             xp_delta = 2
+
+    elif action == "use":
+        # выдра пользуется мебелью: вещь должна стоять в этой же комнате
+        u, it = USE.get(iid), items.get(iid)
+        if not u or not it or it.get("room") != room:
+            return False, REFUSE["use_none"], 0, 0
+        if u.get("need_en") and st["energy"] < 15:
+            return False, REFUSE["play_tired"], 0, 0
+        key = (p.get("pk"), iid)
+        if now - _USE_CD.get(key, 0) < u["cd"]:
+            return True, USE_SAY_CD, 0, 0
+        _USE_CD[key] = now
+        st["energy"] = _clamp(st["energy"] + u.get("en", 0))
+        st["happy"] = _clamp(st["happy"] + u.get("hp", 0))
+        st["hunger"] = _clamp(st["hunger"] + u.get("hu", 0))
+        coins_delta = u.get("c", 0)
+        st["coins"] += coins_delta
+        xp_delta = u.get("xp", 0)
+        st["xp"] += xp_delta
+        bonus = _level_up(st)
+        coins_delta += bonus
+        say = random.choice(u["say"])
+        if bonus:
+            say = f"🎉 Новый уровень: {st['level']}! +{bonus} монет. " + say
+        return True, say, coins_delta, xp_delta
 
     elif action == "play":
         if room not in ("home", "yard"):
@@ -642,7 +679,13 @@ def _apply(st: dict, action: str, now: float, p: dict):
 
     say = random.choice(SAY[action])
     if action == "angle":
-        say = "Поймалась рыбка! 🐟 Она уже в запасе для кормления" if caught else "Сегодня без улова… Попробуем ещё раз? 🎣"
+        f = fishing.FISH.get(caught or "")
+        if not f:
+            say = "Сегодня без улова… Попробуем ещё раз? 🎣"
+        elif f["food"]:
+            say = f"Поймался улов: {f['e']} {f['n']}! Рыбка уже в запасе для кормления"
+        else:
+            say = f"Ой, это же {f['n'].lower()} {f['e']} Ну хоть монетка нашлась!"
     if action == "forage":
         say = "Нашёл грибочки и ягоды! 🍄" if coins_delta else "Сегодня грибочки не нашлись… В следующий раз повезёт! 🍃"
     if leveled:
@@ -805,6 +848,10 @@ def _game_events(action: str, item, coins_delta: int, xp_delta: int, lvl_gain: i
             ev["fancy"] = 1
     elif action in ("play", "sleep", "pet", "wear", "forage", "angle"):
         ev[action] = 1
+    elif action == "use" and xp_delta > 0:       # мебель засчитывается в задания только когда дала награду
+        k = USE.get(item or "", {}).get("ev")
+        if k:
+            ev[k] = 1
     elif action == "move" and room_changed:
         ev["move"] = 1
     elif action == "place" and newly_placed:
@@ -844,7 +891,7 @@ def perform(get_db, action: str, user_id: int, names=None, to: str = None,
             item: str = None, name: str = None, room: str = None, x=None, y=None, pet_key=PET_KEY) -> dict:
     """Выполняет действие игрока. Возвращает {"ok", "say", "state", "ach_new"}."""
     now = time.time()
-    params = {"to": to, "item": item, "name": name, "room": room, "x": x, "y": y}
+    params = {"to": to, "item": item, "name": name, "room": room, "x": x, "y": y, "pk": pet_key}
     with get_db() as conn:
         with conn.cursor() as cur:
             st = _load(cur, lock=True, pet_key=pet_key)
@@ -852,6 +899,7 @@ def perform(get_db, action: str, user_id: int, names=None, to: str = None,
             stats = ach.load_stats(cur, pet_key)
             unlocked0 = ach.unlocked(_ach_vals(st, stats))
             ev = {}
+            catch = None
             if action == "claim":
                 st.pop("_last_claim", None)
                 ok, say, coins_delta, xp_delta = _claim(cur, st, user_id, item, now, pet_key)
@@ -867,6 +915,7 @@ def perform(get_db, action: str, user_id: int, names=None, to: str = None,
                 lvl0, room0 = st["level"], st.get("room")
                 prev_room = (st["items"].get(item or "") or {}).get("room")
                 ok, say, coins_delta, xp_delta = _apply(st, action, now, params)
+                catch = st.pop("_catch", None)
                 if ok:                                   # прогресс заданий от действий в игре
                     ev = _game_events(action, item, coins_delta, xp_delta, st["level"] - lvl0,
                                       st.get("room") != room0, prev_room != room)
@@ -909,6 +958,9 @@ def perform(get_db, action: str, user_id: int, names=None, to: str = None,
             dv = ach.daily_view(stats, _today(now), names)
     logging.info(f"🦦 {user_id}: {action} -> {'ок' if ok else 'отказ'}")
     out = {"ok": ok, "say": say, "state": public_state(st, names, now, user_id, qv, av, dv)}
+    if action == "angle" and ok:                 # мини-игре рыбалки — что именно попалось
+        f = fishing.FISH.get(catch or "")
+        out["catch"] = {"id": catch, "n": f["n"], "e": f["e"], "c": f["c"], "xp": f["xp"], "food": f["food"]} if f else None
     if ach_new:
         out["ach_new"] = [{"id": a, "e": ach.BY_ID[a][1], "n": ach.BY_ID[a][2]} for a in ach_new]
     return out
