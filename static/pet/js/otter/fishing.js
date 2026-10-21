@@ -83,7 +83,9 @@
     haptic('light'); SFX.play('click');
     requestAnimationFrame(fishLoop);
   }
-  function fishLoop(n) { if (!view.fishGame) return; frame(n); requestAnimationFrame(fishLoop); }
+  // ~30 кадров в секунду (основной цикл игры — 10): плавно, но не грузит слабые телефоны
+  let fgLast = 0;
+  function fishLoop(n) { if (!view.fishGame) return; if (n - fgLast >= 33) { fgLast = n; frame(n); } requestAnimationFrame(fishLoop); }
   function closeFishing() {
     if (!view.fishGame) return;
     view.fishGame = false; FG = null;
@@ -194,7 +196,8 @@
     // выдра со спины сидит на мостках
     const look = ph === 'bite' ? 'walk' : 'idle';
     softShadow(g, O_.x + 1, O_.y + 1, 9, 2, 0.35);
-    const OT = drawOtter(now, look, Math.floor(now / 160) % 31 === 0, null, { s: 0.52, back: true });
+    if (!FG.ot || now - FG.ot.t > 120 || FG.ot.look !== look) FG.ot = { t: now, look, L: drawOtter(now, look, Math.floor(now / 160) % 31 === 0, null, { s: 0.52, back: true }) };   // выдра перерисовывается ~8 раз в секунду
+    const OT = FG.ot.L;
     g.drawImage(OT.c, O_.x - OX, O_.y - OB - 1);
     // удилище: из лап вверх-вправо; угол и изгиб зависят от фазы
     const hx = O_.x + 6, hy = O_.y - 18, len = 30;
@@ -231,7 +234,9 @@
     } else if (ph === 'pull') {
       const k = Math.min(1, t / 900), x = lerp(tgt.x, O_.x - 8, ease(k)), y = lerp(tgt.y, B.py - 10, ease(k)) - Math.sin(Math.PI * k) * 26;
       pxLine(g, tx, ty, x, y, LINE);
-      const id = FG.res && FG.res.r && FG.res.r.catch ? FG.res.r.catch.id : 'fish_std', L = fishLayer(id);
+      const id = FG.res && FG.res.r && FG.res.r.catch ? FG.res.r.catch.id : 'fish_std';
+      if (!FG.fl || FG.fl.id !== id) FG.fl = { id, L: fishLayer(id) };
+      const L = FG.fl.L;
       g.drawImage(L.c, Math.round(x - L.w / 2), Math.round(y - 2));
       if (k < 0.25) { pxRing(g, tgt.x, tgt.y + 1, 3 + k * 30, 0.9); g.fillStyle = '#ffffff'; for (const [a, b] of [[-3, -3], [3, -4], [-1, -6], [2, -6]]) g.fillRect(tgt.x + a, tgt.y + b - Math.round(k * 20), 1, 1); }
     } else if (ph === 'miss') {
