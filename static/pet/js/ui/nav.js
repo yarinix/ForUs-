@@ -3,6 +3,7 @@
   // show(t) — открывает раздел (home / menu / shop / wardrobe / …): прячет остальные панели и перерисовывает нужную
   function show(t, o) {
     o = o || {};
+    if (view.fishGame) closeFishing();                 // ушли из рыбалки в другой раздел
     const edit = t === 'edit' || t === 'locedit'; if (t === 'edit') t = 'home'; if (t === 'locedit') t = 'loc';
     const guest = isGuest(), locked = t === 'loc' && !guest && S && !hasForest(S);
     tab = t; setEdit(edit && !locked);

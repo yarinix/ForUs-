@@ -10,6 +10,7 @@
   /* @include css/layout.css */
   /* @include css/menus.css */
   /* @include css/popups.css */
+  /* @include css/game.css */
 </style>
 
 
@@ -46,6 +47,11 @@
     <button class="chipbtn" id="locedit" type="button">🛠 Обустроить</button>
     <button class="chipbtn" id="gardenentry" type="button" hidden>🌱 Двор</button>
     <div id="bubble"></div>
+    <div id="fishui" hidden>
+      <div id="fishbag"></div>
+      <div id="fishmeter"><i class="z z3"></i><i class="z z2"></i><i class="z z1"></i><b id="fishmark"></b><small class="t">далеко</small><small class="m">средне</small><small class="b">близко</small></div>
+      <div id="fishcard"></div>
+    </div>
     <div id="sleepbar"><div id="sleeptxt"></div><button class="chipbtn alt" id="wakebtn">Разбудить</button></div>
   </div>
 
@@ -141,8 +147,9 @@
 
   <div id="actions">
     <button class="act main" id="mainact" data-a="play"><span class="em" data-icon="ball" data-k="4"></span><span class="txt"><b class="lbl">Играть</b><small>заработать монеты</small></span></button>
+    <button class="act main" id="fishbtn" type="button"><span class="em">🎣</span><span class="txt"><b class="lbl">Забросить</b><small>останови шкалу силы</small></span></button>
     <button class="chipbtn alt" id="tentsleep" style="display:none;width:100%;margin-top:7px">⛺ Спать в палатке</button>
-    <div id="hint">Нажми на питомца, чтобы погладить 💕</div>
+    <div id="hint">Погладь выдру или нажми на мебель 💕</div>
   </div>
 
   <div id="editbar">
@@ -192,6 +199,7 @@
   // @include js/ui/daily.js
   // @include js/otter/fishing.js
   // @include js/ui/achievements.js
+  // @include js/furniture/actions.js
   // @include js/core/boot.js
 })();
 </script>

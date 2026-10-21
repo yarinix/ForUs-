@@ -37,8 +37,11 @@
   }
   function frame(now) {
     if (!view.rooms.home) return;
+    if (view.fishGame) { drawFishGame(now); return; }        // мини-игра рыбалки рисует свою сцену
     let look = otter.dataset.look;
     const tr = view.trans, out = outdoor(tr ? tr.to : view.cur);
+    const UP = tr ? null : usePose(now);                       // выдра пользуется мебелью: где стоит и какая поза
+    view.curOy = UP ? UP.y : null; view.useHide = UP && UP.hide ? UP.id : null; view.useOn = UP ? UP.id : null;
     if (out) drawSky(sx, now, gameHour(), view.W, view.fy);
     if (tr) {
       const p = Math.min(1, (now - tr.t0) / tr.dur), e = ease(p), dx = Math.round(tr.dir * view.W * e);
@@ -52,9 +55,11 @@
     for (const [r, dx] of view.fx) drawItems(r, dx, false, now);
     const blink = (Math.floor(now / 160) % 31) === 0;
     const hop = look === 'play' ? -Math.round(Math.abs(Math.sin(now / 130)) * 7) : look === 'walk' ? -(Math.floor(now / 150) % 2) : (look === 'sleep' || look === 'sleepy' ? (Math.floor(now / 900) % 2) : (Math.floor(now / 650) % 2));
-    if (view.fish) { if (now - view.fish.t0 > view.fish.dur) view.fish = null; else look = (view.fish.hit && now - view.fish.t0 > 3900) ? 'feed' : 'idle'; }
+    if (UP) look = UP.look;
     const OSC = out ? 0.64 : 0.8, kk = OSC / 0.8; view.otsCur = OSC;
     let ox = out ? view.oxOut : view.ox, alpha = 1, doorOpen = false;
+    if (UP) ox = UP.x;
+    const oyB = UP ? UP.y : view.baseY;                        // линия лапок выдры
     const en = view.enter;
     if (en && view.cur === 'yard' && !tr && view.door) {
       const p = (now - en.t0) / en.dur;
@@ -64,17 +69,16 @@
     if (doorOpen) { const d = view.door; sx.fillStyle = '#2e1a10'; sx.fillRect(d.x, d.y, d.w, d.h); sx.fillStyle = '#7a4a28'; sx.fillRect(d.x + 3, d.y + (d.h >> 1), d.w - 6, d.h >> 1); sx.fillStyle = '#b8723a'; sx.fillRect(d.x, d.y, 4, d.h); }
     // тень выдры: мягкий двойной овал прямо под лапками (подошвы на baseY + 5); когда выдра подпрыгивает, тень сжимается и бледнеет
     if (view.edit) alpha = 0;                                  // в режиме расстановки выдра уходит, чтобы не мешать
-    sx.globalAlpha = alpha; { const lift = Math.max(0, -hop), k = 1 - Math.min(.45, lift * .07); softShadow(sx, ox + 1, view.baseY + 5, 17 * kk * k, 3.4 * k, .32 * (1 - Math.min(.5, lift * .08))); }
+    sx.globalAlpha = alpha; { const lift = Math.max(0, -hop), k = 1 - Math.min(.45, lift * .07); softShadow(sx, ox + 1, oyB + 5, 17 * kk * k, 3.4 * k, .32 * (1 - Math.min(.5, lift * .08))); }
     const tentSleeping = !!(S && S.sleeping && out && S.placed && S.placed.tent && S.placed.tent.room === view.cur);
     if (!tentSleeping && !view.edit) {
-      const backV = !!view.fish && !(view.fish.hit && now - view.fish.t0 > 3900);
-    const O = drawOtter(now, look, blink, null, { s: out ? OSC : 0, back: backV });
-      sx.drawImage(O.c, ox - OX, view.baseY - OB + 4 + hop);
+      const O = drawOtter(now, look, blink, null, { s: out ? OSC : 0, back: UP ? UP.back : false });
+      sx.drawImage(O.c, ox - OX, oyB - OB + 4 + hop);
     }
     sx.globalAlpha = 1;
-    if (view.fish && view.cur === 'lake' && !tr) drawFishing(sx, now, ox);
+    drawUseExtras(sx, now, UP, ox, oyB, kk);
     for (const [r, dx] of view.fx) drawItems(r, dx, true, now);
-    if (look === 'play' && !view.edit && (view.cur === 'home' || view.cur === 'yard')) {
+    if (look === 'play' && !UP && !view.edit && (view.cur === 'home' || view.cur === 'yard')) {
       const by = view.baseY - 4 - Math.round(Math.abs(Math.sin(now / 160)) * 26), bx = ox + 34;
       const B = newLayer(14, 14); ell(B, 7, 7, 5.5, 5.5, BLUE); for (let i = -4; i <= 4; i++) dot(B, 7 + i, 6 + Math.round(i * .35), '#fff'); outline(B);
       sx.drawImage(B.c, bx - 7, by - 7);
@@ -92,7 +96,8 @@
   // положение и размеры выдры в «пикселях игры» — для касания
   function otterHit(lx, ly) {
     const s = view.otsCur || 0.8;
-    return Math.abs(lx - (view.curOx != null ? view.curOx : view.ox)) < 23 * s / 0.8 && ly > view.baseY + 4 + (14 - OB) * s && ly < view.baseY + 4;
+    const by = view.curOy != null ? view.curOy : view.baseY;
+    return Math.abs(lx - (view.curOx != null ? view.curOx : view.ox)) < 23 * s / 0.8 && ly > by + 4 + (14 - OB) * s && ly < by + 4;
   }
 
   // ---------- реальное время: день и ночь по часам BOT_TIMEZONE (час приходит с сервера) ----------

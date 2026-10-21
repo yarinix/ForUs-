@@ -23,7 +23,9 @@
   function drawItems(room, dx, front, now) {
     if (!front) for (const o of roomItems(room)) itemShadow(o, dx);   // тени всех предметов комнаты — под выдрой и под самими предметами
     for (const o of roomItems(room)) {
-      if ((o.c.pl !== 'wall' && !isFlat(o.id, o.c) && o.y > view.baseY + 4) !== front) continue;   // ковры всегда позади выдры
+      if (view.useHide === o.id) continue;                         // игрушку выдра держит в лапах — на полу её нет
+      const oyL = view.curOy != null ? view.curOy : view.baseY;    // где сейчас лапки выдры (она может подойти к мебели)
+      if ((o.c.pl !== 'wall' && !isFlat(o.id, o.c) && o.id !== view.useOn && o.y > oyL + 4) !== front) continue;   // ковры и вещь, которой пользуется выдра, — позади неё
       const x = o.x - (o.f.w >> 1) + dx, y = o.c.pl === 'wall' ? o.y - (o.f.h >> 1) : o.y - o.f.h;
       sx.drawImage(o.f.c, x, y);
       if (o.id === 'aquarium') {
@@ -72,7 +74,7 @@
   }
   const toLocal = (e) => { const r = sc.getBoundingClientRect(); return [(e.clientX - r.left) / view.K, (e.clientY - r.top) / view.K]; };
   const placedHere = (id) => !!(S && S.placed && S.placed[id] && S.placed[id].room === view.cur);
-  function setEdit(on) { view.edit = !!on; if (!on) { sel = null; drag = null; } else renderEditList(); }
+  function setEdit(on) { view.edit = !!on; if (on) view.use = null; if (!on) { sel = null; drag = null; } else renderEditList(); }
   function renderEditList() {
     const box = $('editlist'); if (!box || !S || !CAT) return; box.textContent = '';
     const out = outdoor(view.cur); $('edittitle').textContent = out ? '🌲 Обустройство улицы' : '🛋 Расстановка мебели';
