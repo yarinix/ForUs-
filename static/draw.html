@@ -908,7 +908,7 @@ input[type=range]::-moz-range-thumb { width: 18px; height: 18px; border-radius: 
     for (const s of strategies) {
       try {
         const blob = await canvasToBlob(scaled(src, s.max, s.px), type, 0.92);
-        if (blob.size > 3 * 1024 * 1024) continue;   // сервер принимает до 4 МБ
+        if (blob.size > 1400 * 1024) continue;   // сервер принимает до 2 МБ (base64 раздувает на треть)
         const dataURL = await blobToDataURL(blob);
         if (await matchesSource(dataURL, src)) return { image: dataURL, note: ext + '-' + s.note };
       } catch (e) { /* пробуем следующий способ */ }

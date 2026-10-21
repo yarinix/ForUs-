@@ -20,6 +20,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import dateparser
 import httpx
 import psycopg2
+from psycopg2.pool import ThreadedConnectionPool, PoolError
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.date import DateTrigger
 from dateparser.search import search_dates
@@ -89,7 +90,8 @@ pet.ADMIN_IDS = [
 REQUIRE_WEBAPP_AUTH = os.getenv("REQUIRE_WEBAPP_AUTH", "1") == "1"
 
 MAX_UPLOAD_BYTES = 12 * 1024 * 1024  # лимит тела запроса /api/upload
-MAX_STASH_BYTES = 4 * 1024 * 1024  # лимит для рисунков из инлайн-режима
+MAX_STASH_BYTES = 2 * 1024 * 1024  # лимит тела запроса для рисунков из инлайн-режима
+DRAWINGS_TOTAL_BYTES = 40 * 1024 * 1024  # сколько памяти максимум занимают все ожидающие рисунки
 STASH_PER_HOUR = 30  # сколько рисунков в час принимаем с одного IP
 TELEGRAM_TEXT_LIMIT = 4000  # у Telegram лимит 4096, оставляем запас
 
@@ -272,6 +274,9 @@ def store_drawing(image: bytes, mime: str) -> str:
             del _drawings[t]
         while len(_drawings) >= DRAWINGS_MAX:
             del _drawings[min(_drawings, key=lambda t: _drawings[t][0])]
+        # общий лимит памяти: удаляем самые старые, пока новый рисунок не поместится
+        while _drawings and sum(len(v[1]) for v in _drawings.values()) + len(image) > DRAWINGS_TOTAL_BYTES:
+            del _drawings[min(_drawings, key=lambda t: _drawings[t][0])]
         _drawings[token] = (now, image, mime)
     return token
 
@@ -416,8 +421,10 @@ class WebAppHandler(BaseHTTPRequestHandler):
             # В этом режиме Telegram не передаёт подпись пользователя, поэтому
             # проверка личности происходит позже, в самом инлайн-запросе.
             if data.get("stash"):
+                # Первое значение X-Forwarded-For задаёт сам клиент и может его подделать.
+                # Последнее добавляет прокси Render — ему и доверяем.
                 ip = (
-                    self.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+                    self.headers.get("X-Forwarded-For", "").split(",")[-1].strip()
                     or self.client_address[0]
                 )
                 if length > MAX_STASH_BYTES:
@@ -442,7 +449,7 @@ class WebAppHandler(BaseHTTPRequestHandler):
                     return
                 token = store_drawing(image_bytes, "image/png" if is_png else "image/jpeg")
                 note = re.sub(r"[^\w-]", "", str(data.get("note", "")))[:30]
-                logging.info(f"stash: принят рисунок {len(image_bytes)} байт ({note})")
+                logging.info(f"stash: принят рисунок {len(image_bytes)} байт ({note}), ip={ip}")
                 self._reply(
                     200,
                     json.dumps({"token": token}).encode("utf-8"),
@@ -611,18 +618,64 @@ class WebAppHandler(BaseHTTPRequestHandler):
 # ---------------------------------------------------------------------------
 
 
+# Пул подключений: раньше на каждый запрос открывалось новое соединение с
+# PostgreSQL (TCP + TLS + авторизация), теперь соединения переиспользуются.
+DB_POOL_MAX = int(os.getenv("DB_POOL_MAX", "8"))
+_db_pool = None
+_db_pool_lock = threading.Lock()
+
+
+def _get_db_pool():
+    global _db_pool
+    if _db_pool is None:
+        with _db_pool_lock:
+            if _db_pool is None:
+                _db_pool = ThreadedConnectionPool(1, DB_POOL_MAX, DATABASE_URL)
+    return _db_pool
+
+
+def _checkout_conn():
+    """Берёт живое соединение из пула. Если пул занят — открывает разовое."""
+    pool = _get_db_pool()
+    for _ in range(2):
+        try:
+            conn = pool.getconn()
+        except PoolError:
+            logging.warning("Пул БД занят, открываю разовое соединение")
+            return psycopg2.connect(DATABASE_URL), False
+        try:
+            if conn.closed:
+                raise psycopg2.InterfaceError("connection closed")
+            with conn.cursor() as cur:  # проверка: сервер мог закрыть простаивавшее соединение
+                cur.execute("SELECT 1")
+            conn.rollback()
+            return conn, True
+        except (psycopg2.OperationalError, psycopg2.InterfaceError):
+            pool.putconn(conn, close=True)
+    return psycopg2.connect(DATABASE_URL), False
+
+
 @contextmanager
 def get_db():
-    conn = psycopg2.connect(DATABASE_URL)
+    conn, pooled = _checkout_conn()
+    broken = False
     try:
         yield conn
         conn.commit()
     except Exception as e:
-        conn.rollback()
+        broken = isinstance(e, (psycopg2.OperationalError, psycopg2.InterfaceError)) or conn.closed
+        if not conn.closed:
+            try:
+                conn.rollback()
+            except Exception:
+                broken = True
         logging.error(f"Ошибка базы данных: {e}")
         raise
     finally:
-        conn.close()
+        if pooled:
+            _get_db_pool().putconn(conn, close=broken or bool(conn.closed))
+        else:
+            conn.close()
 
 
 def init_db():
@@ -3173,6 +3226,10 @@ def draw_inline_button():
     )
 
 
+INLINE_DEBOUNCE_SEC = float(os.getenv("INLINE_DEBOUNCE_SEC", "1.5"))
+_inline_latest = {}  # user_id -> id последнего инлайн-запроса
+
+
 @dp.inline_query()
 async def inline_query_handler(query: types.InlineQuery):
     if not is_allowed(query.from_user):
@@ -3283,6 +3340,19 @@ async def inline_query_handler(query: types.InlineQuery):
         # Результаты с неполным вводом не кэшируем надолго
         await query.answer(articles, button=button, cache_time=30, is_personal=True)
         return
+
+    # Telegram присылает инлайн-запрос почти на каждую набранную букву.
+    # Чтобы не тратить лимит Gemini, ждём паузу в наборе: если за это время
+    # пришёл более новый запрос от того же человека — этот пропускаем.
+    # Если вопрос уже закончен знаком ? ! . — отвечаем сразу.
+    if len(query_text) < 3:
+        return
+    if not query_text.endswith(("?", "!", ".", "？", "！")):
+        uid = query.from_user.id
+        _inline_latest[uid] = query.id
+        await asyncio.sleep(INLINE_DEBOUNCE_SEC)
+        if _inline_latest.get(uid) != query.id:
+            return
 
     system_prompt = (
         "Ты — быстрый встроенный ИИ-ассистент в Telegram. Отвечай точно, кратко и по делу."
