@@ -144,13 +144,11 @@
   #editbar { display: none; flex-direction: column; gap: 7px; }
   /* режим расстановки: прячем всё лишнее, комната занимает весь экран, панель мебели — компактная полоса снизу */
   #app.editing { gap: 6px; padding-top: calc(env(safe-area-inset-top, 0px) + 6px); }
-  #app.editing #head, #app.editing #stats, #app.editing nav, #app.editing #bubble, #app.editing #sleepbar,
-  #app.editing #visitnote, #app.editing #testnote, #app.editing #locedit, #app.editing #gardenentry { display: none !important; }
-  #app.editing #stage { border-radius: 16px; }
-  #app.editing #editbar { gap: 5px; }
-  #app.editing #editlist { min-height: 0; }
-  #app.editing .chip { width: 76px; padding: 4px 3px; }
-  #app.editing .chip canvas { max-height: 30px; }
+  /* комната в режиме расстановки ровно того же размера, что и на главной (высота фиксируется в show()),
+     поэтому расстановка выглядит один в один; панель мебели встаёт на место кнопок и нижнего меню */
+  #app.editing nav, #app.editing #bubble, #app.editing #locedit, #app.editing #gardenentry { display: none !important; }
+  #app.editing #editbar { flex: 1 1 auto; min-height: 0; justify-content: space-between; }
+  #app.editing #editlist { flex: 1 1 auto; min-height: 0; align-items: stretch; }
   #editbar .eh { display: flex; align-items: center; justify-content: space-between; font-size: 14.5px; }
   .chipbtn { font: inherit; font-weight: 800; font-size: 13px; color: #fff; background: linear-gradient(180deg, #3b86ff, #2563d8); border: 0; border-radius: 13px; padding: 7px 14px; box-shadow: 0 3px 0 rgba(4,10,30,.6); }
   .chipbtn.alt { background: rgba(255,255,255,.14); }
@@ -1686,6 +1684,7 @@
 
   function layout() {
     const st = $('stage'), r = st.getBoundingClientRect(); if (r.width < 50 || r.height < 50) return;
+    if (!view.edit) view.normH = Math.round(r.height);                              // запоминаем «обычную» высоту комнаты для режима расстановки
     const K = Math.max(2, Math.min(5, Math.floor(r.width / 112) || K_PREF));
     const W = Math.floor(r.width / K), H = Math.floor(r.height / K);
     view.K = K; view.W = W; view.H = H; sc.width = W; sc.height = H;
@@ -2489,11 +2488,17 @@
       rect(L, 0, 19, 60, 3, '#a86d3c'); rect(L, 0, 19, 60, 1, '#d69b65'); rect(L, 0, 21, 60, 1, '#7a4b24');
       rect(L, 4, 22, 3, 5, '#7a4b24'); rect(L, 4, 22, 1, 5, '#9e6536');
       rect(L, 52, 22, 3, 5, '#7a4b24'); rect(L, 52, 22, 1, 5, '#9e6536');
-      ell(L, 10, 15, 5.2, 4.2, ['#f29274', '#d46346', '#9e3f28']); rect(L, 5, 11, 11, 2, '#bd5238'); rect(L, 5, 11, 11, 1, '#e87c61');
-      [[-5, -14], [4, -15], [0, -19], [-8, -10], [8, -11]].forEach(([a, b]) => {
-        ell(L, 10 + a, 19 + b + 2, 2.8, 4.4, GRN);
-        dot(L, 10 + a, 19 + b + 1, '#b4f7b2');
-      });
+      // деревце-бонсай в терракотовом горшке: изогнутый ствол, ветки и пышная крона целиком в кадре
+      ell(L, 11, 16, 5.4, 3.4, ['#f29274', '#d46346', '#9e3f28']);                          // горшок
+      rect(L, 5, 12, 12, 2, '#bd5238'); rect(L, 5, 12, 12, 1, '#e87c61'); rect(L, 6, 14, 10, 1, '#9e3f28');
+      rect(L, 7, 12, 8, 1, '#5a3a24'); dot(L, 9, 12, '#7a5236');                               // земля
+      for (const [x, y] of [[10, 11], [10, 10], [9, 9], [9, 8], [10, 7], [11, 6], [11, 5]]) { rect(L, x, y, 2, 1, '#7a4b2a'); dot(L, x, y, '#a8703f'); }   // ствол
+      rect(L, 6, 8, 3, 1, '#7a4b2a'); rect(L, 12, 7, 4, 1, '#7a4b2a'); dot(L, 15, 6, '#7a4b2a'); // ветки
+      ell(L, 5.5, 6.5, 3.6, 2.6, GRN);                                                          // нижний левый ярус
+      ell(L, 16, 5.5, 3.8, 2.6, GRN);                                                           // правый ярус
+      ell(L, 11, 3, 5.2, 3.2, GRN);                                                             // верхушка
+      for (const [x, y] of [[4, 5], [9, 1], [12, 1], [15, 4], [7, 2]]) dot(L, x, y, '#b4f7b2');  // блики
+      for (const [x, y] of [[7, 8], [17, 7], [13, 5]]) dot(L, x, y, '#1c5424');                // тени в кроне
       // ампельная веточка плюща, свисающая с полки
       for (const [x, y] of [[3, 20], [2, 22], [3, 24], [1, 25]]) { rect(L, x, y, 2, 2, '#4eaa56'); dot(L, x, y, '#8ce38b'); }
       rect(L, 22, 2, 17, 15, '#7e4d2a'); rect(L, 22, 2, 17, 1, '#ad7044');
@@ -2502,13 +2507,22 @@
       [[43, 9, 4, 10, '#4a79d8', '#82abff'], [47, 7, 4, 12, '#d8573f', '#ff8c75'], [51, 10, 4, 9, '#4aa56b', '#82de9e'], [55, 8, 3, 11, '#e8b84a', '#ffe085']].forEach(([x, y, w, h, c, hi]) => {
         rect(L, x, y, w, h, c); rect(L, x, y, 1, h, hi); rect(L, x, y + 2, w, 1, '#ffe899');
       }); }),
-    hpicture: std(16, 18, (L) => {
-      rect(L, 0, 0, 16, 18, '#e3ae64'); rect(L, 0, 0, 16, 1, '#ffe0a6'); rect(L, 0, 0, 1, 18, '#f5cc84');
-      rect(L, 2, 2, 12, 14, '#faecc8');
-      // красивый цветок в вазочке
-      ell(L, 8, 13, 3.2, 2.5, ['#7fb0ff', '#3f6fd6']);
-      rect(L, 8, 8, 1, 4, '#3a9642'); dot(L, 6, 10, '#5bc25e'); dot(L, 10, 10, '#5bc25e');
-      spr(L, 5, 4, ['..p.p..', '.ppYpp.', '..ppp..'], { p: '#ff6a95', Y: '#ffe252' }); }),
+    hpicture: std(20, 22, (L) => {
+      // натюрморт в золочёной раме: букет из трёх цветов в голубой вазе на тёплом фоне, с паспарту и тенью
+      rect(L, 0, 0, 20, 22, '#c98a3a');                                                        // рама
+      rect(L, 0, 0, 20, 1, '#ffe0a6'); rect(L, 0, 0, 1, 22, '#f5c77a'); rect(L, 19, 0, 1, 22, '#9a6526'); rect(L, 0, 21, 20, 1, '#9a6526');
+      rect(L, 1, 1, 18, 1, '#e6ad5c'); for (const [x, y] of [[1, 1], [18, 1], [1, 20], [18, 20]]) dot(L, x, y, '#fff2c4');   // уголки
+      rect(L, 2, 2, 16, 18, '#fff4dc');                                                        // паспарту
+      band(L, 3, 3, 14, 16, ['#ffd9b8', '#ffc9a6', '#f2b08e']);                                // фон картины
+      rect(L, 3, 15, 14, 4, '#c98a6a'); rect(L, 3, 15, 14, 1, '#e3a888');                       // столик
+      ell(L, 10, 14.5, 3.2, 3, ['#bfe0ff', '#7fb0ff', '#3f6fd6']); rect(L, 9, 10, 3, 2, '#7fb0ff'); dot(L, 9, 13, '#ffffff');   // ваза
+      rect(L, 9, 6, 1, 5, '#3a9642'); rect(L, 11, 7, 1, 4, '#3a9642'); dot(L, 7, 8, '#3a9642'); dot(L, 8, 9, '#3a9642');       // стебли
+      dot(L, 12, 9, '#5bc25e'); dot(L, 13, 8, '#5bc25e'); dot(L, 7, 10, '#5bc25e');
+      spr(L, 7, 3, ['.p.p.', 'ppYpp', '.ppp.'], { p: '#ff6a95', Y: '#ffe252' });              // розовый
+      spr(L, 10, 4, ['.w.w.', 'wwYww', '.www.'], { w: '#ffffff', Y: '#ffc23a' });              // ромашка
+      spr(L, 5, 6, ['.v.', 'vYv', '.v.'], { v: '#b48cff', Y: '#ffe252' });                     // фиалка
+      dot(L, 14, 5, '#ff9ab8'); dot(L, 13, 6, '#ff9ab8');                                       // бутон
+      rect(L, 3, 19, 14, 1, '#e8d6b4'); }),
     hrug: std(96, 28, rug(96, 28, ['#d9a36c', '#f2d9b1', '#e3ba84', '#faebd2'], '#c9935b')),
     lounger: std(52, 25, (L) => {
       ell(L, 26, 12.5, 25, 11.8, BLUE, { d: .12 });
@@ -2717,7 +2731,10 @@
     $('stage').style.display = stageOn ? '' : 'none';
     $('actions').style.display = (stageOn && !edit) ? '' : 'none';
     $('editbar').style.display = (stageOn && edit && !locked) ? 'flex' : 'none';
-    $('app').classList.toggle('editing', !!(stageOn && edit && !locked));   // полноэкранная расстановка: шапка, статы и меню скрыты
+    const editing = !!(stageOn && edit && !locked);
+    if (editing && view.normH) $('stage').style.flex = '0 0 ' + view.normH + 'px';   // замораживаем высоту комнаты как на главной
+    else if (!editing) $('stage').style.flex = '';
+    $('app').classList.toggle('editing', editing);
     PANELS.forEach(p => $('panel-' + p).style.display = (p === t && (p !== 'loc' || locked)) ? 'block' : 'none');
     if (t === 'shop') renderShop(); else if (t === 'wardrobe') renderWardrobe(); else if (t === 'settings') renderSettings(); else if (t === 'admin') renderAdmin();
     else if (t === 'quests') renderQuests(); else if (t === 'visit') renderVisit(); else if (t === 'rewards') renderAch(); else if (t === 'daily') renderDaily(); else if (t === 'loc') renderLoc();
