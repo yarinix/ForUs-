@@ -1,0 +1,12 @@
+  :root {
+    --bg: #0c1633; --bg2: #14224a; --card: #182a5c; --card2: #203570; --line: rgba(120,160,255,.22);
+    --text: #f3f6ff; --dim: #9fb2e6; --blue: #2f7bff; --blue2: #5aa0ff;
+    --heart: #ff4f8b; --food: #ffa23a; --energy: #3fd0ff; --coin: #ffcf3d; --ok: #3ddc84;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); overflow: hidden;
+    font-family: ui-rounded, "SF Pro Rounded", system-ui, -apple-system, "Segoe UI", sans-serif; touch-action: manipulation; user-select: none; -webkit-user-select: none; }
+  #app { height: 100%; height: 100dvh; max-width: 480px; margin: 0 auto; display: flex; flex-direction: column; gap: 9px;
+    padding: calc(env(safe-area-inset-top, 0px) + 8px) 12px calc(env(safe-area-inset-bottom, 0px) + 8px);
+    background: radial-gradient(120% 60% at 50% 0, #1a2f6b 0, var(--bg) 62%); }
+

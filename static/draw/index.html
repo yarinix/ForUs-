@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Рисунок</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  /* @include css/draw.css */
+</style>
+</head>
+<body data-theme="dark">
+<div id="app">
+
+  <header id="topbar">
+    <button class="icon-btn" id="undo" aria-label="Отменить" disabled>
+      <svg viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>
+    </button>
+    <button class="icon-btn" id="redo" aria-label="Повторить" disabled>
+      <svg viewBox="0 0 24 24"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg>
+    </button>
+    <button class="icon-btn" id="clear" aria-label="Очистить лист">
+      <svg viewBox="0 0 24 24"><path d="M4.5 7h15"/><path d="M9.5 7V4.5h5V7"/><path d="m6.5 7 .9 12.5h9.2L17.5 7"/></svg>
+    </button>
+    <button class="icon-btn" id="resetView" aria-label="Вернуть масштаб" hidden>
+      <svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+    </button>
+    <div class="spacer"></div>
+    <button class="send" id="send" aria-label="Отправить рисунок">
+      <svg class="heart" viewBox="0 0 24 24"><path d="M12 21s-8-5-8-11.2A4.6 4.6 0 0 1 12 7a4.6 4.6 0 0 1 8 2.8C20 16 12 21 12 21z"/></svg>
+      <i class="spin"></i>
+      <span>Отправить</span>
+    </button>
+  </header>
+
+  <main id="viewport">
+    <div id="stage">
+      <canvas id="bgCanvas"></canvas>
+      <canvas id="artCanvas"></canvas>
+      <canvas id="textCanvas"></canvas>
+      <canvas id="liveCanvas"></canvas>
+      <div id="textMark"></div>
+    </div>
+    <div id="zoomBadge">100%</div>
+  </main>
+
+  <section id="dock">
+    <div id="context"></div>
+    <div id="colors"></div>
+    <nav id="tools"></nav>
+  </section>
+</div>
+
+<!-- фон листа -->
+<div class="sheet-wrap" id="bgSheet">
+  <div class="sheet">
+    <h3>Фон листа</h3>
+    <div class="row" id="paperColors"></div>
+    <div class="row" id="paperPatterns"></div>
+    <div class="actions"><button class="pill main" id="bgDone">Готово</button></div>
+  </div>
+</div>
+
+<!-- текст -->
+<div class="sheet-wrap" id="textSheet">
+  <div class="sheet">
+    <h3 id="textTitle">Новый текст</h3>
+    <input id="textInput" type="text" maxlength="60" placeholder="Что написать?" autocomplete="off" autocapitalize="sentences">
+    <div class="actions">
+      <button class="pill" id="textCancel">Отмена</button>
+      <button class="pill" id="textDelete" style="display:none">Удалить</button>
+      <button class="pill main" id="textDone">Готово</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" role="status"></div>
+
+<script>
+(() => {
+  'use strict';
+  // @include js/telegram.js
+  // @include js/state.js
+  // @include js/canvas.js
+  // @include js/history.js
+  // @include js/zoom.js
+  // @include js/brush.js
+  // @include js/fill.js
+  // @include js/text.js
+  // @include js/ui.js
+  // @include js/export.js
+  // @include js/boot.js
+})();
+</script>
+</body>
+</html>
