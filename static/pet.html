@@ -142,6 +142,15 @@
   .field input:focus { border-color: var(--blue2); }
 
   #editbar { display: none; flex-direction: column; gap: 7px; }
+  /* режим расстановки: прячем всё лишнее, комната занимает весь экран, панель мебели — компактная полоса снизу */
+  #app.editing { gap: 6px; padding-top: calc(env(safe-area-inset-top, 0px) + 6px); }
+  #app.editing #head, #app.editing #stats, #app.editing nav, #app.editing #bubble, #app.editing #sleepbar,
+  #app.editing #visitnote, #app.editing #testnote, #app.editing #locedit, #app.editing #gardenentry { display: none !important; }
+  #app.editing #stage { border-radius: 16px; }
+  #app.editing #editbar { gap: 5px; }
+  #app.editing #editlist { min-height: 0; }
+  #app.editing .chip { width: 76px; padding: 4px 3px; }
+  #app.editing .chip canvas { max-height: 30px; }
   #editbar .eh { display: flex; align-items: center; justify-content: space-between; font-size: 14.5px; }
   .chipbtn { font: inherit; font-weight: 800; font-size: 13px; color: #fff; background: linear-gradient(180deg, #3b86ff, #2563d8); border: 0; border-radius: 13px; padding: 7px 14px; box-shadow: 0 3px 0 rgba(4,10,30,.6); }
   .chipbtn.alt { background: rgba(255,255,255,.14); }
@@ -1214,18 +1223,9 @@
     const R = newLayer(W, H);
     band(R, 0, 0, W, fy, ['#f0fbf2', '#dff4e4', '#ccead4', '#b8dec3']);
     rect(R, 0, 0, W, 2, '#ffffff'); rect(R, 0, 2, W, 1, '#b8dec3');
-    for (let x = 4; x < W; x += 9) for (let y = 4; y < fy - 38; y += 6) {
+    // узор обоев на всю стену: кафельный фартук теперь часть кухонной стойки и переезжает вместе с ней
+    for (let x = 4; x < W; x += 9) for (let y = 4; y < fy - 8; y += 6) {
       dot(R, x, y, '#ffffff'); dot(R, x + 1, y, '#a5d4b4'); dot(R, x, y + 1, '#a5d4b4');
-    }
-    // кафельный фартук с 3D-фаской и бликами
-    const cy = fy - 24;
-    rect(R, 36, cy - 13, W - 62, 22, '#6ba8a2');
-    for (let y = cy - 12; y < cy + 8; y += 5) for (let x = 38; x < W - 28; x += 5) {
-      const alt = ((x + y) / 5 | 0) % 2 === 1;
-      const base = alt ? '#98d6cf' : '#e8fcf8', hi = alt ? '#c2ede8' : '#ffffff', lo = alt ? '#6eb3ab' : '#b8e0d9';
-      rect(R, x, y, 4, 4, base);
-      rect(R, x, y, 4, 1, hi); rect(R, x, y, 1, 4, hi);
-      rect(R, x, y + 3, 4, 1, lo); rect(R, x + 3, y, 1, 4, lo);
     }
     const wx = 6, wy = 16, ww = 24, wh = 26;
     if (night) nightWindow(R, wx, wy, ww, wh);
@@ -1581,7 +1581,7 @@
   }
   function itemShadow(o, dx) {
     if (o.c.pl === 'wall') { sx.globalAlpha = .26; sx.drawImage(furnSil(o.f), o.x - (o.f.w >> 1) + dx + 1, o.y - (o.f.h >> 1) + 2); sx.globalAlpha = 1; return; }
-    if (o.id === 'picnic' || o.c.flat) return;                  // плед и ковры лежат на земле плашмя — тени у них нет
+    if (isFlat(o.id, o.c)) return;                  // плед и ковры лежат на земле плашмя — тени у них нет
     const rx = o.f.w * (SHW[o.id] || .9) / 2;
     softShadow(sx, o.x + dx + 1, o.y - 1, rx, Math.max(2, Math.min(4, rx * .24)), .22);
   }
@@ -1734,9 +1734,10 @@
     view.curOx = ox;
     if (doorOpen) { const d = view.door; sx.fillStyle = '#2e1a10'; sx.fillRect(d.x, d.y, d.w, d.h); sx.fillStyle = '#7a4a28'; sx.fillRect(d.x + 3, d.y + (d.h >> 1), d.w - 6, d.h >> 1); sx.fillStyle = '#b8723a'; sx.fillRect(d.x, d.y, 4, d.h); }
     // тень выдры: мягкий двойной овал прямо под лапками (подошвы на baseY + 5); когда выдра подпрыгивает, тень сжимается и бледнеет
+    if (view.edit) alpha = 0;                                  // в режиме расстановки выдра уходит, чтобы не мешать
     sx.globalAlpha = alpha; { const lift = Math.max(0, -hop), k = 1 - Math.min(.45, lift * .07); softShadow(sx, ox + 1, view.baseY + 5, 17 * kk * k, 3.4 * k, .32 * (1 - Math.min(.5, lift * .08))); }
     const tentSleeping = !!(S && S.sleeping && out && S.placed && S.placed.tent && S.placed.tent.room === view.cur);
-    if (!tentSleeping) {
+    if (!tentSleeping && !view.edit) {
       const backV = !!view.fish && !(view.fish.hit && now - view.fish.t0 > 3900);
     const O = drawOtter(now, look, blink, null, { s: out ? OSC : 0, back: backV });
       sx.drawImage(O.c, ox - OX, view.baseY - OB + 4 + hop);
@@ -1744,7 +1745,7 @@
     sx.globalAlpha = 1;
     if (view.fish && view.cur === 'lake' && !tr) drawFishing(sx, now, ox);
     for (const [r, dx] of view.fx) drawItems(r, dx, true, now);
-    if (look === 'play' && (view.cur === 'home' || view.cur === 'yard')) {
+    if (look === 'play' && !view.edit && (view.cur === 'home' || view.cur === 'yard')) {
       const by = view.baseY - 4 - Math.round(Math.abs(Math.sin(now / 160)) * 26), bx = ox + 34;
       const B = newLayer(14, 14); ell(B, 7, 7, 5.5, 5.5, BLUE); for (let i = -4; i <= 4; i++) dot(B, 7 + i, 6 + Math.round(i * .35), '#fff'); outline(B);
       sx.drawImage(B.c, bx - 7, by - 7);
@@ -2529,29 +2530,46 @@
       for (let i = -4; i <= 4; i++) { dot(L, 6 + i, 6 + Math.round(i * .35) - 1, '#ffffff'); dot(L, 6 + i, 6 + Math.round(i * .35), '#ff6a8a'); }
       dot(L, 4, 3, '#ffffff'); }),
     bone: std(8, 4, (L) => { spr(L, 0, 0, ['hh....hd', 'hbbbbbbd', 'bbbbbbdd', 'dd....dd'], { h: '#ffffff', b: '#f7ead2', d: '#d4be98' }); }),
-    counter: std(64, 34, (L) => {
-      // мраморная столешница, филёнчатые дверцы с латунными ручками, стальная мойка с краном, чайник и рыбка на блюде
-      rect(L, 0, 10, 64, 4, '#efe4ce'); rect(L, 0, 10, 64, 1, '#ffffff'); rect(L, 0, 13, 64, 1, '#c4b397');
-      rect(L, 2, 14, 60, 20, '#c4804c'); rect(L, 2, 32, 60, 2, '#7d4d27');
-      for (let x = 3; x < 60; x += 19) {
-        rect(L, x, 16, 16, 15, '#db9963');
-        rect(L, x, 16, 16, 1, '#f5be8e'); rect(L, x, 16, 1, 15, '#f5be8e');
-        rect(L, x + 15, 16, 1, 15, '#995e30'); rect(L, x, 30, 16, 1, '#995e30');
-        rect(L, x + 2, 18, 12, 3, '#c98550');
-        rect(L, x + 6, 19, 4, 1, '#ffe899');
-        rect(L, x + 2, 22, 12, 7, '#cf8b55');
-        rect(L, x + 12, 24, 1, 3, '#ffe899');
+    counter: std(64, 46, (L) => {
+      // самостоятельный модуль: свой кафельный фартук, мраморная столешница, боковины с обеих сторон,
+      // цоколь, филёнчатые дверцы, мойка с краном, чайник и рыбка на блюде. Можно ставить куда угодно.
+      const T = 12;                                                                        // сдвиг вниз: сверху место под фартук
+      rect(L, 2, 0, 60, T + 10, '#6ba8a2');                                                // фартук (подложка-затирка)
+      for (let y = 1; y < T + 10; y += 5) for (let x = 3; x < 61; x += 5) {
+        const alt = ((x + y) / 5 | 0) % 2 === 1, tw = Math.min(4, 61 - x), th = Math.min(4, T + 10 - y);
+        rect(L, x, y, tw, th, alt ? '#98d6cf' : '#e8fcf8');
+        rect(L, x, y, tw, 1, alt ? '#c2ede8' : '#ffffff'); rect(L, x, y, 1, th, alt ? '#c2ede8' : '#ffffff');
       }
-      rect(L, 22, 8, 16, 3, '#c4d2e0'); rect(L, 24, 9, 12, 2, '#6c8096');
-      rect(L, 30, 1, 2, 8, '#dce6f2'); rect(L, 30, 1, 1, 8, '#ffffff'); rect(L, 27, 0, 6, 2, '#dce6f2'); dot(L, 27, 2, '#80d4ff');
-      ell(L, 10, 5.5, 6, 4.8, ['#e8f0f8', '#acc0d4', '#6f8296']); rect(L, 4, 0, 12, 2, '#6f8296'); rect(L, 16, 2, 4, 1, '#6f8296');
-      flat(L, 52, 8, 8.5, 2.6, '#ffffff'); flat(L, 52, 8, 6.5, 1.8, '#dce8f5');
-      spr(L, 47, 4, ['..hooo...o', '.hooooooo.', 'ookooooood', '.oooooooood'.slice(0,10), '..dddd...o'], { h: '#ffc885', o: '#ff9a3c', d: '#d46d14', k: OUT }); }),
+      rect(L, 2, 0, 60, 1, '#4f8f89'); rect(L, 2, 0, 1, T + 10, '#4f8f89'); rect(L, 61, 0, 1, T + 10, '#4f8f89');
+      // столешница с выступом и торцами
+      rect(L, 0, T + 10, 64, 4, '#efe4ce'); rect(L, 0, T + 10, 64, 1, '#ffffff'); rect(L, 0, T + 13, 64, 1, '#c4b397');
+      rect(L, 0, T + 10, 1, 4, '#fffaf0'); rect(L, 63, T + 10, 1, 4, '#b3a184');
+      // корпус: светлая левая боковина, тёмная правая — модуль объёмный с любой стороны
+      rect(L, 2, T + 14, 60, 20, '#c4804c');
+      rect(L, 2, T + 14, 2, 18, '#e0a06a'); rect(L, 60, T + 14, 2, 18, '#9a5f33');
+      rect(L, 2, T + 32, 60, 2, '#7d4d27');                                                // цоколь
+      for (let x = 5; x < 58; x += 18) {
+        rect(L, x, T + 16, 16, 15, '#db9963');
+        rect(L, x, T + 16, 16, 1, '#f5be8e'); rect(L, x, T + 16, 1, 15, '#f5be8e');
+        rect(L, x + 15, T + 16, 1, 15, '#995e30'); rect(L, x, T + 30, 16, 1, '#995e30');
+        rect(L, x + 2, T + 18, 12, 3, '#c98550'); rect(L, x + 6, T + 19, 4, 1, '#ffe899');
+        rect(L, x + 2, T + 22, 12, 7, '#cf8b55'); rect(L, x + 12, T + 24, 1, 3, '#ffe899');
+      }
+      // мойка и кран
+      rect(L, 22, T + 8, 16, 3, '#c4d2e0'); rect(L, 24, T + 9, 12, 2, '#6c8096');
+      rect(L, 30, T + 1, 2, 8, '#dce6f2'); rect(L, 30, T + 1, 1, 8, '#ffffff'); rect(L, 27, T, 6, 2, '#dce6f2'); dot(L, 27, T + 2, '#80d4ff');
+      // чайник
+      ell(L, 11, T + 5.5, 6, 4.8, ['#e8f0f8', '#acc0d4', '#6f8296']); rect(L, 5, T, 12, 2, '#6f8296'); rect(L, 17, T + 2, 4, 1, '#6f8296');
+      // рыбка на блюде
+      flat(L, 52, T + 8, 8.5, 2.6, '#ffffff'); flat(L, 52, T + 8, 6.5, 1.8, '#dce8f5');
+      spr(L, 47, T + 4, ['..hooo...o', '.hooooooo.', 'ookooooood', '.oooooooood'.slice(0,10), '..dddd...o'], { h: '#ffc885', o: '#ff9a3c', d: '#d46d14', k: OUT }); }),
     fridge: std(24, 58, (L) => {
       // объёмный ретро-холодильник со скруглённым верхом, хромированными ручками, бликами и магнитиками
-      rect(L, 1, 0, 22, 2, '#f5fbff');
-      rect(L, 0, 2, 24, 56, '#d6e8f7');
-      rect(L, 0, 2, 3, 56, '#f2faff'); rect(L, 21, 2, 3, 56, '#abc5de');
+      rect(L, 1, 0, 22, 2, '#f5fbff'); rect(L, 2, 0, 20, 1, '#ffffff');
+      rect(L, 0, 2, 24, 54, '#d6e8f7');
+      rect(L, 0, 2, 3, 54, '#f2faff'); rect(L, 21, 2, 3, 54, '#abc5de');
+      rect(L, 0, 2, 24, 1, '#eef7ff');
+      rect(L, 1, 54, 22, 2, '#9fb7cf'); rect(L, 2, 56, 4, 2, '#5f748a'); rect(L, 18, 56, 4, 2, '#5f748a');   // цоколь и ножки
       rect(L, 0, 29, 24, 2, '#7f9bb6'); rect(L, 0, 31, 24, 1, '#f2faff');
       rect(L, 18, 9, 2, 13, '#ffffff'); rect(L, 19, 9, 1, 13, '#7f9bb6');
       rect(L, 18, 35, 2, 15, '#ffffff'); rect(L, 19, 35, 1, 15, '#7f9bb6');
@@ -2597,10 +2615,22 @@
       rect(L, 0, 17, 20, 18, '#a9683a'); rect(L, 0, 17, 20, 2, '#d99964'); rect(L, 1, 19, 2, 15, '#c4834f');
       rect(L, 3, 20, 14, 6, '#8d5736'); rect(L, 3, 20, 14, 1, '#6e4124'); rect(L, 8, 22, 4, 2, '#ffe9a8');
       rect(L, 3, 27, 14, 6, '#8d5736'); rect(L, 3, 27, 14, 1, '#6e4124'); rect(L, 8, 29, 4, 2, '#ffe9a8');
-      ell(L, 10, 16, 4.5, 1.8, ['#dce6f2', '#8a9bb0']);
-      rect(L, 8, 11, 4, 5, '#8a9bb0'); rect(L, 8, 11, 1, 5, '#d0deed');
-      ell(L, 10, 5.5, 7.2, 5.2, ['#fff8c4', '#ffd866', '#e0a02e']);
-      for (let x = 4; x <= 16; x += 3) dot(L, x, 9, '#f5b842'); }),
+      // лампа: керамическая ножка-кувшинчик, латунная шейка и плиссированный тканевый абажур с тёплым светом внутри
+      rect(L, 6, 16, 8, 1, '#7a4a2b');                                                    // тень от ножки на крышке
+      ell(L, 10, 13.5, 3.6, 2.8, ['#fff1f4', '#f2a7b8', '#c96f86']);                         // пузатая ножка
+      rect(L, 7, 16, 6, 1, '#c96f86'); dot(L, 8, 12, '#ffffff');
+      rect(L, 9, 9, 2, 3, '#e0b25a'); dot(L, 9, 9, '#fff0b8'); dot(L, 10, 11, '#a87a2c');  // латунная шейка
+      for (let y = 1; y <= 8; y++) {                                                       // абажур-трапеция: 8 px сверху → 16 px снизу
+        const hw = 4 + Math.round((y - 1) * 4 / 7), x0 = 10 - hw, w = hw * 2;
+        rect(L, x0, y, w, 1, '#ffe2a6');
+        dot(L, x0, y, '#fff6dc'); dot(L, x0 + 1, y, '#fff0c8');                             // свет слева
+        dot(L, x0 + w - 1, y, '#e6a85c'); dot(L, x0 + w - 2, y, '#f2c27e');                 // тень справа
+        for (let x = x0 + 3; x < x0 + w - 2; x += 3) dot(L, x, y, '#f7cf8e');                // складки ткани
+      }
+      rect(L, 6, 0, 8, 1, '#d48a3c');                                                      // верхний кант
+      rect(L, 2, 9, 16, 1, '#d48a3c'); rect(L, 3, 9, 14, 1, '#e89a48');                     // нижний кант
+      rect(L, 5, 10, 10, 1, '#fff4c4'); dot(L, 4, 10, '#ffe08a'); dot(L, 15, 10, '#ffe08a');  // тёплый свет из-под абажура
+    }),
     brug: std(96, 26, rug(96, 26, ['#9f86e0', '#c8b6f7', '#b29bed', '#ece4ff'], '#8e74cf')),
     plush: std(16, 13, (L) => {
       ell(L, 3, 3, 2.6, 2.6, FUR); of(L, 3, 3, 1.2, 1.2, '#f0a89c');
@@ -2687,6 +2717,7 @@
     $('stage').style.display = stageOn ? '' : 'none';
     $('actions').style.display = (stageOn && !edit) ? '' : 'none';
     $('editbar').style.display = (stageOn && edit && !locked) ? 'flex' : 'none';
+    $('app').classList.toggle('editing', !!(stageOn && edit && !locked));   // полноэкранная расстановка: шапка, статы и меню скрыты
     PANELS.forEach(p => $('panel-' + p).style.display = (p === t && (p !== 'loc' || locked)) ? 'block' : 'none');
     if (t === 'shop') renderShop(); else if (t === 'wardrobe') renderWardrobe(); else if (t === 'settings') renderSettings(); else if (t === 'admin') renderAdmin();
     else if (t === 'quests') renderQuests(); else if (t === 'visit') renderVisit(); else if (t === 'rewards') renderAch(); else if (t === 'daily') renderDaily(); else if (t === 'loc') renderLoc();
@@ -2927,6 +2958,8 @@
   function pctOf(c, px, py) {
     return { x: clamp(Math.round(px / view.W * 100), 5, 95), y: c.pl === 'wall' ? clamp(Math.round((py - 4) / (view.fy - 20) * 100), 0, 100) : clamp(Math.round((py - fl()) / fh() * 100), 0, 100) };
   }
+  const FLAT_IDS = new Set(['hrug', 'krug', 'brug', 'picnic']);                 // запасной список «плоских» вещей, если каталог с сервера старый
+  const isFlat = (id, c) => !!((c && c.flat) || FLAT_IDS.has(id));
   function roomItems(room) {
     const out = []; if (!S || !CAT || !view.fy) return out;
     for (const id in (S.placed || {})) {
@@ -2934,14 +2967,15 @@
       const c = CAT[id], f = c && furnLayer(id); if (!f) continue;
       const p = pxOf(c, it); out.push({ id, c, f, x: p.x, y: p.y });
     }
-    const lay = (o) => o.c.pl === 'wall' ? 0 : o.c.flat ? 1 : 2;               // стена → ковры → остальное
+    // слои: 0 — стена, 1 — ковры и пледы (всегда самый низ пола), 2 — мебель и вещи (по глубине), 3 — то, что сейчас тащим
+    const lay = (o) => o.c.pl === 'wall' ? 0 : isFlat(o.id, o.c) ? 1 : (drag && drag.id === o.id) ? 3 : 2;
     out.sort((a, b) => lay(a) - lay(b) || a.y - b.y);
     return out;
   }
   function drawItems(room, dx, front, now) {
     if (!front) for (const o of roomItems(room)) itemShadow(o, dx);   // тени всех предметов комнаты — под выдрой и под самими предметами
     for (const o of roomItems(room)) {
-      if ((o.c.pl !== 'wall' && !o.c.flat && o.y > view.baseY + 4) !== front) continue;   // ковры всегда позади выдры
+      if ((o.c.pl !== 'wall' && !isFlat(o.id, o.c) && o.y > view.baseY + 4) !== front) continue;   // ковры всегда позади выдры
       const x = o.x - (o.f.w >> 1) + dx, y = o.c.pl === 'wall' ? o.y - (o.f.h >> 1) : o.y - o.f.h;
       sx.drawImage(o.f.c, x, y);
       if (o.id === 'aquarium') {
@@ -3016,7 +3050,7 @@
   function editDown(e) {
     if (view.trans || !S) return;
     const [lx, ly] = toLocal(e); let hit = hitItem(lx, ly);
-    if (hit && sel && sel !== hit && CAT[hit].flat && !CAT[sel].flat) hit = null;   // ковёр большой: тап по нему двигает выбранную вещь, а не выбирает ковёр
+    if (hit && sel && sel !== hit && isFlat(hit, CAT[hit]) && !isFlat(sel, CAT[sel])) hit = null;   // ковёр большой: тап по нему двигает выбранную вещь, а не выбирает ковёр
     if (hit) { sel = hit; renderEditList(); }
     if (!sel || !placedHere(sel)) return;
     const p = pxOf(CAT[sel], S.placed[sel]);
