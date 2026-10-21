@@ -1,0 +1,91 @@
+  /* ---------- меню, магазин, гардероб, расстановка ---------- */
+  #pixcv { touch-action: none; }
+  .panel .top { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+  .panel .top h3 { margin: 0; flex: 1; }
+  .back { font: inherit; font-weight: 800; font-size: 13.5px; color: var(--blue2); background: rgba(47,123,255,.14); border: 1.5px solid rgba(90,160,255,.35); border-radius: 14px; padding: 6px 12px; }
+  .wal { font-weight: 800; font-size: 15px; background: rgba(8,16,40,.55); border: 1.5px solid var(--line); border-radius: 14px; padding: 5px 11px; }
+  #menugrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 11px; }
+  .mcard { font: inherit; color: var(--text); border: 1.5px solid var(--line); border-radius: 18px; padding: 16px 8px 13px; background: rgba(8,16,40,.38);
+    display: flex; flex-direction: column; align-items: center; gap: 8px; font-weight: 800; font-size: 15px; box-shadow: 0 4px 0 rgba(4,10,30,.6); transition: transform .08s, box-shadow .08s; }
+  .mcard small { font-size: 11px; color: var(--dim); font-weight: 700; }
+  .mcard:active { transform: translateY(3px); box-shadow: 0 1px 0 rgba(4,10,30,.6); }
+  .seg { display: flex; gap: 6px; margin-bottom: 12px; }
+  .seg button { flex: 1; font: inherit; font-weight: 800; font-size: 13px; color: var(--dim); background: rgba(8,16,40,.45); border: 1.5px solid var(--line); border-radius: 14px; padding: 9px 4px; }
+  .seg button.on { color: #fff; background: linear-gradient(180deg, #3b86ff, #2563d8); border-color: transparent; }
+  .items { display: grid; grid-template-columns: repeat(2, 1fr); gap: 9px; }
+  .it { background: rgba(8,16,40,.4); border: 1.5px solid var(--line); border-radius: 16px; padding: 9px 8px 10px; display: flex; flex-direction: column; align-items: center; gap: 5px; text-align: center; }
+  .it .pv { height: 104px; display: grid; place-items: center; }
+  .it .pv .emo { font-size: 44px; line-height: 1; }
+  .it b { font-size: 13.5px; line-height: 1.2; }
+  .it .ds { font-size: 11px; color: var(--dim); font-weight: 700; line-height: 1.25; min-height: 27px; }
+  .it .own { font-size: 11px; font-weight: 800; color: var(--ok); }
+  /* редкость одежды: цвет задаётся переменной --rc (её ставит shopCard / renderWardrobe) */
+  .it.r-common, .it.r-rare, .it.r-epic, .it.r-legendary { border-color: var(--rc); }
+  .it.r-rare { box-shadow: 0 0 10px rgba(74,163,255,.18); }
+  .it.r-epic { box-shadow: 0 0 0 1px var(--rc) inset, 0 0 13px rgba(192,107,255,.30); }
+  .it.r-legendary { box-shadow: 0 0 0 1px var(--rc) inset, 0 0 16px rgba(255,200,61,.40); animation: legend 2.4s ease-in-out infinite; }
+  @keyframes legend { 50% { box-shadow: 0 0 0 1px var(--rc) inset, 0 0 24px rgba(255,200,61,.70); } }
+  .rar { font-size: 10.5px; font-weight: 900; letter-spacing: .4px; text-transform: uppercase; color: var(--rc); background: rgba(8,16,40,.55); border: 1px solid var(--rc); border-radius: 9px; padding: 1px 8px; }
+  .seg.sub { overflow-x: auto; }
+  .seg.sub button { flex: 0 0 auto; font-size: 12px; padding: 7px 11px; }
+  #wslots .slot:last-child:nth-child(odd) { grid-column: 1 / -1; }
+  .buy { font: inherit; font-weight: 800; font-size: 13px; color: #fff; background: linear-gradient(180deg, #3b86ff, #2563d8); border: 0; border-radius: 13px; padding: 8px 10px; width: 100%; box-shadow: 0 3px 0 rgba(4,10,30,.6); }
+  .buy:active { transform: translateY(2px); box-shadow: 0 1px 0 rgba(4,10,30,.6); }
+  .buy.poor { background: rgba(255,255,255,.12); color: var(--dim); box-shadow: none; }
+  .buy.off { background: rgba(61,220,132,.18); color: var(--ok); box-shadow: none; }
+  .buy.alt { background: rgba(255,255,255,.14); }
+  .empty { grid-column: 1 / -1; color: var(--dim); font-size: 13.5px; font-weight: 700; text-align: center; padding: 14px 6px; line-height: 1.4; }
+  #wstage { display: grid; place-items: center; border-radius: 18px; margin-bottom: 10px; padding: 8px 0 4px; background: radial-gradient(90% 90% at 50% 30%, #2c4690, #14224a); border: 1.5px solid var(--line); }
+  #wprev { width: 168px; height: 184px; image-rendering: pixelated; image-rendering: crisp-edges; }
+  #wslots { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; margin-bottom: 12px; }
+  .slot { font-size: 12px; font-weight: 800; color: var(--dim); background: rgba(8,16,40,.45); border: 1.5px solid var(--line); border-radius: 12px; padding: 6px 9px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .slot.on { color: #fff; border-color: rgba(90,160,255,.55); }
+  .sndrow { display: flex; align-items: center; gap: 10px; margin: 8px 0 4px; }
+  .sndrow input[type=range] { flex: 1; min-width: 0; accent-color: #3b86ff; }
+  .field { display: flex; gap: 8px; margin: 10px 0 8px; }
+  .field input { flex: 1; min-width: 0; font: inherit; font-weight: 800; font-size: 16px; color: var(--text); background: rgba(8,16,40,.55); border: 1.5px solid var(--line); border-radius: 14px; padding: 10px 12px; outline: none; user-select: text; -webkit-user-select: text; }
+  .field input:focus { border-color: var(--blue2); }
+
+  #editbar { display: none; flex-direction: column; gap: 7px; }
+  /* режим расстановки: прячем всё лишнее, комната занимает весь экран, панель мебели — компактная полоса снизу */
+  #app.editing { gap: 6px; padding-top: calc(env(safe-area-inset-top, 0px) + 6px); }
+  /* комната в режиме расстановки ровно того же размера, что и на главной (высота фиксируется в show()),
+     поэтому расстановка выглядит один в один; панель мебели встаёт на место кнопок и нижнего меню */
+  #app.editing nav, #app.editing #bubble, #app.editing #locedit, #app.editing #gardenentry { display: none !important; }
+  #app.editing #editbar { flex: 1 1 auto; min-height: 0; justify-content: space-between; }
+  #app.editing #editlist { flex: 1 1 auto; min-height: 0; align-items: stretch; }
+  #editbar .eh { display: flex; align-items: center; justify-content: space-between; font-size: 14.5px; }
+  .chipbtn { font: inherit; font-weight: 800; font-size: 13px; color: #fff; background: linear-gradient(180deg, #3b86ff, #2563d8); border: 0; border-radius: 13px; padding: 7px 14px; box-shadow: 0 3px 0 rgba(4,10,30,.6); }
+  .chipbtn.alt { background: rgba(255,255,255,.14); }
+  .chipbtn:disabled { opacity: .4; }
+  #editlist { display: flex; gap: 8px; overflow-x: auto; padding: 2px 1px 4px; min-height: 84px; }
+  #editlist .empty { grid-column: auto; align-self: center; width: 100%; }
+  .chip { flex: 0 0 auto; width: 84px; font: inherit; color: var(--text); background: rgba(8,16,40,.5); border: 1.5px solid var(--line); border-radius: 14px; padding: 6px 4px 5px;
+    display: flex; flex-direction: column; align-items: center; gap: 2px; }
+  .chip canvas { max-height: 38px; max-width: 70px; width: auto !important; height: auto !important; object-fit: contain; }
+  .chip .cn { font-size: 11px; font-weight: 800; line-height: 1.15; max-width: 76px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .chip small { font-size: 10px; font-weight: 700; color: var(--dim); }
+  .chip.on { border-color: #ffe27a; background: rgba(255,226,122,.14); }
+  #editbar .erow { display: flex; align-items: center; gap: 8px; }
+  #edithint { flex: 1; font-size: 12px; font-weight: 700; color: var(--dim); line-height: 1.3; }
+
+  #sheet { position: fixed; inset: 0; background: rgba(4,8,22,.62); display: none; align-items: flex-end; justify-content: center; z-index: 8; }
+  #sheet.show { display: flex; }
+  #sheetbox { width: 100%; max-width: 480px; background: linear-gradient(180deg, var(--card2), var(--card)); border: 1.5px solid var(--line); border-radius: 22px 22px 0 0; padding: 16px 14px calc(env(safe-area-inset-bottom, 0px) + 14px); max-height: 80dvh; overflow: auto; }
+  #sheettitle { font-weight: 800; font-size: 17px; margin-bottom: 10px; }
+  .srow { width: 100%; font: inherit; color: var(--text); display: flex; align-items: center; gap: 12px; text-align: left; background: rgba(8,16,40,.45); border: 1.5px solid var(--line); border-radius: 15px; padding: 9px 12px; margin-bottom: 8px; }
+  .srow .e { font-size: 28px; }
+  .srow .m { flex: 1; min-width: 0; font-weight: 800; font-size: 14.5px; }
+  .srow .m small { display: block; font-size: 11px; font-weight: 700; color: var(--dim); margin-top: 1px; }
+  .srow .r { font-weight: 800; font-size: 13.5px; color: var(--coin); }
+  #sheetbtns { display: flex; gap: 8px; margin-top: 4px; }
+  #sheetbtns .chipbtn { flex: 1; }
+  #toast { position: fixed; left: 50%; top: calc(env(safe-area-inset-top, 0px) + 12px); transform: translate(-50%, -16px); opacity: 0; pointer-events: none; z-index: 10; max-width: min(92vw, 440px);
+    background: #fff; color: #2a2140; font-weight: 800; font-size: 13.5px; line-height: 1.3; border-radius: 15px; padding: 10px 14px; box-shadow: 0 6px 18px rgba(0,0,0,.35); transition: opacity .2s, transform .2s; text-align: center; }
+  #toast.show { opacity: 1; transform: translate(-50%, 0); }
+  #who { cursor: pointer; }
+  #toast { white-space: pre-line; }
+  nav button { position: relative; }
+  nav button.dot::after { content: ''; position: absolute; top: 7px; right: 28%; width: 9px; height: 9px; border-radius: 50%; background: #ff5a6a; box-shadow: 0 0 0 2px #14224a; }
+  .qinfo { font-size: 12px; font-weight: 700; color: var(--dim); text-align: center; margin: -2px 0 12px; line-height: 1.4; }
+  .qinfo.ok { color: var(--ok); }

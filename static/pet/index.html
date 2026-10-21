@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Наша выдра</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  /* @include css/base.css */
+  /* @include css/layout.css */
+  /* @include css/menus.css */
+  /* @include css/popups.css */
+</style>
+
+
+
+<link rel="stylesheet" href="/pet-garden/garden.css?v=5">
+<script defer src="/pet-garden/garden.js?v=5"></script>
+</head>
+<body>
+
+<div id="app">
+  <header id="head">
+    <div id="avatar"><canvas id="avcv" width="38" height="34"></canvas></div>
+    <div id="who">
+      <div id="pname">Бублик</div>
+      <div id="lvlrow"><span id="lvl">Уровень 1</span><div id="xpbar"><div id="xpfill"></div></div></div>
+    </div>
+    <div id="coins"><i class="coinic" data-icon="coin" data-k="3"></i><span id="coinv">0</span></div>
+  </header>
+  <div id="visitnote"><span id="visittext"></span><button id="returnbtn" type="button">↩ К себе</button></div>
+  <div id="testnote"><span>🧪 Проверка: админский питомец. Полина его не видит.</span><button id="testexit" type="button">↩ К общему</button></div>
+
+  <div id="stats">
+    <div class="pill" id="p-happy"><div class="fillbar"></div><span class="ico" data-icon="heart" data-k="3"></span><b id="v-happy">0/100</b></div>
+    <div class="pill" id="p-hunger"><div class="fillbar"></div><span class="ico" data-icon="fish" data-k="3"></span><b id="v-hunger">0/100</b></div>
+    <div class="pill" id="p-energy"><div class="fillbar"></div><span class="ico" data-icon="bolt" data-k="3"></span><b id="v-energy">0/100</b></div>
+  </div>
+
+  <!-- ГЛАВНАЯ: комната с выдрой -->
+  <div id="stage">
+    <canvas id="pixcv" width="96" height="128"></canvas>
+    <div id="roomname">Гостиная</div>
+    <button class="arrow" id="arL" style="left:6px"><span data-icon="arrL" data-k="4"></span><small>Кухня</small></button>
+    <button class="arrow" id="arR" style="right:6px"><span data-icon="arrR" data-k="4"></span><small>Спальня</small></button>
+    <button class="chipbtn" id="locedit" type="button">🛠 Обустроить</button>
+    <button class="chipbtn" id="gardenentry" type="button" hidden>🌱 Двор</button>
+    <div id="bubble"></div>
+    <div id="sleepbar"><div id="sleeptxt"></div><button class="chipbtn alt" id="wakebtn">Разбудить</button></div>
+  </div>
+
+  <!-- разделы меню -->
+  <section class="panel" id="panel-menu">
+    <div class="top"><h3>Меню</h3></div>
+    <div id="menugrid">
+      <button class="mcard" data-go="shop"><span data-icon="bag" data-k="4"></span>Магазин<small>еда, одежда, мебель</small></button>
+      <button class="mcard" data-go="wardrobe"><span data-icon="shirt" data-k="4"></span>Гардероб<small>переодеть питомца</small></button>
+      <button class="mcard" data-go="edit"><span data-icon="house" data-k="4"></span>Дом<small>расставить мебель</small></button>
+      <button class="mcard" data-go="daily"><span data-icon="gift" data-k="4"></span>Бонус дня<small id="dsub">награда за вход</small></button>
+      <button class="mcard" data-go="quests"><span data-icon="list" data-k="4"></span>Задания<small id="qsub">ежедневные дела</small></button>
+      <button class="mcard" data-go="visit" id="visitcard" style="display:none"><span data-icon="paw" data-k="4"></span>В гости<small>посетить друга</small></button>
+      <button class="mcard" data-go="rewards"><span data-icon="trophy" data-k="4"></span>Достижения<small id="asub">награды за заботу</small></button>
+      <button class="mcard" data-go="admin" id="admcard" style="display:none"><span data-icon="gear" data-k="4"></span>Админка<small>управление игрой</small></button>
+      <button class="mcard" data-go="settings"><span data-icon="gear" data-k="4"></span>Настройки<small>имя питомца</small></button>
+    </div>
+  </section>
+  <section class="panel" id="panel-shop">
+    <div class="top"><button class="back" data-go="menu">‹ Меню</button><h3>Магазин</h3><div class="wal">🪙 <span id="shopcoins">0</span></div></div>
+    <div class="seg" id="shopseg"><button data-k="food">🍣 Еда</button><button data-k="wear">👕 Одежда</button><button data-k="furn">🛋 Мебель</button></div>
+    <div class="seg sub" id="wearseg" style="display:none"></div>   <!-- подразделы одежды: Все / Голова / Верх / Костюм / Аксессуар / Спина (рисует renderWearSeg) -->
+    <div class="items" id="shoplist"></div>
+  </section>
+  <section class="panel" id="panel-wardrobe">
+    <div class="top"><button class="back" data-go="menu">‹ Меню</button><h3>Гардероб</h3></div>
+    <div id="wstage"><canvas id="wprev" width="84" height="92"></canvas></div>
+    <div id="wslots"></div>
+    <div class="items" id="wlist"></div>
+  </section>
+  <section class="panel" id="panel-settings">
+    <div class="top"><button class="back" data-go="menu">‹ Меню</button><h3>Настройки</h3></div>
+    <p>Как зовут вашего питомца? Имя увидите вы оба.</p>
+    <div class="field"><input id="nameinp" type="text" maxlength="16" placeholder="Имя питомца" autocomplete="off"><button class="chipbtn" id="namesave">Сохранить</button></div>
+    <p>До 16 символов.</p>
+    <h4>Звук</h4>
+    <div class="sndrow"><button class="chipbtn" id="sndtoggle">🔊 Звуки: вкл</button><input id="sndvol" type="range" min="0" max="100" step="5" aria-label="Громкость"></div>
+    <p>Мягкие 8-битные звуки: еда, игра, сон, монеты, награды. Громкость можно подкрутить.</p>
+  </section>
+  <section class="panel" id="panel-admin">
+    <div class="top"><button class="back" data-go="menu">‹ Меню</button><h3>Админка</h3></div>
+    <p>Видна только тебе. Пустые поля не меняются. Все кнопки действуют на того питомца, с которым ты сейчас играешь.</p>
+    <h4>Проверка</h4>
+    <p id="a-testhint">Отдельный админский питомец: он только твой, Полина его не видит и не может навестить. Общий питомец остаётся как был.</p>
+    <div class="admbtns"><button class="chipbtn" id="a-test" type="button">🧪 Проверка</button></div>
+    <div class="adm">
+      <label>Радость<input id="a-happy" type="number" inputmode="numeric" min="0" max="100"></label>
+      <label>Сытость<input id="a-hunger" type="number" inputmode="numeric" min="0" max="100"></label>
+      <label>Энергия<input id="a-energy" type="number" inputmode="numeric" min="0" max="100"></label>
+      <label>Монеты<input id="a-coins" type="number" inputmode="numeric" min="0"></label>
+      <label>Уровень<input id="a-level" type="number" inputmode="numeric" min="1"></label>
+      <label>Опыт<input id="a-xp" type="number" inputmode="numeric" min="0"></label>
+      <label>Имя<input id="a-name" type="text" maxlength="16"></label>
+      <label>Комната<select id="a-room"><option value="">—</option><option value="kitchen">Кухня</option><option value="home">Гостиная</option><option value="bedroom">Спальня</option><option value="yard">Двор</option><option value="forest">Лес</option><option value="lake">Озеро</option></select></label>
+    </div>
+    <div class="admbtns"><button class="chipbtn" id="a-apply">Применить значения</button><button class="chipbtn alt" id="a-fill">Всё на 100</button></div>
+    <h4>Сон</h4>
+    <div class="admbtns"><button class="chipbtn alt" data-adm="sleep" data-h="0.05">Уложить на 3 мин</button><button class="chipbtn alt" data-adm="sleep" data-h="1">Уложить на 1 ч</button><button class="chipbtn alt" data-adm="sleep" data-h="8">Уложить на 8 ч</button><button class="chipbtn alt" data-adm="wake" data-n="1">Разбудить + уведомление</button></div>
+    <h4>Деньги и вещи</h4>
+    <div class="admbtns"><button class="chipbtn alt" data-adm="add_coins" data-amount="100">+100 монет</button><button class="chipbtn alt" data-adm="add_coins" data-amount="1000">+1000 монет</button><button class="chipbtn alt" data-adm="unlock_all">Открыть все вещи</button><button class="chipbtn alt" data-adm="clear_items">Убрать все вещи</button><button class="chipbtn alt" data-adm="quests_done">Выполнить задания дня</button><button class="chipbtn alt" data-adm="quests_reset">Сбросить прогресс заданий</button></div>
+    <h4>Локация и достижения</h4>
+    <div class="admbtns"><button class="chipbtn alt" data-adm="loc_unlock">Открыть «Лес»</button><button class="chipbtn alt" data-adm="loc_lock">Закрыть «Лес»</button><button class="chipbtn alt" data-adm="ach_all">Выполнить все достижения</button><button class="chipbtn danger" data-adm="ach_reset" data-confirm="Сбросить счётчики и полученные награды достижений?">Сбросить достижения</button></div>
+    <h4>Бонус дня</h4>
+    <p>Для проверки: сегодняшний бонус будет за выбранный день серии, и его можно забрать.</p>
+    <div class="admbtns"><button class="chipbtn alt" data-adm="daily_reset">Забрать снова</button><button class="chipbtn alt" data-adm="streak_set" data-amount="1">День 1</button><button class="chipbtn alt" data-adm="streak_set" data-amount="4">День 4</button><button class="chipbtn alt" data-adm="streak_set" data-amount="7">День 7</button><button class="chipbtn alt" data-adm="streak_set" data-amount="8">День 8 (+25%)</button></div>
+    <h4>Сброс</h4>
+    <div class="admbtns"><button class="chipbtn danger" data-adm="reset_stats" data-confirm="Сбросить уровень, опыт и характеристики? Вещи и монеты останутся.">Сбросить персонажа</button><button class="chipbtn danger" data-adm="reset" data-confirm="Сбросить ВСЮ игру: уровень, монеты, вещи, имя?">Сбросить всю игру</button></div>
+    <h4>Журнал действий</h4>
+    <div class="admbtns"><button class="chipbtn alt" id="a-log">Показать последние 30</button></div>
+    <div id="admlog"></div>
+  </section>
+  <section class="panel" id="panel-quests">
+    <div class="top"><button class="back" data-go="menu">‹ Меню</button><h3>Задания</h3><div class="wal" id="qtimer">⏳</div></div>
+    <div id="qbody"></div>
+  </section>
+  <section class="panel" id="panel-visit">
+    <div class="top"><button class="back" data-go="menu">‹ Меню</button><h3>В гости</h3></div>
+    <p>К кому зайти? В гостях можно только смотреть — менять чужого питомца нельзя.</p>
+    <div id="visitlist"></div>
+  </section>
+  <section class="panel" id="panel-loc">
+    <div class="top"><h3>Локация</h3><div class="wal">🪙 <span id="loccoins">0</span></div></div>
+    <div id="locbody"></div>
+  </section>
+  <section class="panel" id="panel-daily">
+    <div class="top"><button class="back" data-go="menu">‹ Меню</button><h3>Бонус дня</h3><div class="wal" id="dstreak">🔥 0</div></div>
+    <div id="dbody"></div>
+  </section>
+  <section class="panel" id="panel-rewards">
+    <div class="top"><button class="back" data-go="menu">‹ Меню</button><h3>Достижения</h3><div class="wal" id="acount">0 / 0</div></div>
+    <div id="abody"></div>
+  </section>
+
+  <div id="actions">
+    <button class="act main" id="mainact" data-a="play"><span class="em" data-icon="ball" data-k="4"></span><span class="txt"><b class="lbl">Играть</b><small>заработать монеты</small></span></button>
+    <button class="chipbtn alt" id="tentsleep" style="display:none;width:100%;margin-top:7px">⛺ Спать в палатке</button>
+    <div id="hint">Нажми на питомца, чтобы погладить 💕</div>
+  </div>
+
+  <div id="editbar">
+    <div class="eh"><b id="edittitle">🛋 Расстановка мебели</b><button class="chipbtn" id="editdone">Готово</button></div>
+    <div id="editlist"></div>
+    <div class="erow"><div id="edithint"></div><button class="chipbtn alt" id="editstore">В кладовую</button></div>
+  </div>
+
+  <nav>
+    <button data-tab="home" class="on"><span data-icon="paw" data-k="3"></span>Главная</button>
+    <button data-tab="loc"><span data-icon="tree" data-k="3"></span>Локация</button>
+    <button data-tab="menu"><span data-icon="list" data-k="3"></span>Меню</button>
+  </nav>
+</div>
+<div id="veil"><div id="veiltxt"></div></div>
+<div id="dailypop"><div id="dpopcard"><h3>🎁 Бонус дня</h3><div id="dpopbody"></div><div id="dpopbtns"><button class="chipbtn alt" id="dpopclose" type="button">Позже</button></div></div></div>
+<div id="sheet"><div id="sheetbox"><div id="sheettitle"></div><div id="sheetlist"></div>
+  <div id="sheetbtns"><button class="chipbtn alt" id="sheetshop">🛍 В магазин</button><button class="chipbtn alt" id="sheetclose">Закрыть</button></div></div></div>
+<div id="toast"></div>
+
+<script>
+(() => {
+  'use strict';
+  // @include js/core/telegram.js
+  // @include js/core/audio.js
+  // @include js/core/api.js
+  // @include js/core/state.js
+  // @include js/world/rooms-nav.js
+  // @include js/draw/pixel.js
+  // @include js/otter/otter.js
+  // @include js/world/rooms-indoor.js
+  // @include js/world/outdoor.js
+  // @include js/world/life.js
+  // @include js/world/scene.js
+  // @include js/clothes/clothes.js
+  // @include js/furniture/furniture.js
+  // @include js/furniture/home-standard.js
+  // @include js/ui/helpers.js
+  // @include js/ui/nav.js
+  // @include js/ui/shop.js
+  // @include js/ui/wardrobe.js
+  // @include js/ui/settings-admin.js
+  // @include js/ui/quests.js
+  // @include js/ui/feed.js
+  // @include js/furniture/edit-mode.js
+  // @include js/world/locations.js
+  // @include js/ui/daily.js
+  // @include js/otter/fishing.js
+  // @include js/ui/achievements.js
+  // @include js/core/boot.js
+})();
+</script>
+</body>
+</html>
