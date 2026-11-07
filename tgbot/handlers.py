@@ -193,7 +193,8 @@ COMMANDS_HELP = (
     "• /remember [тип] &lt;текст&gt; — запомнить вручную как важное (типы: personal,"
     " partner — про партнёра, couple, event, emotion, inside_joke)\n"
     "• /memorydelete &lt;номер или фраза&gt; — удалить запись\n"
-    "• /memoryclear — очистить память (с подтверждением)\n\n"
+    "• /memoryclear — очистить память (с подтверждением)\n"
+    "• /business — автоответы от вашего лица (Telegram Business, нужен Premium)\n\n"
     "🌤 <b>Инлайн-режим (@имя_бота):</b>\n"
     "• погода &lt;город&gt; — узнать погоду\n"
     "• любой текст — быстрый ответ от ИИ"
@@ -390,7 +391,7 @@ MEDIA_PLACEHOLDERS = {"Голосовое сообщение", "Видеосоо
 # Команды обрабатываются своими обработчиками; общий обработчик их не перехватывает,
 # в каком бы месте файла они ни были объявлены.
 BOT_COMMANDS = ["draw", "pet", "start", "command", "adduser", "memory", "remember", "memorydelete",
-                "memoryclear", "remind", "reminders", "reminddelete", "limits", "weather"]
+                "memoryclear", "remind", "reminders", "reminddelete", "limits", "weather", "business"]
 
 
 @dp.message(~Command(*BOT_COMMANDS), F.text | F.voice | F.video_note | F.photo)
