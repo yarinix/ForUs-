@@ -14,7 +14,7 @@ import pet
 import pet_garden
 
 # Порядок важен: обработчики регистрируются при импорте в том же порядке, что и в старом app.py
-from tgbot import handlers, commands_extra, inline_mode, business  # noqa: F401
+from tgbot import handlers, commands_extra, inline_mode  # noqa: F401
 from tgbot.config import ALLOWED_USER_IDS, BOT_OWNER_ID, bot, dp, pet_key_for_user, remember_name
 from tgbot.webserver import WebAppHandler, public_base_url
 from tgbot.db import get_db, init_db
@@ -95,7 +95,6 @@ async def main():
     await asyncio.to_thread(init_db)
     await asyncio.to_thread(pet.init_tables, get_db)
     await asyncio.to_thread(pet_garden.init_tables, get_db)
-    await asyncio.to_thread(business.init_tables)
     logging.info("База данных готова.")
 
     # Имена из профилей Telegram (работает, если человек уже писал боту)
@@ -139,7 +138,6 @@ async def main():
             types.BotCommand(command="limits", description="Запросы к Gemini за сутки"),
             types.BotCommand(command="draw", description="Холст для рисования"),
             types.BotCommand(command="pet", description="Наша выдра (игра)"),
-            types.BotCommand(command="business", description="Автоответы от моего лица"),
             types.BotCommand(command="command", description="Список команд"),
         ]
         await bot.set_my_commands(base_commands)

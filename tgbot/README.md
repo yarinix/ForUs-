@@ -16,8 +16,7 @@
 | `handlers.py` | /start, /pet, /draw, /memory… и главный обработчик сообщений |
 | `commands_extra.py` | /remind, /reminders, /reminddelete, /limits, /weather |
 | `inline_mode.py` | инлайн-режим |
-| `business.py` | Telegram Business: автоответы от лица владельца (`business_message`), команда `/business`, см. докстринг модуля |
 | `main.py` | фоновые циклы, меню команд, запуск polling |
 
 **Порядок регистрации обработчиков важен** (aiogram проверяет их по очереди).
-Он задаётся импортом в `main.py`: `handlers` → `commands_extra` → `inline_mode` → `business` — так же, как было в app.py.
+Он задаётся импортом в `main.py`: `handlers` → `commands_extra` → `inline_mode` — так же, как было в app.py.
